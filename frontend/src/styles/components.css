@@ -598,6 +598,26 @@
 .menu-item.danger svg {
   color: var(--danger);
 }
+.menu-item-rich {
+  align-items: flex-start;
+  padding: 10px 12px;
+  min-width: 280px;
+}
+.menu-item-rich > svg {
+  margin-top: 2px;
+  color: var(--ink-2);
+}
+.menu-item-rich > span {
+  display: grid;
+  gap: 2px;
+}
+.menu-item-title {
+  font-weight: 600;
+}
+.menu-item-desc {
+  font-size: var(--step--2);
+  color: var(--ink-2);
+}
 .menu-item .end {
   margin-left: auto;
   color: var(--ink-3);

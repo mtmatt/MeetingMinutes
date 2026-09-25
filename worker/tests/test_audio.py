@@ -43,3 +43,20 @@ def test_peaks(tmp_path):
     assert max(p["peaks"][:10]) == 0 and min(p["peaks"][10:]) == 255
     audio.write_peaks(wav, tmp_path / "peaks.json")
     assert json.loads((tmp_path / "peaks.json").read_text())["version"] == 1
+
+
+def test_browser_recording_webm_opus(tmp_path):
+    """MediaRecorder output (WebM/Opus without a duration header) decodes correctly."""
+    import subprocess
+
+    out = tmp_path / "recording.weba"
+    subprocess.run(
+        [audio.ffmpeg_bin(), "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=4",
+         "-c:a", "libopus", "-b:a", "64k", "-f", "webm", str(out)],
+        check=True,
+    )
+    info = audio.probe(str(out))
+    assert info.has_audio and not info.has_video
+    wav = audio.decode_pcm(str(out), duration=info.duration)
+    assert abs(len(wav) / audio.SAMPLE_RATE - 4.0) < 0.2
+    assert audio.write_playback(str(out), tmp_path / "playback.m4a")

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Clock, FileVideo, Languages, RefreshCw, Search, Trash2, Upload, Users, X } from "lucide-react";
+import { AlertTriangle, Clock, FileVideo, Languages, Mic, RefreshCw, Search, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 import { api } from "../api/client";
@@ -255,9 +255,14 @@ export function LibraryPage() {
           <Seal size={56} />
           <h2>{t("library.empty")}</h2>
           <p>{t("library.emptyBody")}</p>
-          <Link to="/new" className="btn btn-primary btn-lg">
-            <Upload /> {t("library.upload")}
-          </Link>
+          <div className="library-empty-actions">
+            <Link to="/new" className="btn btn-primary btn-lg">
+              <Upload /> {t("nav.addUpload")}
+            </Link>
+            <Link to="/new?mode=record" className="btn btn-lg">
+              <Mic /> {t("nav.addRecord")}
+            </Link>
+          </div>
         </div>
       ) : total === 0 ? (
         <div className="empty">

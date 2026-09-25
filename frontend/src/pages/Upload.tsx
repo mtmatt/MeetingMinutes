@@ -1,11 +1,14 @@
-import { AlertCircle, AudioLines, ChevronRight, FileAudio, FileVideo, Minus, Plus, Upload as UploadIcon, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
-import { useNavigate } from "react-router";
+import { AlertCircle, AudioLines, ChevronRight, FileAudio, FileVideo, Mic, Minus, Plus, Upload as UploadIcon, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
+import { useBlocker, useNavigate, useSearchParams } from "react-router";
 import { ApiError, api, uploadFile } from "../api/client";
 import type { Script, SummaryRequest, TranscribeOptions } from "../api/types";
 import { DataFlowNote, SummaryComposer, defaultOutputLanguage, normalizeRequest, useTemplates } from "../components/SummaryComposer";
 import { useI18n } from "../i18n";
-import { bytes, clock, fromLocalInput, toLocalInput } from "../lib/format";
+import { bytes, clock, fromLocalInput, monthDay, time, toLocalInput } from "../lib/format";
+import { Recorder, type RecordedFile } from "../components/Recorder";
+import { useConfirm } from "../components/Modal";
+import { deleteRecording } from "../lib/recordingStore";
 import { takePendingFile } from "../lib/pendingFile";
 import { apiErrorMessage } from "../lib/errors";
 
@@ -57,6 +60,7 @@ function Stepper({ value, onChange, min = 1, max = 20 }: { value: number; onChan
 
 export function UploadPage() {
   const { t, tMaybe, locale } = useI18n();
+  const confirm = useConfirm();
   const navigate = useNavigate();
 
   const [file, setFile] = useState<File | null>(null);
@@ -78,6 +82,11 @@ export function UploadPage() {
   });
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const mode: "file" | "record" = params.get("mode") === "record" ? "record" : "file";
+  const setMode = (m: "file" | "record") => setParams(m === "record" ? { mode: "record" } : {}, { replace: true });
+  const [recordingBusy, setRecordingBusy] = useState(false);
+  const [recording, setRecording] = useState<{ id: string } | null>(null);
   const { data: templates } = useTemplates();
   const [dragging, setDragging] = useState(false);
   const [upload, setUpload] = useState<{ sent: number; total: number; startedAt: number; finishing: boolean } | null>(null);
@@ -97,6 +106,7 @@ export function UploadPage() {
     }
     setError(null);
     setFile(f);
+    setRecording(null);
     if (!titleTouched) setTitle(titleFromFile(f.name));
     if (f.lastModified) setOccurredAt(toLocalInput(f.lastModified));
   };
@@ -123,14 +133,45 @@ export function UploadPage() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
+  const guard = !!upload || recordingBusy;
   useEffect(() => {
-    if (!upload) return;
+    if (!guard) return;
     const warn = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [upload]);
+  }, [guard]);
+
+  // In-app navigation away from an active recording or upload asks first.
+  const allowLeave = useRef(false);
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) => guard && !allowLeave.current && currentLocation.pathname !== nextLocation.pathname,
+  );
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    void confirm({
+      title: recordingBusy ? t("recorder.leaveTitle") : t("upload.leaveWarning"),
+      body: recordingBusy ? t("recorder.leaveBody") : undefined,
+      confirmLabel: t("recorder.leave"),
+      danger: true,
+    }).then((ok) => (ok ? blocker.proceed() : blocker.reset()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocker.state]);
+
+  const onRecorded = useCallback(
+    (r: RecordedFile) => {
+      setError(null);
+      setFile(r.file);
+      setRecording({ id: r.recordingId });
+      if (!titleTouched) {
+        const when = `${monthDay(r.startedAt, locale)} ${time(r.startedAt, locale)}`;
+        setTitle(r.source === "meeting" ? t("recorder.defaultTitleMeeting", { when }) : t("recorder.defaultTitleMic", { when }));
+      }
+      setOccurredAt(toLocalInput(r.startedAt));
+    },
+    [titleTouched, locale, t],
+  );
 
   const options: TranscribeOptions = useMemo(
     () => ({
@@ -165,6 +206,8 @@ export function UploadPage() {
       await uploadFile(meeting.id, file, chunkSize, (sent, total) => setUpload((u) => (u ? { ...u, sent, total } : u)), ctrl.signal);
       setUpload((u) => (u ? { ...u, finishing: true } : u));
       await api.completeUpload(meeting.id);
+      if (recording) await deleteRecording(recording.id).catch(() => undefined);
+      allowLeave.current = true; // our own redirect to the new meeting is not "leaving"
       navigate(`/m/${meeting.id}`, { replace: true });
     } catch (err) {
       setUpload(null);
@@ -217,7 +260,19 @@ export function UploadPage() {
 
       <form className="upload-form" onSubmit={submit} id="upload-form">
         <Step n="1" title={t("upload.step1")}>
-          {!file ? (
+          {!file && (
+            <div className="mode-tabs" role="tablist" aria-label={t("upload.step1")}>
+              <button type="button" role="tab" aria-selected={mode === "file"} onClick={() => setMode("file")} disabled={recordingBusy}>
+                <UploadIcon /> {t("upload.modeFile")}
+              </button>
+              <button type="button" role="tab" aria-selected={mode === "record"} onClick={() => setMode("record")}>
+                <Mic /> {t("upload.modeRecord")}
+              </button>
+            </div>
+          )}
+          {!file && mode === "record" ? (
+            <Recorder onRecorded={onRecorded} onBusyChange={setRecordingBusy} />
+          ) : !file ? (
             <label
               className={`dropzone ${dragging ? "dragging" : ""}`}
               onDragOver={(e) => {
@@ -239,9 +294,9 @@ export function UploadPage() {
             </label>
           ) : (
             <div className="file-card">
-              <span className="file-card-icon">{isVideo ? <FileVideo /> : <FileAudio />}</span>
+              <span className="file-card-icon">{recording ? <Mic /> : isVideo ? <FileVideo /> : <FileAudio />}</span>
               <div className="file-card-main">
-                <div className="file-card-name">{file.name}</div>
+                <div className="file-card-name">{recording ? t("upload.recordedFile") : file.name}</div>
                 <div className="file-card-meta">
                   {bytes(file.size)}
                   {mediaDuration != null && <> · {clock(mediaDuration)}</>}
@@ -249,10 +304,25 @@ export function UploadPage() {
                   {extOf(file.name).toUpperCase()}
                 </div>
               </div>
-              <button type="button" className="btn btn-sm" onClick={() => inputRef.current?.click()}>
-                {t("upload.replace")}
-              </button>
-              <button type="button" className="icon-btn" onClick={() => setFile(null)} aria-label={t("upload.removeFile")} title={t("upload.removeFile")}>
+              {recording ? (
+                <button type="button" className="btn btn-sm" onClick={() => setFile(null)}>
+                  {t("upload.recordAgain")}
+                </button>
+              ) : (
+                <button type="button" className="btn btn-sm" onClick={() => inputRef.current?.click()}>
+                  {t("upload.replace")}
+                </button>
+              )}
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => {
+                  setFile(null);
+                  setRecording(null);
+                }}
+                aria-label={t("upload.removeFile")}
+                title={t("upload.removeFile")}
+              >
                 <X />
               </button>
               <input ref={inputRef} type="file" accept={ACCEPT} className="visually-hidden" onChange={(e) => e.target.files?.[0] && accept(e.target.files[0])} />
@@ -385,6 +455,8 @@ export function UploadPage() {
               <span className="field-error" role="alert">
                 <AlertCircle /> {error}
               </span>
+            ) : recordingBusy ? (
+              <span className="faint">{t("recorder.submitHint")}</span>
             ) : file ? (
               <>
                 <strong>{title.trim() || file.name}</strong>
@@ -395,10 +467,10 @@ export function UploadPage() {
                 </span>
               </>
             ) : (
-              <span className="faint">{t("upload.needFile")}</span>
+              <span className="faint">{mode === "record" ? t("recorder.submitIdle") : t("upload.needFile")}</span>
             )}
           </div>
-          <button className="btn btn-primary btn-lg" form="upload-form" disabled={!!upload}>
+          <button className="btn btn-primary btn-lg" form="upload-form" disabled={!!upload || recordingBusy || (mode === "record" && !file)}>
             <UploadIcon /> {t("upload.submit")}
           </button>
         </div>

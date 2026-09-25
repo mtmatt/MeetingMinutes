@@ -1,4 +1,4 @@
-import { ChevronDown, FileText, Languages, Library, LogOut, Monitor, Moon, Plus, Settings, Shield, Sun } from "lucide-react";
+import { ChevronDown, FileText, Languages, Library, LogOut, Mic, Monitor, Moon, Plus, Settings, Shield, Sun, Upload } from "lucide-react";
 import { NavLink, useNavigate } from "react-router";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
@@ -58,10 +58,34 @@ export function Masthead() {
           </button>
         )}
         <div className="masthead-actions">
-          <NavLink to="/new" className="btn btn-primary btn-sm masthead-new">
-            <Plus />
-            <span>{t("nav.new")}</span>
-          </NavLink>
+          <Menu
+            trigger={({ toggle, open }) => (
+              <button className="btn btn-primary btn-sm masthead-new" onClick={toggle} aria-expanded={open} aria-haspopup="menu">
+                <Plus />
+                <span>{t("nav.add")}</span>
+                <ChevronDown className="chev-sm" />
+              </button>
+            )}
+          >
+            {(close) => (
+              <>
+                <NavLink className="menu-item menu-item-rich" to="/new" onClick={close}>
+                  <Upload />
+                  <span>
+                    <span className="menu-item-title">{t("nav.addUpload")}</span>
+                    <span className="menu-item-desc">{t("nav.addUploadDesc")}</span>
+                  </span>
+                </NavLink>
+                <NavLink className="menu-item menu-item-rich" to="/new?mode=record" onClick={close}>
+                  <Mic />
+                  <span>
+                    <span className="menu-item-title">{t("nav.addRecord")}</span>
+                    <span className="menu-item-desc">{t("nav.addRecordDesc")}</span>
+                  </span>
+                </NavLink>
+              </>
+            )}
+          </Menu>
           <Menu
             trigger={({ toggle, open }) => (
               <button className="user-chip" onClick={toggle} aria-expanded={open} aria-haspopup="menu">

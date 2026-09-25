@@ -117,8 +117,11 @@
   align-items: center;
   gap: 12px;
 }
-.masthead-new.active {
-  display: none;
+.masthead-new .chev-sm {
+  width: 14px;
+  height: 14px;
+  margin-left: -2px;
+  opacity: 0.85;
 }
 .user-chip {
   display: flex;
@@ -228,6 +231,7 @@
     display: none;
   }
   .masthead-new span,
+  .masthead-new .chev-sm,
   .user-chip-name,
   .user-chip .chev {
     display: none;

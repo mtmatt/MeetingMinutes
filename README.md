@@ -21,6 +21,10 @@ A self-hosted meeting-minutes service. Upload a recording (audio or video). It i
 ## Features
 
 - **Upload** audio or video up to 4 GB. Uploads are chunked and resumable, so they survive flaky connections and proxy body limits.
+- **Record in the browser**:
+  - **Online meeting** (Google Meet, Teams and other meetings in a browser tab): captures the meeting tab's audio and your microphone, mixed into one track. The tab alone would miss your own voice, because a meeting tab never plays it back.
+  - **Microphone**: for in-room meetings.
+  - The recording is saved to the browser's IndexedDB every 5 seconds, so a closed tab or crash loses at most a few seconds; interrupted recordings can be restored and uploaded later.
 - **Transcription options**: language (auto-detect handles Mandarin–English code-switching), speaker count (auto, exact, or range), a vocabulary list fed to the recogniser as context, and Chinese script (Taiwan Traditional via OpenCC `s2twp`, Simplified, or as recognised).
 - **Summaries**: pick a template, edit the prompt for this upload, and choose the output language. Summaries can run automatically when the transcript is ready, and you can re-run them any time with a different prompt; every run is kept as a version.
 - **Meeting view**:
@@ -113,6 +117,30 @@ TRUST_PROXY=true
 
 This turns on `Secure`, `__Host-` session cookies and HSTS, and makes rate limiting use the real client IP. Binding ports 80/443 normally needs privileges; if you cannot get them, run Caddy on a high port or ask for a port redirect.
 
+## Recording meetings in the browser
+
+**New recording → Record a meeting** offers two sources:
+
+| Source | Captures | Browsers |
+| --- | --- | --- |
+| Online meeting | The shared meeting tab (other participants) plus your microphone | Desktop Chrome, Edge and other Chromium browsers |
+| Microphone | Only the microphone | Any modern browser |
+
+To record Google Meet:
+
+1. Start the recording.
+2. Pick the Meet tab in the share dialog.
+3. Turn on **Also share tab audio**.
+
+Wear headphones, so the meeting audio from your speakers is not picked up a second time by the microphone. Echo cancellation is on, but headphones are more reliable.
+
+A few limits to know about:
+
+- **HTTPS is required.** Browsers only allow audio capture on HTTPS pages, or on `localhost`.
+- **Firefox and Safari** cannot capture tab audio, so they only offer microphone recording.
+- **Recording continues in the background.** You can switch tabs, but if you close the Minutes tab, recording stops. What was already recorded is kept locally and can be restored.
+- **Tell participants** before you record.
+
 ## Configuration
 
 All settings are environment variables. Put them in `.env` at the repository root; `.env.example` documents each one. The most relevant:
@@ -120,6 +148,7 @@ All settings are environment variables. Put them in `.env` at the repository roo
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PUBLIC_URL` | – | External URL. Controls secure cookies and invite links. |
+| `ADMIN_CONTACT` | – | Contact shown on the sign-in page for people without an account or who forgot their password (an email becomes a mailto link). |
 | `TRUST_PROXY` | `false` | Trust `X-Forwarded-*` headers from your proxy. |
 | `DATA_DIR` | `data` | SQLite database, media, and tokens. Back this directory up. |
 | `MAX_UPLOAD_MB` / `UPLOAD_CHUNK_MB` | `4096` / `32` | Upload limits. |
