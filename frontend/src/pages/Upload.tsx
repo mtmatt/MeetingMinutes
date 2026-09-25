@@ -1,4 +1,4 @@
-import { AlertCircle, AudioLines, ChevronRight, FileAudio, FileVideo, Mic, Minus, Plus, Upload as UploadIcon, X } from "lucide-react";
+import { AlertCircle, AudioLines, ChevronRight, FileAudio, FileVideo, Mic, Minus, Pause, Play, Plus, RefreshCw, Square, Upload as UploadIcon, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import { useBlocker, useNavigate, useSearchParams } from "react-router";
 import { ApiError, api, uploadFile } from "../api/client";
@@ -6,7 +6,8 @@ import type { Script, SummaryRequest, TranscribeOptions } from "../api/types";
 import { DataFlowNote, SummaryComposer, defaultOutputLanguage, normalizeRequest, useTemplates } from "../components/SummaryComposer";
 import { useI18n } from "../i18n";
 import { bytes, clock, fromLocalInput, monthDay, time, toLocalInput } from "../lib/format";
-import { Recorder, type RecordedFile } from "../components/Recorder";
+import { Recorder } from "../components/Recorder";
+import { useRecording, type RecordedFile, type RecordingController } from "../lib/useRecording";
 import { useConfirm } from "../components/Modal";
 import { deleteRecording } from "../lib/recordingStore";
 import { takePendingFile } from "../lib/pendingFile";
@@ -85,13 +86,16 @@ export function UploadPage() {
   const [params, setParams] = useSearchParams();
   const mode: "file" | "record" = params.get("mode") === "record" ? "record" : "file";
   const setMode = (m: "file" | "record") => setParams(m === "record" ? { mode: "record" } : {}, { replace: true });
-  const [recordingBusy, setRecordingBusy] = useState(false);
-  const [recording, setRecording] = useState<{ id: string } | null>(null);
+  const rec = useRecording();
+  const recordingBusy = rec.active;
+  const [recording, setRecording] = useState<{ id: string; durationMs: number } | null>(null);
   const { data: templates } = useTemplates();
   const [dragging, setDragging] = useState(false);
   const [upload, setUpload] = useState<{ sent: number; total: number; startedAt: number; finishing: boolean } | null>(null);
+  const [uploadFailed, setUploadFailed] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const meetingIdRef = useRef<string | null>(null);
+  /** The meeting created for this file; a retry resumes it instead of starting over. */
+  const target = useRef<{ meetingId: string; chunkSize: number; file: File } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const accept = (f: File) => {
@@ -105,6 +109,7 @@ export function UploadPage() {
       return;
     }
     setError(null);
+    setUploadFailed(false);
     setFile(f);
     setRecording(null);
     if (!titleTouched) setTitle(titleFromFile(f.name));
@@ -121,6 +126,11 @@ export function UploadPage() {
   useEffect(() => {
     setMediaDuration(null);
     if (!file) return;
+    if (recording) {
+      // Browser recordings carry no duration header; we know it exactly.
+      setMediaDuration(recording.durationMs / 1000);
+      return;
+    }
     const url = URL.createObjectURL(file);
     const el = document.createElement(VIDEO.includes(extOf(file.name)) ? "video" : "audio");
     el.preload = "metadata";
@@ -130,6 +140,19 @@ export function UploadPage() {
     };
     el.onerror = () => URL.revokeObjectURL(url);
     el.src = url;
+    return () => URL.revokeObjectURL(url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file]);
+
+  // Object URL for listening to the file before uploading.
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file || VIDEO.includes(extOf(file.name))) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
@@ -146,7 +169,9 @@ export function UploadPage() {
   // In-app navigation away from an active recording or upload asks first.
   const allowLeave = useRef(false);
   const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) => guard && !allowLeave.current && currentLocation.pathname !== nextLocation.pathname,
+    // Includes same-page changes such as /new?mode=record -> /new from the "New recording" menu.
+    ({ currentLocation, nextLocation }) =>
+      guard && !allowLeave.current && currentLocation.pathname + currentLocation.search !== nextLocation.pathname + nextLocation.search,
   );
   useEffect(() => {
     if (blocker.state !== "blocked") return;
@@ -162,8 +187,9 @@ export function UploadPage() {
   const onRecorded = useCallback(
     (r: RecordedFile) => {
       setError(null);
+      setUploadFailed(false);
+      setRecording({ id: r.recordingId, durationMs: r.durationMs });
       setFile(r.file);
-      setRecording({ id: r.recordingId });
       if (!titleTouched) {
         const when = `${monthDay(r.startedAt, locale)} ${time(r.startedAt, locale)}`;
         setTitle(r.source === "meeting" ? t("recorder.defaultTitleMeeting", { when }) : t("recorder.defaultTitleMic", { when }));
@@ -191,27 +217,37 @@ export function UploadPage() {
     if (!file) return setError(t("upload.needFile"));
     if (!title.trim()) return setError(t("upload.needTitle"));
     setError(null);
+    setUploadFailed(false);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setUpload({ sent: 0, total: file.size, startedAt: performance.now(), finishing: false });
     try {
-      const { meeting, chunkSize } = await api.createMeeting({
-        title: title.trim(),
-        occurredAt: fromLocalInput(occurredAt),
-        file: { name: file.name, size: file.size, type: file.type },
-        options,
-        summary: autoSummary && summary.prompt.trim() ? normalizeRequest(summary, templates?.templates ?? []) : null,
-      });
-      meetingIdRef.current = meeting.id;
-      await uploadFile(meeting.id, file, chunkSize, (sent, total) => setUpload((u) => (u ? { ...u, sent, total } : u)), ctrl.signal);
+      // Resume the meeting created by an earlier attempt for the same file.
+      if (!target.current || target.current.file !== file) {
+        const { meeting, chunkSize } = await api.createMeeting({
+          title: title.trim(),
+          occurredAt: fromLocalInput(occurredAt),
+          file: { name: file.name, size: file.size, type: file.type },
+          options,
+          summary: autoSummary && summary.prompt.trim() ? normalizeRequest(summary, templates?.templates ?? []) : null,
+        });
+        target.current = { meetingId: meeting.id, chunkSize, file };
+      } else {
+        await api.updateMeeting(target.current.meetingId, { title: title.trim(), occurredAt: fromLocalInput(occurredAt) });
+      }
+      const { meetingId, chunkSize } = target.current;
+      await uploadFile(meetingId, file, chunkSize, (sent, total) => setUpload((u) => (u ? { ...u, sent, total } : u)), ctrl.signal);
       setUpload((u) => (u ? { ...u, finishing: true } : u));
-      await api.completeUpload(meeting.id);
+      await api.completeUpload(meetingId);
+      // The server has the recording now; drop the browser's copy.
       if (recording) await deleteRecording(recording.id).catch(() => undefined);
       allowLeave.current = true; // our own redirect to the new meeting is not "leaving"
-      navigate(`/m/${meeting.id}`, { replace: true });
+      navigate(`/m/${meetingId}`, { replace: true });
     } catch (err) {
       setUpload(null);
       if (err instanceof ApiError && err.code === "aborted") return;
+      // Keep the file (and any browser recording) so the user can retry.
+      setUploadFailed(true);
       setError(apiErrorMessage(err, t));
     }
   };
@@ -219,8 +255,13 @@ export function UploadPage() {
   const cancelUpload = async () => {
     abortRef.current?.abort();
     setUpload(null);
-    if (meetingIdRef.current) await api.deleteMeeting(meetingIdRef.current).catch(() => undefined);
-    meetingIdRef.current = null;
+    if (target.current) await api.deleteMeeting(target.current.meetingId).catch(() => undefined);
+    target.current = null;
+  };
+
+  const stopRecording = async () => {
+    const r = await rec.finish();
+    if (r) onRecorded(r);
   };
 
   const onDrop = (e: DragEvent) => {
@@ -271,7 +312,7 @@ export function UploadPage() {
             </div>
           )}
           {!file && mode === "record" ? (
-            <Recorder onRecorded={onRecorded} onBusyChange={setRecordingBusy} />
+            <Recorder rec={rec} onRecorded={onRecorded} />
           ) : !file ? (
             <label
               className={`dropzone ${dragging ? "dragging" : ""}`}
@@ -301,7 +342,7 @@ export function UploadPage() {
                   {bytes(file.size)}
                   {mediaDuration != null && <> · {clock(mediaDuration)}</>}
                   {" · "}
-                  {extOf(file.name).toUpperCase()}
+                  {recording ? t("upload.recordedFormat") : extOf(file.name).toUpperCase()}
                 </div>
               </div>
               {recording ? (
@@ -326,6 +367,12 @@ export function UploadPage() {
                 <X />
               </button>
               <input ref={inputRef} type="file" accept={ACCEPT} className="visually-hidden" onChange={(e) => e.target.files?.[0] && accept(e.target.files[0])} />
+              {previewUrl && (
+                <div className="file-card-preview">
+                  <span className="faint">{recording ? t("upload.previewRecording") : t("upload.preview")}</span>
+                  <audio controls preload="metadata" src={previewUrl} />
+                </div>
+              )}
             </div>
           )}
         </Step>
@@ -448,79 +495,146 @@ export function UploadPage() {
         </section>
       </form>
 
-      <div className="submit-bar">
-        <div className="submit-bar-inner">
-          <div className="submit-bar-info">
-            {error ? (
-              <span className="field-error" role="alert">
-                <AlertCircle /> {error}
+      <SubmitBar
+        stage={
+          upload
+            ? "uploading"
+            : rec.phase === "starting"
+              ? "rec-starting"
+              : recordingBusy
+                ? "recording"
+                : file
+                  ? "ready"
+                  : mode === "record"
+                    ? "rec-idle"
+                    : "empty"
+        }
+        upload={upload}
+        rec={rec}
+        error={error}
+        uploadFailed={uploadFailed}
+        summary={
+          file ? (
+            <>
+              <strong>{title.trim() || file.name}</strong>
+              <span className="faint">
+                {bytes(file.size)}
+                {mediaDuration != null && <> · {clock(mediaDuration)}</>}
+                {autoSummary && <> · {t("upload.willSummarize")}</>}
               </span>
-            ) : recordingBusy ? (
-              <span className="faint">{t("recorder.submitHint")}</span>
-            ) : file ? (
-              <>
-                <strong>{title.trim() || file.name}</strong>
-                <span className="faint">
-                  {bytes(file.size)}
-                  {mediaDuration != null && <> · {clock(mediaDuration)}</>}
-                  {autoSummary && <> · {t("upload.willSummarize")}</>}
-                </span>
-              </>
-            ) : (
-              <span className="faint">{mode === "record" ? t("recorder.submitIdle") : t("upload.needFile")}</span>
-            )}
-          </div>
-          <button className="btn btn-primary btn-lg" form="upload-form" disabled={!!upload || recordingBusy || (mode === "record" && !file)}>
-            <UploadIcon /> {t("upload.submit")}
-          </button>
-        </div>
-      </div>
-
-      {upload && <UploadProgress upload={upload} fileName={file?.name ?? ""} onCancel={cancelUpload} />}
+            </>
+          ) : null
+        }
+        onStop={stopRecording}
+        onCancelUpload={cancelUpload}
+      />
     </div>
   );
 }
+type BarStage = "empty" | "rec-idle" | "rec-starting" | "recording" | "ready" | "uploading";
 
-function UploadProgress({
+/**
+ * The fixed bottom bar follows the flow: what can be done next is always
+ * here, whether the page is scrolled to the recorder or to the form.
+ */
+function SubmitBar({
+  stage,
   upload,
-  fileName,
-  onCancel,
+  rec,
+  error,
+  uploadFailed,
+  summary,
+  onStop,
+  onCancelUpload,
 }: {
-  upload: { sent: number; total: number; startedAt: number; finishing: boolean };
-  fileName: string;
-  onCancel: () => void;
+  stage: BarStage;
+  upload: { sent: number; total: number; startedAt: number; finishing: boolean } | null;
+  rec: RecordingController;
+  error: string | null;
+  uploadFailed: boolean;
+  summary: ReactNode;
+  onStop: () => void;
+  onCancelUpload: () => void;
 }) {
   const { t } = useI18n();
-  const pct = upload.total ? Math.floor((upload.sent / upload.total) * 100) : 0;
-  const elapsed = (performance.now() - upload.startedAt) / 1000;
-  const rate = elapsed > 0.5 ? upload.sent / elapsed : 0;
-  const eta = rate > 0 ? (upload.total - upload.sent) / rate : 0;
-  return (
-    <div className="scrim">
-      <div className="upload-progress" role="dialog" aria-modal="true" aria-live="polite">
-        <div className="upload-progress-num">
-          <span className="mono">{upload.finishing ? 100 : pct}</span>
-          <span className="pct">%</span>
+
+  let info: ReactNode;
+  let actions: ReactNode;
+  if (stage === "uploading" && upload) {
+    const pct = upload.total ? Math.floor((upload.sent / upload.total) * 100) : 0;
+    const elapsed = (performance.now() - upload.startedAt) / 1000;
+    const rate = elapsed > 0.5 ? upload.sent / elapsed : 0;
+    const eta = rate > 0 ? (upload.total - upload.sent) / rate : 0;
+    info = (
+      <div className="bar-upload" aria-live="polite">
+        <div className="bar-upload-line">
+          <strong>{upload.finishing ? t("upload.finishing") : t("upload.uploading", { pct })}</strong>
+          {!upload.finishing && (
+            <span className="faint">
+              {t("upload.uploadingDetail", { sent: bytes(upload.sent), total: bytes(upload.total), rate: bytes(rate), eta: rate ? clock(eta) : "–" })}
+            </span>
+          )}
         </div>
-        <div className="upload-progress-name">{fileName}</div>
-        <div className="progress" style={{ height: 6 }}>
+        <div className="progress" style={{ height: 5 }}>
           <span style={{ width: `${upload.finishing ? 100 : pct}%` }} />
         </div>
-        <div className="upload-progress-detail mono">
-          {upload.finishing
-            ? t("upload.finishing")
-            : t("upload.uploadingDetail", {
-                sent: bytes(upload.sent),
-                total: bytes(upload.total),
-                rate: bytes(rate),
-                eta: rate ? clock(eta) : "–",
-              })}
-        </div>
-        {!upload.finishing && (
-          <button className="btn btn-ghost" onClick={onCancel}>
-            {t("upload.cancelUpload")}
+      </div>
+    );
+    actions = !upload.finishing && (
+      <button type="button" className="btn" onClick={onCancelUpload}>
+        {t("upload.cancelUpload")}
+      </button>
+    );
+  } else if (stage === "recording" || stage === "rec-starting") {
+    const paused = rec.phase === "paused";
+    const finishing = rec.phase === "finishing";
+    info = (
+      <div className="bar-rec">
+        <span className={`rec-status ${paused ? "paused" : ""}`}>
+          <span className="rec-dot" />
+          {stage === "rec-starting" ? t("recorder.starting") : finishing ? t("recorder.finishing") : paused ? t("recorder.paused") : t("recorder.recording")}
+        </span>
+        {stage === "recording" && <span className="bar-rec-time mono">{clock(rec.elapsedMs / 1000, true)}</span>}
+      </div>
+    );
+    actions = stage === "recording" && (
+      <>
+        {paused ? (
+          <button type="button" className="btn btn-lg" onClick={rec.resume} disabled={finishing}>
+            <Play /> {t("recorder.resume")}
+          </button>
+        ) : (
+          <button type="button" className="btn btn-lg" onClick={rec.pause} disabled={finishing}>
+            <Pause /> {t("recorder.pause")}
           </button>
         )}
+        <button type="button" className="btn btn-primary btn-lg" onClick={onStop} disabled={finishing}>
+          {finishing ? <span className="spinner" /> : <Square />} {t("recorder.stop")}
+        </button>
+      </>
+    );
+  } else {
+    info = error ? (
+      <span className="field-error" role="alert">
+        <AlertCircle /> {error}
+      </span>
+    ) : stage === "ready" ? (
+      summary
+    ) : (
+      <span className="faint">{stage === "rec-idle" ? t("recorder.submitIdle") : t("upload.needFile")}</span>
+    );
+    actions = (
+      <button className="btn btn-primary btn-lg" form="upload-form" disabled={stage !== "ready"}>
+        {uploadFailed ? <RefreshCw /> : <UploadIcon />} {uploadFailed ? t("upload.retry") : t("upload.submit")}
+      </button>
+    );
+  }
+
+  return (
+    <div className={`submit-bar stage-${stage}`}>
+      <div className="submit-bar-inner">
+        <div className="submit-bar-info">{info}</div>
+        <div className="submit-bar-actions">{actions}</div>
       </div>
     </div>
   );

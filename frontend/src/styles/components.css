@@ -49,6 +49,13 @@
   --btn-border: var(--accent);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15) inset, 0 6px 16px -8px var(--accent);
 }
+.btn-primary:disabled {
+  --btn-bg: var(--surface-2);
+  --btn-fg: var(--ink-3);
+  --btn-border: var(--rule);
+  box-shadow: none;
+  opacity: 1;
+}
 .btn-primary:hover:not(:disabled) {
   --btn-bg: var(--accent-hover);
   --btn-border: var(--accent-hover);

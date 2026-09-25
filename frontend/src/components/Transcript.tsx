@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Pencil, Search, UserPlus, Users, X } from "lucide-react";
+import { Check, LocateFixed, Pencil, Search, UserPlus, Users, X } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../api/client";
 import type { MeetingDetail, Segment, Speaker } from "../api/types";
@@ -250,17 +250,75 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
 
   const totalWords = useMemo(() => meeting.segments.reduce((n, s) => n + wordCount(s.text), 0), [meeting.segments]);
 
-  // Keep the active line in view while following playback.
-  useEffect(() => {
-    if (!follow || activeId == null || editing != null) return;
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-seg="${activeId}"]`);
-    if (!el) return;
+  /*
+   * Follow rules
+   * - While following, the playing line is kept in view as playback advances.
+   * - Scrolling away by hand detaches: auto-scroll pauses and "Back to playback"
+   *   appears. Scrolling back to the playing line re-attaches.
+   * - Any explicit seek (transcript line, summary timestamp, waveform, skip)
+   *   re-attaches and brings that moment into view, even while paused.
+   */
+  const [detached, setDetached] = useState(false);
+  const programmatic = useRef(0);
+  const activeEl = useCallback(
+    () => (activeId == null ? null : listRef.current?.querySelector<HTMLElement>(`[data-seg="${activeId}"]`) ?? null),
+    [activeId],
+  );
+  const inView = (el: HTMLElement) => {
     const r = el.getBoundingClientRect();
-    const margin = 180;
-    if (r.top < margin || r.bottom > window.innerHeight - margin - 120) {
-      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    return r.bottom > 120 && r.top < window.innerHeight - 140;
+  };
+  const scrollToActive = useCallback(
+    (force: boolean) => {
+      const el = activeEl();
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const margin = 180;
+      if (force || r.top < margin || r.bottom > window.innerHeight - margin - 120) {
+        programmatic.current = performance.now();
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    },
+    [activeEl],
+  );
+
+  useEffect(() => {
+    if (!follow || detached || editing != null) return;
+    scrollToActive(false);
+  }, [activeId, follow, detached, editing, scrollToActive]);
+
+  // Explicit seeks re-attach and bring the target into view.
+  const { seekCount } = usePlayer();
+  const firstSeek = useRef(true);
+  useEffect(() => {
+    if (firstSeek.current) {
+      firstSeek.current = false;
+      return;
     }
-  }, [activeId, follow, editing]);
+    setDetached(false);
+    // Wait a frame so the active line reflects the new time.
+    requestAnimationFrame(() => scrollToActive(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seekCount]);
+
+  // Manual scrolling (wheel, touch, keys, scrollbar) detaches; our own smooth scrolls do not.
+  useEffect(() => {
+    if (!follow) return;
+    const onScroll = () => {
+      if (performance.now() - programmatic.current < 900) return;
+      const el = activeEl();
+      // Hidden transcript (e.g. the Summary tab on phones) cannot be "scrolled away from".
+      if (!el || el.offsetParent === null) return;
+      setDetached(!inView(el));
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [follow, activeEl]);
+
+  const backToPlayback = () => {
+    setDetached(false);
+    scrollToActive(true);
+  };
 
   const onSeek = useCallback((s: Segment) => seek(s.start, true), [seek]);
   const onEdit = useCallback((s: Segment) => setEditing(s.id), []);
@@ -406,6 +464,12 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
           );
         })}
       </div>
+
+      {follow && detached && activeId != null && (
+        <button type="button" className="back-to-playback" onClick={backToPlayback}>
+          <LocateFixed /> {t("meeting.backToPlayback")}
+        </button>
+      )}
 
       {newSpeakerFor && (
         <Modal

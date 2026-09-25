@@ -1685,6 +1685,7 @@
   font-size: var(--step--1);
   color: var(--ink-2);
   max-width: 52ch;
+  text-wrap: pretty;
 }
 .rec-actions {
   display: flex;
@@ -1739,5 +1740,169 @@
   }
   .rec-actions {
     flex-wrap: wrap;
+  }
+}
+
+/* Recording: per-source connection state */
+.source-rows {
+  display: grid;
+  gap: 14px;
+  width: min(560px, 100%);
+}
+.source-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  grid-template-areas:
+    "name status"
+    ". meter"
+    ". hint";
+  gap: 6px 14px;
+  align-items: center;
+  text-align: left;
+}
+.source-row-name {
+  grid-area: name;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--step--1);
+  font-weight: 600;
+}
+.source-row-name svg {
+  width: 16px;
+  height: 16px;
+  color: var(--ink-2);
+}
+.source-row-status {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.source-row-detail {
+  font-size: var(--step--1);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-row .meter-track {
+  grid-area: meter;
+}
+.source-row .meter-hint {
+  grid-area: hint;
+}
+.source-row-ended {
+  grid-column: 2;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: var(--danger-soft);
+  font-size: var(--step--1);
+  color: var(--ink);
+}
+.source-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rec-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  font-size: var(--step--1);
+}
+.rec-howto {
+  display: grid;
+  gap: 8px;
+}
+.rec-audio-only {
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+
+/* Bottom bar stages */
+.submit-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+.submit-bar-info {
+  flex: 1;
+  min-width: 0;
+}
+.bar-rec {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.bar-rec .rec-status {
+  font-size: var(--step-0);
+}
+.bar-rec-time {
+  font-size: var(--step-1);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.submit-bar.stage-recording {
+  border-top-color: var(--danger);
+}
+.bar-upload {
+  display: grid;
+  gap: 8px;
+  max-width: 640px;
+}
+.bar-upload-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  font-size: var(--step--1);
+}
+
+.file-card {
+  flex-wrap: wrap;
+}
+.file-card-preview {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  margin-top: 4px;
+  border-top: 1px solid var(--rule);
+  font-size: var(--step--1);
+}
+.file-card-preview audio {
+  flex: 1;
+  height: 36px;
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  .source-row {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "name"
+      "status"
+      "meter"
+      "hint";
+  }
+  .source-row-ended {
+    grid-column: 1;
+  }
+  .submit-bar-inner {
+    flex-wrap: wrap;
+  }
+  .submit-bar-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }

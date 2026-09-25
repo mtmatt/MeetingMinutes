@@ -10,6 +10,8 @@ interface PlayerValue {
   duration: number;
   playing: boolean;
   rate: number;
+  /** Increments on every explicit seek (transcript, summary timestamp, waveform, skip). */
+  seekCount: number;
   seek: (t: number, autoplay?: boolean) => void;
   toggle: () => void;
   skip: (delta: number) => void;
@@ -28,6 +30,7 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
   const [duration, setDuration] = useState(fallbackDuration);
   const [playing, setPlaying] = useState(false);
   const [rate, setRateState] = useState(1);
+  const [seekCount, setSeekCount] = useState(0);
   const listeners = useRef(new Set<(t: number) => void>());
   const pendingSeek = useRef<{ t: number; play: boolean } | null>(null);
   const lastState = useRef({ t: 0, playing: false, rate: 1 });
@@ -95,6 +98,7 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
     (t: number, autoplay = false) => {
       const el = elRef.current;
       const clamped = Math.max(0, t);
+      setSeekCount((c) => c + 1);
       setTime(clamped);
       emit(clamped);
       if (!el) {
@@ -140,8 +144,8 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
   const getTime = useCallback(() => elRef.current?.currentTime ?? 0, []);
 
   const value = useMemo(
-    () => ({ time, duration, playing, rate, seek, toggle, skip, setRate, register, subscribe, getTime }),
-    [time, duration, playing, rate, seek, toggle, skip, setRate, register, subscribe, getTime],
+    () => ({ time, duration, playing, rate, seekCount, seek, toggle, skip, setRate, register, subscribe, getTime }),
+    [time, duration, playing, rate, seekCount, seek, toggle, skip, setRate, register, subscribe, getTime],
   );
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }

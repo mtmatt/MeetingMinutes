@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, ChevronDown, Copy, Download, FileText, MoreHorizontal, Pencil, RefreshCw, Sparkles, Square, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "../api/client";
@@ -8,6 +8,7 @@ import type { MeetingDetail, Summary, SummaryRequest } from "../api/types";
 import { useI18n } from "../i18n";
 import { clock, relative } from "../lib/format";
 import { usePlayer } from "../lib/player";
+import { segmentAt } from "./Player";
 import { Menu } from "./Menu";
 import { Modal, useConfirm } from "./Modal";
 import { DataFlowNote, SummaryComposer, defaultOutputLanguage, normalizeRequest, templateName, useTemplates } from "./SummaryComposer";
@@ -35,41 +36,124 @@ function linkTimestamps(md: string, duration: number): string {
     .join("");
 }
 
-function Markdown({ content }: { content: string }) {
-  const { seek, duration } = usePlayer();
-  const md = useMemo(() => linkTimestamps(content, duration), [content, duration]);
+/**
+ * A clickable [hh:mm:ss]. Hovering or focusing it shows who spoke at that
+ * moment and what they said, so a summary claim can be checked in place.
+ */
+function TsLink({ sec, meeting, children }: { sec: number; meeting: MeetingDetail; children: ReactNode }) {
+  const { t } = useI18n();
+  const { seek } = usePlayer();
+  const segs = meeting.segments;
+  let idx = segmentAt(segs, sec);
+  if (idx < 0) idx = segs.findIndex((s) => s.start >= sec - 1);
+  const quote = idx >= 0 ? segs.slice(idx, idx + 2) : [];
+  const speaker = (key: string | null) => (key ? meeting.speakers.find((s) => s.key === key) : undefined);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  const [place, setPlace] = useState<{ above: boolean; dx: number }>({ above: false, dx: 0 });
+  // Open the quote where it fits inside what is actually visible: the summary
+  // column scrolls (and clips), and the player bar covers the bottom.
+  const measure = () => {
+    const wrap = wrapRef.current;
+    const pop = wrap?.querySelector<HTMLElement>(".ts-quote");
+    if (!wrap || !pop) return;
+    const link = wrap.getBoundingClientRect();
+    let top = 0;
+    let bottom = window.innerHeight;
+    let left = 0;
+    let right = window.innerWidth;
+    for (let el = wrap.parentElement; el && el !== document.body; el = el.parentElement) {
+      const o = getComputedStyle(el);
+      if (/(auto|scroll|hidden)/.test(o.overflowY + o.overflowX)) {
+        const r = el.getBoundingClientRect();
+        top = Math.max(top, r.top);
+        bottom = Math.min(bottom, r.bottom);
+        left = Math.max(left, r.left);
+        right = Math.min(right, r.right);
+        break;
+      }
+    }
+    const player = document.querySelector<HTMLElement>(".player");
+    if (player) bottom = Math.min(bottom, player.getBoundingClientRect().top);
+    const header = document.querySelector<HTMLElement>(".masthead");
+    if (header) top = Math.max(top, header.getBoundingClientRect().bottom);
+    // Hidden until hover, so fall back to typical sizes on the first measure.
+    const h = pop.offsetHeight || 200;
+    const w = pop.offsetWidth || Math.min(380, window.innerWidth * 0.8);
+    const above = bottom - link.bottom < h + 12 && link.top - top > bottom - link.bottom;
+    const dx = Math.min(0, right - 8 - (link.left + w)) + Math.max(0, left + 8 - link.left);
+    setPlace({ above, dx: Math.round(dx) });
+    // Measured before the popover was laid out: measure again with its real size.
+    if (!pop.offsetHeight) requestAnimationFrame(measure);
+  };
   return (
-    <div className="prose">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          a({ href, children }) {
-            if (href?.startsWith("#t=")) {
-              const sec = Number(href.slice(3));
+    <span className="ts-wrap" ref={wrapRef} onMouseEnter={measure} onFocus={measure}>
+      <button className="ts-link mono" onClick={() => seek(sec, true)} aria-describedby={quote.length ? `ts-${sec}` : undefined}>
+        {children}
+      </button>
+      {quote.length > 0 && (
+        <span
+          className={`ts-quote ${place.above ? "above" : ""}`}
+          role="tooltip"
+          id={`ts-${sec}`}
+          style={{ "--dx": `${place.dx}px` } as CSSProperties}
+        >
+          <span className="ts-quote-head">{t("summary.quoteHead", { t: clock(sec, true) })}</span>
+          {quote.map((q) => {
+            const sp = speaker(q.speaker);
+            return (
+              <span key={q.id} className="ts-quote-line">
+                <span className="ts-quote-who" style={{ color: `var(--spk-${(sp?.color ?? 8) % 10})` }}>
+                  {sp?.name ?? t("meeting.speaker")} <span className="mono faint">{clock(q.start)}</span>
+                </span>
+                <span className="ts-quote-text">{q.text}</span>
+              </span>
+            );
+          })}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function Markdown({ content, meeting }: { content: string; meeting: MeetingDetail }) {
+  const { duration } = usePlayer();
+  // The player context changes several times a second during playback. Build
+  // the tree only when the text changes, so timestamp links are not remounted
+  // on every tick (which would drop keyboard focus and an open quote preview).
+  return useMemo(
+    () => (
+      <div className="prose">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            a({ href, children }) {
+              if (href?.startsWith("#t=")) {
+                return (
+                  <TsLink sec={Number(href.slice(3))} meeting={meeting}>
+                    {children}
+                  </TsLink>
+                );
+              }
               return (
-                <button className="ts-link mono" onClick={() => seek(sec, true)} title={clock(sec, true)}>
+                <a href={href} target="_blank" rel="noopener noreferrer">
                   {children}
-                </button>
+                </a>
               );
-            }
-            return (
-              <a href={href} target="_blank" rel="noopener noreferrer">
-                {children}
-              </a>
-            );
-          },
-          table({ children }) {
-            return (
-              <div className="prose-table">
-                <table>{children}</table>
-              </div>
-            );
-          },
-        }}
-      >
-        {md}
-      </ReactMarkdown>
-    </div>
+            },
+            table({ children }) {
+              return (
+                <div className="prose-table">
+                  <table>{children}</table>
+                </div>
+              );
+            },
+          }}
+        >
+          {linkTimestamps(content, duration)}
+        </ReactMarkdown>
+      </div>
+    ),
+    [content, duration, meeting],
   );
 }
 
@@ -262,7 +346,7 @@ export function SummaryPanel({ meeting }: { meeting: MeetingDetail }) {
   } else {
     body = (
       <>
-        <Markdown content={current.content ?? ""} />
+        <Markdown content={current.content ?? ""} meeting={meeting} />
         <div className="summary-foot">
           <button className="summary-prompt-toggle" onClick={() => setShowPrompt((v) => !v)} aria-expanded={showPrompt}>
             <ChevronDown style={{ transform: showPrompt ? "rotate(180deg)" : undefined }} /> {t("summary.promptUsed")}

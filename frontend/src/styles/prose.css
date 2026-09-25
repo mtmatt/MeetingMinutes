@@ -173,3 +173,54 @@
   background: var(--accent);
   color: var(--accent-ink);
 }
+
+/* Hover/focus preview of the transcript at a summary timestamp. */
+.ts-wrap {
+  position: relative;
+  display: inline;
+}
+.ts-quote {
+  position: absolute;
+  z-index: 30;
+  /* Placed below by default; flipped above and nudged sideways in JS when it would be clipped. */
+  left: var(--dx, 0px);
+  top: calc(100% + 6px);
+  width: min(380px, 80vw);
+  display: none;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  font-size: var(--step--1);
+  line-height: 1.6;
+  color: var(--ink);
+  text-align: left;
+  white-space: normal;
+}
+.ts-quote.above {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+.ts-wrap:hover .ts-quote,
+.ts-wrap:focus-within .ts-quote {
+  display: grid;
+  animation: pop-in 160ms var(--ease-out);
+}
+.ts-quote-head {
+  font-size: var(--step--2);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.ts-quote-line {
+  display: grid;
+  gap: 1px;
+}
+.ts-quote-line + .ts-quote-line {
+  opacity: 0.75;
+}
+.ts-quote-who {
+  font-weight: 650;
+  font-size: var(--step--2);
+}

@@ -1,40 +1,17 @@
-import { AlertTriangle, Headphones, Mic, MonitorSpeaker, Pause, Play, RotateCcw, Square, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, Headphones, Mic, MonitorSpeaker, RotateCcw, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n, type TKey } from "../i18n";
 import { clock, dateTime } from "../lib/format";
-import { MeetingRecorder, RecorderError, extensionFor, listMicrophones, recorderSupport, type RecordSource } from "../lib/recorder";
+import { listMicrophones, recorderSupport, type RecordSource, type SourceKind, type SourceState } from "../lib/recorder";
 import { deleteRecording, listRecordings, loadRecording, type RecordingMeta } from "../lib/recordingStore";
+import { fileForRecording, type RecordedFile, type RecordingController } from "../lib/useRecording";
 import { useConfirm } from "./Modal";
 
-export interface RecordedFile {
-  file: File;
-  recordingId: string;
-  startedAt: number;
-  source: RecordSource;
-}
-
-function fileFor(blob: Blob, meta: RecordingMeta): File {
-  const d = new Date(meta.startedAt);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}-${pad(d.getMinutes())}`;
-  return new File([blob], `recording ${stamp}.${extensionFor(meta.mimeType)}`, { type: blob.type, lastModified: meta.startedAt });
-}
-
-const ERROR_KEYS: Record<RecorderError["code"], TKey> = {
-  insecure: "recorder.errInsecure",
-  unsupported: "recorder.errUnsupported",
-  "mic-denied": "recorder.errMicDenied",
-  "mic-missing": "recorder.errMicMissing",
-  "share-cancelled": "recorder.errShareCancelled",
-  "no-tab-audio": "recorder.errNoTabAudio",
-  failed: "recorder.errFailed",
-};
-
 /** Live input level, drawn without re-rendering React on every frame. */
-function Meter({ label, icon, read, silentHint }: { label: string; icon: React.ReactNode; read: () => number | null; silentHint?: string }) {
+function Meter({ read, silentHint }: { read: () => number | null; silentHint?: string }) {
   const fillRef = useRef<HTMLSpanElement>(null);
   const [silentFor, setSilentFor] = useState(0);
-  // The parent re-renders every 250 ms (clock); keep the animation loop and its
+  // The page re-renders every 250 ms (clock); keep the animation loop and its
   // silence counter alive across renders by reading through a ref.
   const readRef = useRef(read);
   readRef.current = read;
@@ -59,37 +36,86 @@ function Meter({ label, icon, read, silentHint }: { label: string; icon: React.R
     return () => cancelAnimationFrame(raf);
   }, []);
   return (
-    <div className="meter" data-silent={silentFor >= 20 ? "true" : undefined}>
-      <span className="meter-label">
-        {icon}
-        {label}
-      </span>
+    <>
       <span className="meter-track">
         <span className="meter-fill" ref={fillRef} />
       </span>
       {silentHint && silentFor >= 20 && <span className="meter-hint">{silentHint}</span>}
+    </>
+  );
+}
+
+const STATUS_KEY: Record<SourceState["status"], TKey> = {
+  live: "recorder.connected",
+  muted: "recorder.muted",
+  ended: "recorder.disconnected",
+};
+
+/** One input: name, connection state, level, and what to do if it dropped out. */
+function SourceRow({
+  kind,
+  state,
+  rec,
+  canDrop,
+  paused,
+}: {
+  kind: SourceKind;
+  state: SourceState | undefined;
+  rec: RecordingController;
+  canDrop: boolean;
+  paused: boolean;
+}) {
+  const { t } = useI18n();
+  const status = state?.status ?? "live";
+  const icon = kind === "meeting" ? <MonitorSpeaker /> : <Mic />;
+  const name = kind === "meeting" ? t("recorder.meterMeeting") : t("recorder.meterMic");
+  const detail = kind === "meeting" ? t("recorder.meetingSourceLabel") : state?.label || t("recorder.micDefault");
+  const read = kind === "meeting" ? () => rec.levels().meeting : () => rec.levels().mic;
+  return (
+    <div className={`source-row ${status}`}>
+      <span className="source-row-name">
+        {icon}
+        {name}
+      </span>
+      <span className="source-row-status">
+        <span className={`pill ${status === "live" ? "ok" : status === "muted" ? "warn" : "danger"}`}>
+          <span className="dot" />
+          {t(STATUS_KEY[status])}
+        </span>
+        <span className="source-row-detail">{detail}</span>
+      </span>
+      {status !== "ended" ? (
+        <Meter read={read} silentHint={kind === "meeting" && !paused ? t("recorder.meetingSilent") : undefined} />
+      ) : (
+        <div className="source-row-ended">
+          <p>{kind === "meeting" ? t("recorder.meetingEnded") : t("recorder.micEnded")}</p>
+          <div className="source-row-actions">
+            <button type="button" className="btn btn-sm btn-ink" onClick={() => void rec.reconnect(kind)}>
+              {kind === "meeting" ? t("recorder.reselectTab") : t("recorder.reconnectMic")}
+            </button>
+            {canDrop && (
+              <button type="button" className="btn btn-sm" onClick={() => rec.dropSource(kind)}>
+                {kind === "meeting" ? t("recorder.continueMicOnly") : t("recorder.continueWithoutMic")}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-export function Recorder({ onRecorded, onBusyChange }: { onRecorded: (r: RecordedFile) => void; onBusyChange: (busy: boolean) => void }) {
+export function Recorder({ rec, onRecorded }: { rec: RecordingController; onRecorded: (r: RecordedFile) => void }) {
   const { t, locale } = useI18n();
   const confirm = useConfirm();
   const support = useRef(recorderSupport()).current;
   const [source, setSource] = useState<RecordSource>(support.meeting ? "meeting" : "mic");
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [micId, setMicId] = useState<string>("");
-  const [phase, setPhase] = useState<"setup" | "starting" | "recording" | "paused" | "finishing">("setup");
-  const [error, setError] = useState<TKey | null>(null);
-  const [elapsed, setElapsed] = useState(0);
-  const [saved, setSaved] = useState<RecordingMeta | null>(null);
-  const [sourceEnded, setSourceEnded] = useState(false);
   const [pending, setPending] = useState<RecordingMeta[]>([]);
-  const rec = useRef<MeetingRecorder | null>(null);
 
   const refreshMics = useCallback(async () => {
-    const list = await listMicrophones().catch(() => []);
-    setMics(list);
+    setMics(await listMicrophones().catch(() => []));
   }, []);
 
   useEffect(() => {
@@ -101,75 +127,10 @@ export function Recorder({ onRecorded, onBusyChange }: { onRecorded: (r: Recorde
     return () => navigator.mediaDevices?.removeEventListener?.("devicechange", refreshMics);
   }, [refreshMics]);
 
+  // Device names become available once microphone permission is granted.
   useEffect(() => {
-    onBusyChange(phase !== "setup");
-  }, [phase, onBusyChange]);
-  // Handing a finished recording to the parent unmounts this component before
-  // the effect above can report "not busy" again, so clear it explicitly.
-  useEffect(() => () => onBusyChange(false), [onBusyChange]);
-
-  // Stop capturing if the component goes away mid-recording (chunks are already saved).
-  useEffect(() => () => void rec.current?.stop().catch(() => undefined), []);
-
-  useEffect(() => {
-    if (phase !== "recording" && phase !== "paused") return;
-    const id = setInterval(() => setElapsed(rec.current?.elapsedMs() ?? 0), 250);
-    return () => clearInterval(id);
-  }, [phase]);
-
-  const start = async () => {
-    setError(null);
-    setSourceEnded(false);
-    setPhase("starting");
-    try {
-      rec.current = await MeetingRecorder.start({
-        source,
-        micDeviceId: micId || undefined,
-        onChunkSaved: (m) => setSaved(m),
-        onSourceEnded: () => setSourceEnded(true),
-      });
-      setElapsed(0);
-      setPhase("recording");
-      void refreshMics(); // labels become available after permission is granted
-    } catch (e) {
-      rec.current = null;
-      setPhase("setup");
-      setError(e instanceof RecorderError ? ERROR_KEYS[e.code] : "recorder.errFailed");
-    }
-  };
-
-  const finish = async () => {
-    const r = rec.current;
-    if (!r) return;
-    setPhase("finishing");
-    const meta = await r.stop();
-    rec.current = null;
-    const blob = await loadRecording(meta.id);
-    setPhase("setup");
-    onBusyChange(false);
-    if (!blob) {
-      setError("recorder.errFailed");
-      return;
-    }
-    onRecorded({ file: fileFor(blob, meta), recordingId: meta.id, startedAt: meta.startedAt, source: meta.source });
-  };
-
-  // When the shared meeting tab stops, finish automatically; everything so far is kept.
-  useEffect(() => {
-    if (sourceEnded && (phase === "recording" || phase === "paused")) void finish();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceEnded]);
-
-  const discard = async () => {
-    if (!(await confirm({ title: t("recorder.discardTitle"), body: t("recorder.discardBody"), confirmLabel: t("recorder.discard"), danger: true }))) return;
-    const r = rec.current;
-    rec.current = null;
-    setPhase("setup");
-    if (r) {
-      const meta = await r.stop();
-      await deleteRecording(meta.id);
-    }
-  };
+    if (rec.phase === "recording") void refreshMics();
+  }, [rec.phase, refreshMics]);
 
   const restore = async (m: RecordingMeta) => {
     const blob = await loadRecording(m.id);
@@ -178,7 +139,7 @@ export function Recorder({ onRecorded, onBusyChange }: { onRecorded: (r: Recorde
       setPending((p) => p.filter((x) => x.id !== m.id));
       return;
     }
-    onRecorded({ file: fileFor(blob, m), recordingId: m.id, startedAt: m.startedAt, source: m.source });
+    onRecorded({ file: fileForRecording(blob, m), recordingId: m.id, startedAt: m.startedAt, source: m.source, durationMs: m.durationMs });
   };
 
   const dropPending = async (m: RecordingMeta) => {
@@ -187,49 +148,63 @@ export function Recorder({ onRecorded, onBusyChange }: { onRecorded: (r: Recorde
     setPending((p) => p.filter((x) => x.id !== m.id));
   };
 
-  if (phase === "recording" || phase === "paused" || phase === "finishing") {
-    const paused = phase === "paused";
+  const discard = async () => {
+    if (!(await confirm({ title: t("recorder.discardTitle"), body: t("recorder.discardBody"), confirmLabel: t("recorder.discard"), danger: true }))) return;
+    await rec.discard();
+  };
+
+  if (rec.phase === "recording" || rec.phase === "paused" || rec.phase === "finishing") {
+    const paused = rec.phase === "paused";
+    const kinds: SourceKind[] = rec.source === "meeting" || rec.sources.meeting ? ["meeting", "mic"] : ["mic"];
+    const shown = kinds.filter((k) => rec.sources[k]);
+    const allEnded = shown.length > 0 && shown.every((k) => rec.sources[k]?.status === "ended");
+    let saveLine: ReactNode;
+    if (rec.saveFailed) {
+      saveLine = (
+        <div className="callout warn" role="alert">
+          <AlertTriangle />
+          <div>{t("recorder.saveFailed")}</div>
+        </div>
+      );
+    } else {
+      saveLine = (
+        <p className="rec-saved">
+          {rec.savedMs != null ? t("recorder.savedUpTo", { t: clock(rec.savedMs / 1000, true) }) : t("recorder.savingLocally")}
+        </p>
+      );
+    }
     return (
       <div className="recorder live" aria-live="polite">
         <div className="recorder-top">
           <span className={`rec-status ${paused ? "paused" : ""}`}>
             <span className="rec-dot" />
-            {phase === "finishing" ? t("recorder.finishing") : paused ? t("recorder.paused") : t("recorder.recording")}
+            {rec.phase === "finishing" ? t("recorder.finishing") : paused ? t("recorder.paused") : t("recorder.recording")}
           </span>
-          <span className="rec-source">{source === "meeting" ? t("recorder.sourceMeeting") : t("recorder.sourceMic")}</span>
         </div>
-        <div className="rec-clock">{clock(elapsed / 1000, true)}</div>
-        <div className="meters">
-          {source === "meeting" && (
-            <Meter
-              label={t("recorder.meterMeeting")}
-              icon={<MonitorSpeaker />}
-              read={() => rec.current?.levels().meeting ?? 0}
-              silentHint={paused ? undefined : t("recorder.meetingSilent")}
-            />
-          )}
-          <Meter label={t("recorder.meterMic")} icon={<Mic />} read={() => rec.current?.levels().mic ?? 0} />
+        <div className="rec-clock">{clock(rec.elapsedMs / 1000, true)}</div>
+        <div className="source-rows">
+          {shown.map((k) => (
+            <SourceRow key={k} kind={k} state={rec.sources[k]} rec={rec} paused={paused} canDrop={shown.length > 1} />
+          ))}
         </div>
-        <p className="rec-saved">
-          {saved ? t("recorder.savedLocally", { t: clock(saved.durationMs / 1000) }) : t("recorder.savingLocally")}
-        </p>
-        <div className="rec-actions">
-          <button type="button" className="btn btn-ghost btn-danger" onClick={discard} disabled={phase === "finishing"}>
+        {rec.reconnectError && (
+          <div className="callout danger" role="alert">
+            <AlertTriangle />
+            <div>{t(rec.reconnectError)}</div>
+          </div>
+        )}
+        {allEnded && (
+          <div className="callout warn" role="alert">
+            <AlertTriangle />
+            <div>{t("recorder.allEnded")}</div>
+          </div>
+        )}
+        {saveLine}
+        <div className="rec-card-foot">
+          <button type="button" className="btn btn-sm btn-ghost btn-danger" onClick={discard} disabled={rec.phase === "finishing"}>
             <Trash2 /> {t("recorder.discard")}
           </button>
-          <span style={{ flex: 1 }} />
-          {paused ? (
-            <button type="button" className="btn" onClick={() => (rec.current?.resume(), setPhase("recording"))}>
-              <Play /> {t("recorder.resume")}
-            </button>
-          ) : (
-            <button type="button" className="btn" onClick={() => (rec.current?.pause(), setPhase("paused"))} disabled={phase === "finishing"}>
-              <Pause /> {t("recorder.pause")}
-            </button>
-          )}
-          <button type="button" className="btn btn-primary" onClick={finish} disabled={phase === "finishing"}>
-            {phase === "finishing" ? <span className="spinner" /> : <Square />} {t("recorder.stop")}
-          </button>
+          <span className="faint">{t("recorder.controlsBelow")}</span>
         </div>
       </div>
     );
@@ -242,6 +217,7 @@ export function Recorder({ onRecorded, onBusyChange }: { onRecorded: (r: Recorde
           <RotateCcw />
           <div className="rec-recover-main">
             <strong>{t("recorder.recoverTitle")}</strong>
+            <span className="faint">{t("recorder.recoverScope")}</span>
             {pending.map((m) => (
               <div key={m.id} className="rec-recover-item">
                 <span>
@@ -290,13 +266,16 @@ export function Recorder({ onRecorded, onBusyChange }: { onRecorded: (r: Recorde
           </div>
 
           {source === "meeting" && (
-            <ol className="rec-steps">
-              <li>{t("recorder.step1")}</li>
-              <li>{t("recorder.step2")}</li>
-              <li>
-                <Headphones /> {t("recorder.step3")}
-              </li>
-            </ol>
+            <div className="rec-howto">
+              <p className="rec-audio-only">{t("recorder.audioOnly")}</p>
+              <ol className="rec-steps">
+                <li>{t("recorder.step1")}</li>
+                <li>{t("recorder.step2")}</li>
+                <li>
+                  <Headphones /> {t("recorder.step3")}
+                </li>
+              </ol>
+            </div>
           )}
 
           <div className="field">
@@ -313,17 +292,17 @@ export function Recorder({ onRecorded, onBusyChange }: { onRecorded: (r: Recorde
             </select>
           </div>
 
-          {error && (
+          {rec.error && (
             <div className="callout danger" role="alert">
               <AlertTriangle />
-              <div>{t(error)}</div>
+              <div>{t(rec.error)}</div>
             </div>
           )}
 
           <div className="rec-start">
-            <button type="button" className="btn btn-primary btn-lg" onClick={start} disabled={phase === "starting"}>
-              {phase === "starting" ? <span className="spinner" /> : <span className="rec-dot static" />}
-              {source === "meeting" ? t("recorder.startMeeting") : t("recorder.startMic")}
+            <button type="button" className="btn btn-primary btn-lg" onClick={() => void rec.start(source, micId || undefined)} disabled={rec.phase === "starting"}>
+              {rec.phase === "starting" ? <span className="spinner" /> : <span className="rec-dot static" />}
+              {rec.error ? t("recorder.tryAgain") : source === "meeting" ? t("recorder.startMeeting") : t("recorder.startMic")}
             </button>
             <p className="faint">{t("recorder.consent")}</p>
           </div>
