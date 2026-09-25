@@ -29,10 +29,48 @@ export function segmentAt(segments: MeetingDetail["segments"], t: number): numbe
   return ans >= 0 && t <= segments[ans]!.end + 0.5 ? ans : -1;
 }
 
+export interface SpeakerRun {
+  start: number;
+  end: number;
+  speaker: string;
+}
+
 /**
- * Waveform coloured by who is speaking. Each bar takes the colour of the
- * speaker at that moment (solid once played, faded ahead of the playhead), so
- * the speaker legend under it reads directly. Click or drag to seek.
+ * Collapse segments into continuous speaker runs: consecutive segments of the
+ * same speaker join across pauses shorter than `joinGap` seconds, and runs
+ * narrower than `minWidth` seconds are absorbed by their predecessor so the
+ * band shows who holds the floor rather than every interjection.
+ */
+export function speakerRuns(segments: MeetingDetail["segments"], joinGap: number, minWidth: number): SpeakerRun[] {
+  const runs: SpeakerRun[] = [];
+  for (const s of segments) {
+    if (!s.speaker) continue;
+    const last = runs[runs.length - 1];
+    if (last && last.speaker === s.speaker && s.start - last.end <= joinGap) {
+      last.end = Math.max(last.end, s.end);
+    } else if (last && s.end - s.start < minWidth && s.start - last.end <= joinGap) {
+      last.end = Math.max(last.end, s.end);
+    } else {
+      runs.push({ start: s.start, end: s.end, speaker: s.speaker });
+    }
+  }
+  // A short run between two runs of the same speaker disappears; re-join those.
+  const merged: SpeakerRun[] = [];
+  for (const r of runs) {
+    const last = merged[merged.length - 1];
+    if (last && last.speaker === r.speaker && r.start - last.end <= joinGap) last.end = Math.max(last.end, r.end);
+    else merged.push({ ...r });
+  }
+  return merged;
+}
+
+const BAND_H = 8;
+const BAND_GAP = 6;
+
+/**
+ * A quiet, single-colour volume waveform with a speaker band beneath it.
+ * The band shows continuous runs of who is talking; the red playhead crosses
+ * both. Click or drag anywhere to seek.
  */
 function Waveform({ meeting }: { meeting: MeetingDetail }) {
   const { seek, subscribe, getTime, duration } = usePlayer();
@@ -48,12 +86,13 @@ function Waveform({ meeting }: { meeting: MeetingDetail }) {
   const peaks = peaksQ.data;
   const total = duration || meeting.durationSec || peaks?.duration || 1;
   const speakerColor = useMemo(() => new Map(meeting.speakers.map((s) => [s.key, s.color % 10])), [meeting.speakers]);
+  const hasBand = meeting.speakers.length > 0;
   // Changes whenever the transcript or speaker list is replaced (e.g. after an edit).
   const layoutVersion = useMemo(() => Math.random().toString(36), [meeting.segments, meeting.speakers]);
 
-  // Bar heights and per-bar colours are cached per size and data; each
-  // animation frame only decides which bars count as played.
-  const cache = useRef<{ key: string; bars: Float32Array; colors: (string | null)[] } | null>(null);
+  // Bar heights and the speaker band are cached per size and data; each
+  // animation frame only recolours played bars and moves the playhead.
+  const cache = useRef<{ key: string; bars: Float32Array; band: HTMLCanvasElement | null } | null>(null);
 
   const draw = useCallback(
     (t: number) => {
@@ -71,15 +110,14 @@ function Waveform({ meeting }: { meeting: MeetingDetail }) {
       if (!ctx) return;
       const step = 3;
       const bar = 2;
+      const waveH = hasBand ? h - BAND_H - BAND_GAP : h;
 
       const faint = cssVar(canvas, "--rule-strong");
       const key = `${w}x${h}@${dpr}:${faint}:${peaks?.peaks.length ?? 0}:${total}:${layoutVersion}`;
       if (!cache.current || cache.current.key !== key) {
         const n = Math.floor(w / step);
         const bars = new Float32Array(n);
-        const colors: (string | null)[] = new Array(n).fill(null);
         const data = peaks?.peaks;
-        const palette = Array.from({ length: 10 }, (_, i) => cssVar(canvas, `--spk-${i}`));
         for (let i = 0; i < n; i++) {
           let v = 0.06;
           if (data && data.length) {
@@ -95,34 +133,57 @@ function Waveform({ meeting }: { meeting: MeetingDetail }) {
             }
             v = Math.max(0.04, Math.min(1, Math.pow(sum / Math.max(1, cnt) / 255, 1.15) * 1.35));
           }
-          bars[i] = Math.max(1.5, v * (h - 4));
-          const idx = segmentAt(meeting.segments, ((i + 0.5) / n) * total);
-          const spk = idx >= 0 ? meeting.segments[idx]!.speaker : null;
-          const c = spk != null ? speakerColor.get(spk) : undefined;
-          colors[i] = c !== undefined ? palette[c]! : null;
+          bars[i] = Math.max(1.5, v * (waveH - 2));
         }
-        cache.current = { key, bars, colors };
+
+        let band: HTMLCanvasElement | null = null;
+        if (hasBand) {
+          band = document.createElement("canvas");
+          band.width = Math.round(w * dpr);
+          band.height = Math.round(BAND_H * dpr);
+          const bc = band.getContext("2d")!;
+          bc.setTransform(dpr, 0, 0, dpr, 0, 0);
+          bc.fillStyle = faint;
+          bc.globalAlpha = 0.45;
+          bc.fillRect(0, 0, w, BAND_H);
+          bc.globalAlpha = 1;
+          const secPerPx = total / w;
+          const runs = speakerRuns(meeting.segments, Math.max(2, secPerPx * 3), secPerPx * 4);
+          const palette = Array.from({ length: 10 }, (_, i) => cssVar(canvas, `--spk-${i}`));
+          for (const r of runs) {
+            const c = speakerColor.get(r.speaker);
+            if (c === undefined) continue;
+            const x0 = Math.round((r.start / total) * w);
+            const x1 = Math.round((r.end / total) * w);
+            bc.fillStyle = palette[c]!;
+            // 1px seam between runs keeps speaker changes visible.
+            bc.fillRect(x0, 0, Math.max(1, x1 - x0 - 1), BAND_H);
+          }
+        }
+        cache.current = { key, bars, band };
       }
 
-      const { bars, colors } = cache.current;
-      const ink = cssVar(canvas, "--ink");
+      const { bars, band } = cache.current;
+      const ink = cssVar(canvas, "--ink-2");
       const accent = cssVar(canvas, "--accent");
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      const mid = h / 2;
+      const mid = waveH / 2;
       const playedX = (t / total) * w;
-      for (let i = 0; i < bars.length; i++) {
-        const played = i * step + bar <= playedX;
-        const c = colors[i];
-        ctx.globalAlpha = played ? 1 : c ? 0.32 : 1;
-        ctx.fillStyle = c ?? (played ? ink : faint);
-        ctx.fillRect(i * step, mid - bars[i]! / 2, bar, bars[i]!);
+      ctx.fillStyle = ink;
+      let i = 0;
+      for (; i < bars.length && i * step + bar <= playedX; i++) ctx.fillRect(i * step, mid - bars[i]! / 2, bar, bars[i]!);
+      ctx.fillStyle = faint;
+      for (; i < bars.length; i++) ctx.fillRect(i * step, mid - bars[i]! / 2, bar, bars[i]!);
+      if (band) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(band, 0, Math.round((waveH + BAND_GAP) * dpr));
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
-      ctx.globalAlpha = 1;
       ctx.fillStyle = accent;
       ctx.fillRect(Math.round(playedX) - 1, 0, 2, h);
     },
-    [peaks, total, meeting.segments, speakerColor, layoutVersion],
+    [peaks, total, meeting.segments, speakerColor, layoutVersion, hasBand],
   );
 
   useEffect(() => {
@@ -197,7 +258,7 @@ function Waveform({ meeting }: { meeting: MeetingDetail }) {
 /** Names for the waveform colours, with the current speaker marked. */
 function SpeakerKey({ meeting }: { meeting: MeetingDetail }) {
   const { t } = useI18n();
-  const { time } = usePlayer();
+  const { time, playing } = usePlayer();
   const idx = segmentAt(meeting.segments, time);
   const current = idx >= 0 ? meeting.segments[idx]!.speaker : null;
   if (!meeting.speakers.length) return null;
@@ -207,7 +268,9 @@ function SpeakerKey({ meeting }: { meeting: MeetingDetail }) {
         <li key={s.key} className={s.key === current ? "speaking" : ""} style={{ ["--spk" as string]: `var(--spk-${s.color % 10})` }}>
           <span className="speaker-dot" />
           {s.name}
-          {s.key === current && <span className="speaker-key-now">{t("meeting.speakingNow")}</span>}
+          {s.key === current && (
+            <span className={`speaker-key-now ${playing ? "" : "paused"}`}>{playing ? t("meeting.speakingNow") : t("meeting.atPlayhead")}</span>
+          )}
         </li>
       ))}
     </ul>

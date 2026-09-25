@@ -5,6 +5,7 @@ import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { initials } from "../lib/format";
 import { useTheme, type ThemePref } from "../lib/theme";
+import { usePageContext } from "../lib/pageContext";
 import { Menu } from "./Menu";
 import { Wordmark } from "./Seal";
 
@@ -13,6 +14,7 @@ export function Masthead() {
   const { user, setUser } = useAuth();
   const [theme, setTheme] = useTheme();
   const navigate = useNavigate();
+  const context = usePageContext();
 
   const switchLocale = async (l: "en" | "zh-TW") => {
     setLocale(l);
@@ -49,6 +51,12 @@ export function Masthead() {
           <NavLink to="/templates">{t("nav.templates")}</NavLink>
           {user?.role === "admin" && <NavLink to="/admin">{t("nav.admin")}</NavLink>}
         </nav>
+        {context && (
+          <button className="masthead-context" onClick={context.onClick} title={context.title}>
+            <span className="masthead-context-title">{context.title}</span>
+            {context.subtitle && <span className="masthead-context-sub">{context.subtitle}</span>}
+          </button>
+        )}
         <div className="masthead-actions">
           <NavLink to="/new" className="btn btn-primary btn-sm masthead-new">
             <Plus />

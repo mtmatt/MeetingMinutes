@@ -74,6 +74,7 @@ function Users() {
 
   return (
     <>
+      <p className="admin-hint">{t("admin.resetHint")}</p>
       <div className="table-wrap card">
         <table className="table">
           <thead>

@@ -41,7 +41,7 @@
 }
 .meeting-title {
   font-family: var(--font-title);
-  font-weight: 650;
+  font-weight: var(--h1-weight);
   letter-spacing: -0.02em;
   font-size: clamp(1.8rem, 1.3rem + 1.8vw, 2.6rem);
   cursor: text;
@@ -58,7 +58,7 @@
   width: 100%;
   font-family: var(--font-title);
   font-size: clamp(1.8rem, 1.3rem + 1.8vw, 2.6rem);
-  font-weight: 650;
+  font-weight: var(--h1-weight);
   letter-spacing: -0.025em;
   line-height: 1.12;
   border: 0;
@@ -537,7 +537,7 @@
   min-width: 0;
 }
 .summary-head h2 {
-  font-size: var(--step-2);
+  font-size: var(--h2-size);
 }
 .summary-actions {
   display: flex;
@@ -634,7 +634,7 @@
   height: 19px;
 }
 .writing-title {
-  font-family: var(--font-display);
+  font-family: var(--font-title);
   font-size: var(--step-1);
 }
 .writing-lines {
@@ -855,7 +855,7 @@
 
 .waveform {
   position: relative;
-  height: 48px;
+  height: 54px;
   cursor: pointer;
   touch-action: none;
 }
@@ -900,7 +900,7 @@
     grid-area: wave;
   }
   .waveform {
-    height: 40px;
+    height: 48px;
   }
   /* Keep the "−15 s" label on phones; drop the icon instead. */
   .skip-btn svg {
@@ -936,9 +936,7 @@
   align-items: flex-start;
 }
 .failure-head h2 {
-  font-family: var(--font-title);
-  font-size: var(--step-2);
-  font-weight: 650;
+  font-size: var(--h2-size);
   margin-bottom: 6px;
 }
 .failure-head p {
@@ -994,4 +992,9 @@
   content: "·";
   margin-right: 14px;
   color: var(--ink-4);
+}
+
+.speaker-key-now.paused {
+  color: var(--ink-2);
+  border-style: dashed;
 }

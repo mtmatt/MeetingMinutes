@@ -70,7 +70,7 @@ const del = <T>(p: string) => request<T>("DELETE", p);
 
 export const api = {
   // auth
-  authState: () => get<{ needsSetup: boolean; user: User | null }>("/auth/state"),
+  authState: () => get<{ needsSetup: boolean; user: User | null; helpContact: string | null }>("/auth/state"),
   login: (username: string, password: string) => post<{ user: User }>("/auth/login", { username, password }),
   logout: () => post<{ ok: true }>("/auth/logout"),
   setup: (b: { setupToken: string; username: string; displayName: string; password: string }) =>

@@ -26,7 +26,8 @@ import { SummaryPanel } from "../components/SummaryPanel";
 import { useToast } from "../components/Toast";
 import { Transcript } from "../components/Transcript";
 import { useI18n, type TKey } from "../i18n";
-import { bytes, dateTime, duration } from "../lib/format";
+import { bytes, dateTime, duration, monthDay } from "../lib/format";
+import { setPageContext } from "../lib/pageContext";
 import { PlayerProvider, usePlayer, usePlayerShortcuts } from "../lib/player";
 import { apiErrorMessage, describeFailure } from "../lib/errors";
 
@@ -203,6 +204,24 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
 
   const ready = meeting.status === "ready";
   const when = meeting.occurredAt ?? meeting.createdAt;
+  const headRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = headRef.current;
+    if (!el) return;
+    const ctx = {
+      title: meeting.title,
+      subtitle: monthDay(when, locale),
+      onClick: () => window.scrollTo({ top: 0, behavior: "smooth" }),
+    };
+    const io = new IntersectionObserver(([entry]) => setPageContext(entry && !entry.isIntersecting ? ctx : null), {
+      rootMargin: "-64px 0px 0px 0px",
+    });
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      setPageContext(null);
+    };
+  }, [meeting.title, when, locale]);
   const lang = meeting.language
     ?.split(",")
     .map((l) => tMaybe(`lang.${l}`) ?? l)
@@ -234,7 +253,7 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
 
   return (
     <div className={`meeting ${ready ? "has-player" : ""}`}>
-      <header className="meeting-head">
+      <header className="meeting-head" ref={headRef}>
         <Link to="/" className="back-link">
           <ArrowLeft /> {t("meeting.backToLibrary")}
         </Link>

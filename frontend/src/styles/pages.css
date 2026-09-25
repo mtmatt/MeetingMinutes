@@ -47,6 +47,7 @@
   max-width: 560px;
 }
 .auth-hero-body h1 {
+  font-family: var(--font-display);
   font-size: clamp(2.6rem, 1.4rem + 3.6vw, 4.6rem);
   line-height: 1.02;
   letter-spacing: -0.03em;
@@ -127,7 +128,8 @@
   animation: rise-in 500ms var(--ease-out);
 }
 .auth-form h2 {
-  font-size: var(--step-4);
+  font-size: var(--h1-size);
+  font-weight: var(--h1-weight);
   margin-bottom: 8px;
 }
 .auth-row {
@@ -217,13 +219,11 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  font-size: var(--step-1);
-  font-style: italic;
-  font-weight: 450;
+  font-size: var(--step-0);
+  font-weight: 600;
   color: var(--ink-2);
   padding-bottom: 10px;
   border-bottom: 1px solid var(--ink);
-  font-variation-settings: "opsz" 36, "SOFT" 100;
 }
 .ledger-month-count {
   font-style: normal;
@@ -293,7 +293,7 @@
 .ledger-title {
   font-family: var(--font-title);
   font-size: 1.2rem;
-  font-weight: 620;
+  font-weight: var(--h3-weight);
   letter-spacing: -0.01em;
   line-height: 1.35;
   transition: color var(--dur-fast);
@@ -386,7 +386,8 @@
   padding: 96px 24px;
 }
 .library-empty h2 {
-  font-size: var(--step-4);
+  font-size: var(--h1-size);
+  font-weight: var(--h1-weight);
   margin-top: 8px;
 }
 .library-empty p {
@@ -414,7 +415,7 @@
   border: 2px dashed var(--accent);
   border-radius: var(--radius-l);
   background: var(--surface);
-  font-family: var(--font-display);
+  font-family: var(--font-title);
   font-size: var(--step-2);
   box-shadow: var(--shadow-3);
 }
@@ -474,7 +475,7 @@
   font-weight: 700;
 }
 .form-step-head h2 {
-  font-size: var(--step-2);
+  font-size: var(--h2-size);
 }
 .form-step-aside {
   margin-top: 6px;
@@ -495,7 +496,7 @@
   gap: 16px;
 }
 .input-title {
-  font-family: var(--font-display);
+  font-family: var(--font-title);
   font-size: var(--step-1);
 }
 
@@ -539,7 +540,7 @@
   height: 26px;
 }
 .dropzone-title {
-  font-family: var(--font-display);
+  font-family: var(--font-title);
   font-size: var(--step-2);
 }
 .dropzone-sub {
@@ -630,10 +631,25 @@
   display: grid;
   gap: 22px;
 }
+/* Six built-ins read as one block: 3 x 2 on desktop, 2 columns in dialogs and tablets, 1 on phones. */
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+.modal .template-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 1080px) {
+  .template-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .template-grid,
+  .modal .template-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .template-option {
   position: relative;
@@ -671,7 +687,7 @@
 .template-option-name {
   font-family: var(--font-title);
   font-size: var(--step-1);
-  font-weight: 650;
+  font-weight: var(--h2-weight);
   padding-right: 14px;
 }
 .template-option-desc {
@@ -723,7 +739,7 @@
   gap: 8px;
   font-family: var(--font-title);
   font-size: var(--step-1);
-  font-weight: 650;
+  font-weight: var(--h2-weight);
 }
 .advanced-summary {
   font-size: var(--step--1);
@@ -817,23 +833,45 @@
 .dataflow {
   display: flex;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   border-radius: var(--radius-m);
-  background: var(--info-soft);
-  color: var(--ink);
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink-2);
   font-size: var(--step--1);
   line-height: 1.6;
 }
-.dataflow svg {
-  width: 18px;
-  height: 18px;
+.dataflow > svg {
+  width: 17px;
+  height: 17px;
   flex: none;
-  color: var(--info);
+  color: var(--ink-2);
   margin-top: 2px;
 }
 .dataflow strong {
   display: block;
+  color: var(--ink);
   margin-bottom: 2px;
+}
+.dataflow ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dataflow details {
+  margin-top: 4px;
+}
+.dataflow summary {
+  cursor: pointer;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 3px;
+  width: fit-content;
+}
+.dataflow details p {
+  margin: 6px 0 0;
+  max-width: 76ch;
 }
 .composer-note {
   font-size: var(--step-0);
@@ -1029,7 +1067,7 @@
   border-bottom: 1px solid var(--rule);
 }
 .settings-section-head h2 {
-  font-size: var(--step-2);
+  font-size: var(--h2-size);
 }
 .settings-section-head p {
   margin-top: 8px;
@@ -1260,7 +1298,7 @@
   align-items: center;
 }
 .worker-gpu {
-  font-family: var(--font-display);
+  font-family: var(--font-title);
   font-size: var(--step-1);
   margin-top: 6px;
 }
@@ -1345,12 +1383,6 @@
   margin-top: 12px;
 }
 
-/* CJK has no true italic; keep the month label upright in Chinese. */
-:lang(zh-Hant-TW) .ledger-month {
-  font-style: normal;
-  font-weight: 600;
-  font-size: var(--step-0);
-}
 
 .auth-lede {
   color: var(--ink-2);
@@ -1405,4 +1437,22 @@
   font-weight: 600;
   color: var(--ink-2);
   margin-bottom: 8px;
+}
+
+.auth-help {
+  display: grid;
+  gap: 4px;
+}
+.auth-help p {
+  margin: 0;
+}
+.auth-help a {
+  color: var(--ink);
+  font-weight: 600;
+}
+.admin-hint {
+  margin: 0 0 14px;
+  font-size: var(--step--1);
+  color: var(--ink-2);
+  max-width: 80ch;
 }

@@ -63,7 +63,11 @@ function assertNewAccount(input: { username: string; password: string }) {
 authRoutes.get("/state", (c) => {
   const token = getCookie(c, SESSION_COOKIE);
   const resolved = token ? resolveSession(token) : null;
-  return c.json({ needsSetup: countUsers() === 0, user: resolved ? publicUser(resolved.user) : null });
+  return c.json({
+    needsSetup: countUsers() === 0,
+    user: resolved ? publicUser(resolved.user) : null,
+    helpContact: config.adminContact || null,
+  });
 });
 
 authRoutes.post("/setup", async (c) => {

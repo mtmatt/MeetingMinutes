@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, ArrowRight, KeyRound, Mail } from "lucide-react";
+import { AlertCircle, ArrowRight, KeyRound } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
-import { api } from "../api/client";
+import { ApiError, api } from "../api/client";
 import { apiErrorMessage } from "../lib/errors";
 import { Seal, Wordmark } from "../components/Seal";
 import { useI18n } from "../i18n";
@@ -64,17 +64,31 @@ function AuthLayout({ children }: { children: ReactNode }) {
 }
 
 
+/** How to reach the administrator; an email address becomes a mailto link. */
+function HelpContact({ contact }: { contact: string | null }) {
+  const { t } = useI18n();
+  if (!contact) return <>{t("auth.helpNoContact")}</>;
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact);
+  const parts = t("auth.helpWithContact", { contact: "\u0000" }).split("\u0000");
+  return (
+    <>
+      {parts[0]}
+      {isEmail ? <a href={`mailto:${contact}`}>{contact}</a> : <strong>{contact}</strong>}
+      {parts[1]}
+    </>
+  );
+}
+
 export function LoginPage() {
   const { t } = useI18n();
-  const { setUser } = useAuth();
+  const { setUser, helpContact } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [showForgot, setShowForgot] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -90,19 +104,23 @@ export function LoginPage() {
       const next = params.get("next");
       navigate(next && next.startsWith("/") && !next.startsWith("//") ? next : "/", { replace: true });
     } catch (err) {
-      setError(apiErrorMessage(err, t));
+      setError(err instanceof ApiError && err.code === "bad_credentials" ? t("auth.badCredentials") : apiErrorMessage(err, t));
       setBusy(false);
     }
   };
+
+  const toggleHelp = () => setShowHelp((v) => !v);
 
   return (
     <AuthLayout>
       <form className="auth-form" onSubmit={submit} noValidate>
         <div>
           <h2>{t("auth.welcomeBack")}</h2>
-          <p className="auth-lede">{t("auth.signInLede")}</p>
-          <p className="auth-invite-note">
-            <Mail /> {t("auth.invitedOnly")}
+          <p className="auth-lede">
+            {t("auth.invitedOnlyShort")}{" "}
+            <button type="button" className="link-btn" onClick={toggleHelp} aria-expanded={showHelp} aria-controls="auth-help">
+              {t("auth.getHelp")}
+            </button>
           </p>
         </div>
         <div className="field">
@@ -123,7 +141,7 @@ export function LoginPage() {
         <div className="field">
           <label htmlFor="password">
             <span>{t("auth.password")}</span>
-            <button type="button" className="link-btn" onClick={() => setShowForgot((v) => !v)} aria-expanded={showForgot}>
+            <button type="button" className="link-btn" onClick={toggleHelp} aria-expanded={showHelp} aria-controls="auth-help">
               {t("auth.forgot")}
             </button>
           </label>
@@ -139,7 +157,6 @@ export function LoginPage() {
               setError(null);
             }}
           />
-          {showForgot && <p className="auth-help">{t("auth.forgotBody")}</p>}
         </div>
         {error && (
           <div className="field-error" role="alert">
@@ -151,6 +168,14 @@ export function LoginPage() {
           {busy ? t("auth.signingIn") : t("auth.signIn")}
           {!busy && <ArrowRight />}
         </button>
+        {showHelp && (
+          <div className="auth-help" id="auth-help" role="note">
+            <strong>{t("auth.helpTitle")}</strong>
+            <p>
+              <HelpContact contact={helpContact} />
+            </p>
+          </div>
+        )}
       </form>
     </AuthLayout>
   );

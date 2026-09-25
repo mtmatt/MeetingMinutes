@@ -52,6 +52,11 @@ export function time(ms: number, locale: Locale): string {
   return new Intl.DateTimeFormat(intlLocale(locale), { timeStyle: "short" }).format(ms);
 }
 
+/** "9月24日" / "24 Sep" */
+export function monthDay(ms: number, locale: Locale): string {
+  return new Intl.DateTimeFormat(locale === "zh-TW" ? "zh-TW" : "en-GB", { month: "short", day: "numeric" }).format(ms);
+}
+
 export function monthYear(ms: number, locale: Locale): string {
   return new Intl.DateTimeFormat(locale === "zh-TW" ? "zh-TW" : "en-US", { year: "numeric", month: "long" }).format(ms);
 }

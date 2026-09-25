@@ -642,7 +642,7 @@
   gap: 12px;
 }
 .modal-head h2 {
-  font-size: var(--step-2);
+  font-size: var(--h2-size);
 }
 .modal-body {
   padding: 10px 24px 8px;
@@ -778,7 +778,7 @@
   border-radius: 50%;
   display: inline-grid;
   place-items: center;
-  font-family: var(--font-display);
+  font-family: var(--font-title);
   font-weight: 600;
   font-size: calc(var(--size) * 0.44);
   color: var(--accent-ink);

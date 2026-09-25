@@ -38,9 +38,16 @@ export function DataFlowNote() {
   return (
     <div className="dataflow">
       <ShieldCheck />
-      <div>
+      <div className="dataflow-body">
         <strong>{t("privacy.title")}</strong>
-        <p>{t("privacy.body")}</p>
+        <ul>
+          <li>{t("privacy.asr")}</li>
+          <li>{t("privacy.summary")}</li>
+        </ul>
+        <details>
+          <summary>{t("privacy.more")}</summary>
+          <p>{t("privacy.details")}</p>
+        </details>
       </div>
     </div>
   );

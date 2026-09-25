@@ -32,35 +32,31 @@ body {
   flex-direction: column;
 }
 
+/* Headings use the interface family in every language; see the type roles in tokens.css. */
 h1,
 h2,
 h3,
 h4 {
-  font-family: var(--font-display);
-  font-weight: 500;
-  line-height: 1.12;
-  letter-spacing: -0.015em;
-  margin: 0;
-  font-variation-settings: "opsz" 72, "SOFT" 30;
-}
-
-:lang(zh-Hant-TW) h1,
-:lang(zh-Hant-TW) h2,
-:lang(zh-Hant-TW) h3 {
   font-family: var(--font-title);
-  font-weight: 620;
-  letter-spacing: 0;
+  margin: 0;
 }
 h1 {
-  font-size: var(--step-5);
-  font-variation-settings: "opsz" 144, "SOFT" 50, "WONK" 0;
-  letter-spacing: -0.025em;
+  font-size: var(--h1-size);
+  font-weight: var(--h1-weight);
+  line-height: var(--h1-leading);
+  letter-spacing: -0.02em;
 }
 h2 {
-  font-size: var(--step-3);
+  font-size: var(--h2-size);
+  font-weight: var(--h2-weight);
+  line-height: var(--h2-leading);
+  letter-spacing: -0.01em;
 }
-h3 {
-  font-size: var(--step-2);
+h3,
+h4 {
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+  line-height: var(--h3-leading);
 }
 
 p {

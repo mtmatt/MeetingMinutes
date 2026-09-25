@@ -8,6 +8,25 @@
 :root {
   --font-display: "Fraunces Variable", "Noto Serif TC", "Songti TC", "Source Han Serif TC", Georgia, serif;
   --font-sans: "Geist Variable", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
+  /*
+   * Type roles
+   *   --font-display  brand and decoration only: wordmark, ledger date numerals,
+   *                   large progress figures, the sign-in hero.
+   *   --font-title    every heading and name: pages, sections, meetings,
+   *                   templates, summaries. Same family as body text so mixed
+   *                   Chinese/Latin titles share one weight and baseline.
+   *   --font-sans     body, forms and controls.
+   * Heading levels are fixed: h1 page title, h2 section, h3 list/card title.
+   */
+  --h1-size: clamp(2rem, 1.6rem + 1.4vw, 2.6rem);
+  --h1-weight: 560;
+  --h1-leading: 1.15;
+  --h2-size: 1.3rem;
+  --h2-weight: 580;
+  --h2-leading: 1.3;
+  --h3-size: 1.12rem;
+  --h3-weight: 560;
+  --h3-leading: 1.35;
   --font-title: "Geist Variable", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 

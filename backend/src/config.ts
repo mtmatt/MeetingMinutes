@@ -87,6 +87,8 @@ export const config = {
   publicUrl,
   /** Trust X-Forwarded-For / X-Forwarded-Proto (set when behind Caddy/nginx). */
   trustProxy: bool("TRUST_PROXY", false),
+  /** Shown on the sign-in page to people without an account or who forgot their password. */
+  adminContact: str("ADMIN_CONTACT", "").trim(),
   cookieSecure: bool("COOKIE_SECURE", publicUrl.startsWith("https://")),
   sessionTtlDays: int("SESSION_TTL_DAYS", 30),
   maxUploadBytes: int("MAX_UPLOAD_MB", 4096) * 1024 * 1024,

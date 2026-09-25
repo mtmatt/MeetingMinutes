@@ -8,6 +8,8 @@ interface AuthValue {
   user: User | null;
   needsSetup: boolean;
   loading: boolean;
+  /** Administrator contact configured on the server (ADMIN_CONTACT), if any. */
+  helpContact: string | null;
   setUser: (u: User | null) => void;
 }
 
@@ -20,7 +22,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
-      qc.setQueryData(["auth"], (old: { needsSetup: boolean } | undefined) => ({ needsSetup: old?.needsSetup ?? false, user: null }));
+      qc.setQueryData(["auth"], (old: { needsSetup: boolean; helpContact?: string | null } | undefined) => ({
+        needsSetup: old?.needsSetup ?? false,
+        user: null,
+        helpContact: old?.helpContact ?? null,
+      }));
     });
   }, [qc]);
 
@@ -33,8 +39,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     needsSetup: q.data?.needsSetup ?? false,
     loading: q.isLoading,
+    helpContact: q.data?.helpContact ?? null,
     setUser: (u) => {
-      qc.setQueryData(["auth"], { needsSetup: false, user: u });
+      qc.setQueryData(["auth"], (old: { helpContact?: string | null } | undefined) => ({
+        needsSetup: false,
+        user: u,
+        helpContact: old?.helpContact ?? null,
+      }));
       if (!u) qc.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });
     },
   };
