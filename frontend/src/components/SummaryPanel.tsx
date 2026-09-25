@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, ChevronDown, Copy, Download, FileText, MoreHorizontal, Pencil, RefreshCw, Sparkles, Square, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Copy, Download, FileText, MoreHorizontal, Pencil, RefreshCw, ScrollText, Sparkles, Square, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,6 +8,7 @@ import type { MeetingDetail, Summary, SummaryRequest } from "../api/types";
 import { useI18n } from "../i18n";
 import { clock, relative } from "../lib/format";
 import { usePlayer } from "../lib/player";
+import { downloadText, safeFileName, summaryMarkdown } from "../lib/summaryExport";
 import { segmentAt } from "./Player";
 import { Menu } from "./Menu";
 import { Modal, useConfirm } from "./Modal";
@@ -196,17 +197,6 @@ function Writing({ summary, onCancel }: { summary: Summary; onCancel: () => void
   );
 }
 
-function download(filename: string, text: string) {
-  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 export function Composer({ meeting, onClose, initial }: { meeting: MeetingDetail; onClose: () => void; initial?: SummaryRequest }) {
   const { t, locale } = useI18n();
@@ -254,26 +244,27 @@ export function Composer({ meeting, onClose, initial }: { meeting: MeetingDetail
   );
 }
 
-export function SummaryPanel({ meeting }: { meeting: MeetingDetail }) {
-  const { t, tMaybe, locale } = useI18n();
-  const toast = useToast();
-  const confirm = useConfirm();
-  const qc = useQueryClient();
-  const { data: tpl } = useTemplates();
-  const summaries = meeting.summaries;
+/**
+ * Which summary version is on screen. Owned by the meeting page so its Export
+ * menu and the summary panel always act on the same version.
+ */
+export function useSummarySelection(summaries: Summary[]) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [composer, setComposer] = useState<SummaryRequest | null | false>(false);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [copied, setCopied] = useState(false);
-
   // Follow the newest version when one is added.
   const newestId = summaries[0]?.id ?? null;
   useEffect(() => {
     setSelectedId(newestId);
   }, [newestId]);
-
   const current = summaries.find((s) => s.id === selectedId) ?? summaries[0] ?? null;
+  return { current, select: setSelectedId };
+}
+export type SummarySelection = ReturnType<typeof useSummarySelection>;
+
+/** Version numbers, display names and Markdown export for a meeting's summaries. */
+export function useSummaryInfo(meeting: MeetingDetail) {
+  const { t, tMaybe, locale } = useI18n();
+  const { data: tpl } = useTemplates();
+  const summaries = meeting.summaries;
   const versionOf = (s: Summary) => summaries.length - summaries.indexOf(s);
   const labelOf = (s: Summary) => {
     const known = s.templateId ? tpl?.templates.find((x) => x.id === s.templateId) : undefined;
@@ -281,6 +272,61 @@ export function SummaryPanel({ meeting }: { meeting: MeetingDetail }) {
     if (s.templateId?.startsWith("builtin-")) return tMaybe(`builtin.${s.templateId}.name`) ?? s.templateName ?? t("summary.custom");
     return s.templateName ?? t("summary.custom");
   };
+  const exportMarkdown = (s: Summary, withTranscript: boolean) => {
+    const text = summaryMarkdown({
+      meeting,
+      summary: s,
+      version: versionOf(s),
+      templateLabel: labelOf(s),
+      withTranscript,
+      locale,
+      transcriptHeading: t("meeting.transcript"),
+    });
+    const kind = withTranscript ? t("summary.fileWithTranscript") : t("summary.fileSummary");
+    const version = summaries.length > 1 ? ` v${versionOf(s)}` : "";
+    downloadText(`${safeFileName(`${meeting.title} ${kind}${version}`)}.md`, text);
+  };
+  return { versionOf, labelOf, exportMarkdown };
+}
+
+/** Export choices for one summary version, used by the summary header and the page's Export menu. */
+export function SummaryExportItems({ onExport }: { onExport: (withTranscript: boolean) => void }) {
+  const { t } = useI18n();
+  return (
+    <>
+      <button className="menu-item menu-item-rich" onClick={() => onExport(false)}>
+        <FileText />
+        <span>
+          <span className="menu-item-title">{t("summary.exportSummaryOnly")}</span>
+          <span className="menu-item-desc">{t("summary.exportSummaryOnlyDesc")}</span>
+        </span>
+        <span className="end mono">.md</span>
+      </button>
+      <button className="menu-item menu-item-rich" onClick={() => onExport(true)}>
+        <ScrollText />
+        <span>
+          <span className="menu-item-title">{t("summary.exportWithTranscript")}</span>
+          <span className="menu-item-desc">{t("summary.exportWithTranscriptDesc")}</span>
+        </span>
+        <span className="end mono">.md</span>
+      </button>
+    </>
+  );
+}
+
+export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; selection: SummarySelection }) {
+  const { t, locale } = useI18n();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const qc = useQueryClient();
+  const summaries = meeting.summaries;
+  const [composer, setComposer] = useState<SummaryRequest | null | false>(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const { current, select: setSelectedId } = selection;
+  const { versionOf, labelOf, exportMarkdown } = useSummaryInfo(meeting);
   const invalidate = () => qc.invalidateQueries({ queryKey: ["meeting", meeting.id] });
 
   const cancel = async (s: Summary) => {
@@ -408,14 +454,22 @@ export function SummaryPanel({ meeting }: { meeting: MeetingDetail }) {
                 <button className="icon-btn" onClick={() => copy(current)} title={t("summary.copyMarkdown")} aria-label={t("summary.copyMarkdown")}>
                   {copied ? <Check /> : <Copy />}
                 </button>
-                <button
-                  className="icon-btn"
-                  onClick={() => download(`${meeting.title} - v${versionOf(current)}.md`, current.content ?? "")}
-                  title={t("summary.downloadMarkdown")}
-                  aria-label={t("summary.downloadMarkdown")}
+                <Menu
+                  trigger={({ toggle, open }) => (
+                    <button className="btn btn-sm" onClick={toggle} aria-expanded={open} aria-haspopup="menu">
+                      <Download /> {t("summary.exportMd")}
+                    </button>
+                  )}
                 >
-                  <Download />
-                </button>
+                  {(close) => (
+                    <SummaryExportItems
+                      onExport={(withTranscript) => {
+                        exportMarkdown(current, withTranscript);
+                        close();
+                      }}
+                    />
+                  )}
+                </Menu>
               </>
             )}
             {current && (

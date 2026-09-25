@@ -550,12 +550,11 @@
   position: relative;
   display: inline-flex;
 }
+/* Rendered on <body> and placed by Menu.tsx (position: fixed, from the trigger's rect). */
 .menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  position: fixed;
   min-width: 220px;
-  z-index: 60;
+  z-index: 110;
   padding: 6px;
   background: var(--surface);
   border: 1px solid var(--rule);
@@ -565,13 +564,10 @@
   transform-origin: top right;
 }
 .menu.left {
-  left: 0;
-  right: auto;
   transform-origin: top left;
 }
 .menu.up {
-  top: auto;
-  bottom: calc(100% + 6px);
+  transform-origin: bottom right;
 }
 .menu-label {
   padding: 8px 10px 4px;

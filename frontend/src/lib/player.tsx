@@ -162,7 +162,7 @@ export function usePlayerShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName))) return;
+      if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName) || target.closest('[role="menu"]'))) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === " " || e.key === "k") {
         e.preventDefault();

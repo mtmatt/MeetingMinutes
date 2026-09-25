@@ -22,7 +22,7 @@ import { Menu } from "../components/Menu";
 import { useConfirm } from "../components/Modal";
 import { PlayerBar } from "../components/Player";
 import { MeetingStatus } from "../components/Status";
-import { SummaryPanel } from "../components/SummaryPanel";
+import { SummaryExportItems, SummaryPanel, useSummaryInfo, useSummarySelection } from "../components/SummaryPanel";
 import { useToast } from "../components/Toast";
 import { Transcript } from "../components/Transcript";
 import { useI18n, type TKey } from "../i18n";
@@ -191,6 +191,9 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
   const qc = useQueryClient();
   const [videoMode, setVideoMode] = useState(false);
   const [tab, setTab] = useState<"transcript" | "summary">("transcript");
+  const summarySelection = useSummarySelection(meeting.summaries);
+  const summaryInfo = useSummaryInfo(meeting);
+  const exportable = summarySelection.current?.status === "done" ? summarySelection.current : null;
   usePlayerShortcuts();
 
   // Deep link from a search result: /m/:id?t=seconds
@@ -293,8 +296,24 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
                   </button>
                 )}
               >
-                {() => (
+                {(close) => (
                   <>
+                    {exportable && (
+                      <>
+                        <div className="menu-label smallcaps">
+                          {meeting.summaries.length > 1
+                            ? `${t("meeting.exportSummary")} · ${t("summary.version", { n: summaryInfo.versionOf(exportable) })}`
+                            : t("meeting.exportSummary")}
+                        </div>
+                        <SummaryExportItems
+                          onExport={(withTranscript) => {
+                            summaryInfo.exportMarkdown(exportable, withTranscript);
+                            close();
+                          }}
+                        />
+                        <div className="menu-sep" />
+                      </>
+                    )}
                     <div className="menu-label smallcaps">{t("meeting.exportTranscript")}</div>
                     {[
                       ["txt", "Plain text", ".txt"],
@@ -382,13 +401,13 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
               <Transcript meeting={meeting} />
             </section>
             <aside className="meeting-col summary-col">
-              <SummaryPanel meeting={meeting} />
+              <SummaryPanel meeting={meeting} selection={summarySelection} />
             </aside>
           </div>
           <PlayerBar meeting={meeting} videoMode={videoMode} />
         </>
       )}
-      {!ready && meeting.summaries.length > 0 && <SummaryPanel meeting={meeting} />}
+      {!ready && meeting.summaries.length > 0 && <SummaryPanel meeting={meeting} selection={summarySelection} />}
     </div>
   );
 }
