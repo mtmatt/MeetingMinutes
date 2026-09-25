@@ -1,4 +1,4 @@
-import { ChevronDown, Languages, LogOut, Monitor, Moon, Plus, Settings, Shield, Sun } from "lucide-react";
+import { ChevronDown, FileText, Languages, Library, LogOut, Monitor, Moon, Plus, Settings, Shield, Sun } from "lucide-react";
 import { NavLink, useNavigate } from "react-router";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
@@ -74,6 +74,15 @@ export function Masthead() {
                   </div>
                 </div>
                 <div className="menu-sep" />
+                <div className="mobile-only">
+                  <NavLink className="menu-item" to="/" end onClick={close}>
+                    <Library /> {t("nav.library")}
+                  </NavLink>
+                  <NavLink className="menu-item" to="/templates" onClick={close}>
+                    <FileText /> {t("nav.templates")}
+                  </NavLink>
+                  <div className="menu-sep" />
+                </div>
                 <div className="menu-label smallcaps">{t("nav.theme")}</div>
                 <div className="menu-row">
                   {themes.map(({ id, icon: Icon, label }) => (

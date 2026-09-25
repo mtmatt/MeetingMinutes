@@ -49,6 +49,7 @@ export const zhTW: Dict = {
     welcomeBack: "歡迎回來",
     signInLede: "登入你的會議紀錄庫。",
     invitedOnly: "帳號採邀請制，請向管理員索取邀請連結。",
+    firstRun: "首次啟動",
     setupTitle: "初始設定",
     setupLede: "建立管理員帳號。你需要伺服器日誌中顯示的一次性設定碼（也存放在 data/setup.token）。",
     setupToken: "設定碼",

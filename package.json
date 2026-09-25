@@ -2,7 +2,10 @@
   "name": "meetingminutes",
   "private": true,
   "type": "module",
-  "workspaces": ["backend", "frontend"],
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
   "scripts": {
     "dev": "bun run --filter '*' dev",
     "dev:backend": "bun run --cwd backend dev",
@@ -11,6 +14,8 @@
     "start": "bun run --cwd backend start",
     "test": "bun run --cwd backend test",
     "typecheck": "bun run --cwd backend typecheck && bun run --cwd frontend typecheck",
-    "admin": "bun run --cwd backend src/cli.ts"
+    "admin": "bun run --cwd backend src/cli.ts",
+    "codex:login": "scripts/codex-login.sh",
+    "worker": "scripts/worker.sh"
   }
 }

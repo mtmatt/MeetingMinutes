@@ -128,6 +128,10 @@
   margin-top: 8px;
   font-variation-settings: "opsz" 144;
 }
+.processing-wait {
+  font-size: 2.4rem;
+  letter-spacing: -0.02em;
+}
 .processing-pct .mono {
   font-family: var(--font-display);
 }
@@ -344,7 +348,7 @@
   align-items: center;
   gap: 12px;
   padding: 10px 0;
-  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  background: var(--bg);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--rule);
   margin-bottom: 20px;

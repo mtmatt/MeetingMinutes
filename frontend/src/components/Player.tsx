@@ -78,9 +78,15 @@ function Waveform({ meeting }: { meeting: MeetingDetail }) {
           if (data && data.length) {
             const a = Math.floor((i / n) * data.length);
             const b = Math.max(a + 1, Math.floor(((i + 1) / n) * data.length));
-            let m = 0;
-            for (let j = a; j < b && j < data.length; j++) m = Math.max(m, data[j]!);
-            v = Math.max(0.04, Math.pow(m / 255, 0.8));
+            // Average rather than max: at meeting length each bar spans seconds of
+            // audio, and the max would pin almost every bar to full height.
+            let sum = 0;
+            let cnt = 0;
+            for (let j = a; j < b && j < data.length; j++) {
+              sum += data[j]!;
+              cnt++;
+            }
+            v = Math.max(0.04, Math.min(1, Math.pow(sum / Math.max(1, cnt) / 255, 1.15) * 1.35));
           }
           bars[i] = Math.max(1.5, v * (waveH - 6));
         }

@@ -47,6 +47,7 @@ export const en = {
     welcomeBack: "Welcome back",
     signInLede: "Sign in to your meeting archive.",
     invitedOnly: "Accounts are by invitation. Ask your administrator for a link.",
+    firstRun: "First run",
     setupTitle: "Set up Minutes",
     setupLede: "Create the administrator account. You will need the one-time setup token printed in the server log (also in data/setup.token).",
     setupToken: "Setup token",

@@ -70,10 +70,14 @@ function Pipeline({ meeting }: { meeting: MeetingDetail }) {
       <div className="processing-head">
         <div>
           <div className="smallcaps">{t("meeting.processingTitle")}</div>
-          <div className="processing-pct">
-            <span className="mono">{meeting.status === "queued" ? "–" : pct}</span>
-            {meeting.status !== "queued" && <span className="pct">%</span>}
-          </div>
+          {meeting.status === "queued" ? (
+            <div className="processing-pct processing-wait">{t("status.queued")}</div>
+          ) : (
+            <div className="processing-pct">
+              <span className="mono">{pct}</span>
+              <span className="pct">%</span>
+            </div>
+          )}
         </div>
         <p className="muted">{meeting.status === "queued" ? t("meeting.queuedBody") : t("meeting.processingBody")}</p>
       </div>

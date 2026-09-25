@@ -235,7 +235,7 @@ export function SetupPage() {
       <form className="auth-form" onSubmit={submit}>
         <div>
           <span className="pill accent" style={{ marginBottom: 14 }}>
-            <KeyRound style={{ width: 12, height: 12 }} /> First run
+            <KeyRound style={{ width: 12, height: 12 }} /> {t("auth.firstRun")}
           </span>
           <h2>{t("auth.setupTitle")}</h2>
           <p className="muted">{t("auth.setupLede")}</p>

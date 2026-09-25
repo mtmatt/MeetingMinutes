@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Clock, FileVideo, Languages, Plus, Search, Upload, Users, X } from "lucide-react";
+import { Clock, FileVideo, Languages, Search, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { api } from "../api/client";
@@ -143,9 +143,6 @@ export function LibraryPage() {
               </button>
             )}
           </label>
-          <Link to="/new" className="btn btn-primary">
-            <Plus /> {t("nav.new")}
-          </Link>
         </div>
       </div>
       <hr className="rule-double" />

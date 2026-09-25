@@ -1,0 +1,18 @@
+# User-level unit (no root needed):
+#   mkdir -p ~/.config/systemd/user && cp deploy/systemd/*.service ~/.config/systemd/user/
+#   edit WorkingDirectory below, then:
+#   systemctl --user daemon-reload && systemctl --user enable --now meetingminutes meetingminutes-worker
+# To keep services running after you log out, `loginctl enable-linger $USER`
+# must be allowed on your machine (ask an administrator if it is not).
+[Unit]
+Description=MeetingMinutes web server
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/MeetingMinutes
+ExecStart=%h/MeetingMinutes/scripts/start.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

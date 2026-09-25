@@ -4,7 +4,7 @@
   position: sticky;
   top: 0;
   z-index: 40;
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  background: color-mix(in srgb, var(--bg) 97%, transparent);
   backdrop-filter: saturate(1.4) blur(12px);
   -webkit-backdrop-filter: saturate(1.4) blur(12px);
   border-bottom: 1px solid var(--rule);
@@ -204,12 +204,13 @@
   .page {
     padding: 24px 16px 80px;
   }
-  .mobile-nav {
-    display: flex !important;
-  }
 }
 
-/* Bottom navigation for small screens. */
-.mobile-nav {
+.mobile-only {
   display: none;
+}
+@media (max-width: 760px) {
+  .mobile-only {
+    display: block;
+  }
 }
