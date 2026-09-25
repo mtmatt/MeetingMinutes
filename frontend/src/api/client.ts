@@ -70,7 +70,7 @@ const del = <T>(p: string) => request<T>("DELETE", p);
 
 export const api = {
   // auth
-  authState: () => get<{ needsSetup: boolean; user: User | null; helpContact: string | null }>("/auth/state"),
+  authState: () => get<{ needsSetup: boolean; user: User | null; helpContact: string | null; uploadLimitBytes: number | null }>("/auth/state"),
   login: (username: string, password: string) => post<{ user: User }>("/auth/login", { username, password }),
   logout: () => post<{ ok: true }>("/auth/logout"),
   setup: (b: { setupToken: string; username: string; displayName: string; password: string }) =>
@@ -142,6 +142,8 @@ export const mediaUrl = {
   export: (id: string, format: string) => `/api/meetings/${id}/export?format=${format}`,
 };
 
+const MAX_RETRIES = 5;
+
 /**
  * Upload a file in sequential chunks with resume-on-mismatch. XHR is used for
  * byte-level progress, which fetch() cannot report for request bodies.
@@ -152,6 +154,8 @@ export function uploadFile(
   chunkSize: number,
   onProgress: (sent: number, total: number) => void,
   signal: AbortSignal,
+  /** Called before each automatic retry after a dropped connection or server error. */
+  onRetry?: (attempt: number, max: number) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     let offset = 0;
@@ -190,16 +194,18 @@ export function uploadFile(
         } else if (xhr.status === 409 && typeof data.received === "number") {
           offset = data.received;
           sendNext();
-        } else if (xhr.status >= 500 && retries < 5) {
+        } else if (xhr.status >= 500 && retries < MAX_RETRIES) {
           retries++;
+          onRetry?.(retries, MAX_RETRIES);
           setTimeout(sendNext, 1000 * 2 ** retries);
         } else {
-          reject(new ApiError(xhr.status, String(data.error ?? `Upload failed (${xhr.status}).`), String(data.code ?? "upload")));
+          reject(new ApiError(xhr.status, String(data.error ?? `Upload failed (${xhr.status}).`), String(data.code ?? "upload"), data));
         }
       };
       xhr.onerror = () => {
-        if (retries < 5) {
+        if (retries < MAX_RETRIES) {
           retries++;
+          onRetry?.(retries, MAX_RETRIES);
           setTimeout(sendNext, 1000 * 2 ** retries);
         } else {
           reject(new ApiError(0, "Network error during upload.", "network"));

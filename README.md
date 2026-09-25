@@ -151,7 +151,7 @@ All settings are environment variables. Put them in `.env` at the repository roo
 | `ADMIN_CONTACT` | – | Contact shown on the sign-in page for people without an account or who forgot their password (an email becomes a mailto link). |
 | `TRUST_PROXY` | `false` | Trust `X-Forwarded-*` headers from your proxy. |
 | `DATA_DIR` | `data` | SQLite database, media, and tokens. Back this directory up. |
-| `MAX_UPLOAD_MB` / `UPLOAD_CHUNK_MB` | `4096` / `32` | Upload limits. |
+| `MAX_UPLOAD_MB` / `UPLOAD_CHUNK_MB` | `4096` / `32` | Largest accepted file, and the size of each upload request. The upload page shows `MAX_UPLOAD_MB` and rejects larger files before sending. A reverse proxy must allow request bodies larger than `UPLOAD_CHUNK_MB` (for example nginx `client_max_body_size 64m`); otherwise users see "the server refused the upload (HTTP 413)". |
 | `HF_TOKEN` | – | Enables speaker diarization. |
 | `ASR_MODEL` / `ASR_BACKEND` | `Qwen/Qwen3-ASR-1.7B` / `transformers` | Recognition model and engine (`vllm` for speed). |
 | `WORKER_GPUS` | all | GPUs to run workers on, e.g. `0,1`. |

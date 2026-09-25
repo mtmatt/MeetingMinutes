@@ -10,8 +10,13 @@ interface AuthValue {
   loading: boolean;
   /** Administrator contact configured on the server (ADMIN_CONTACT), if any. */
   helpContact: string | null;
+  /** Largest file the server accepts (MAX_UPLOAD_MB); null until known. */
+  uploadLimitBytes: number | null;
   setUser: (u: User | null) => void;
 }
+
+type AuthState = Awaited<ReturnType<typeof api.authState>>;
+const emptyState: AuthState = { needsSetup: false, user: null, helpContact: null, uploadLimitBytes: null };
 
 const AuthContext = createContext<AuthValue | null>(null);
 
@@ -22,11 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
-      qc.setQueryData(["auth"], (old: { needsSetup: boolean; helpContact?: string | null } | undefined) => ({
-        needsSetup: old?.needsSetup ?? false,
-        user: null,
-        helpContact: old?.helpContact ?? null,
-      }));
+      qc.setQueryData(["auth"], (old: AuthState | undefined) => ({ ...emptyState, ...old, user: null }));
     });
   }, [qc]);
 
@@ -40,12 +41,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     needsSetup: q.data?.needsSetup ?? false,
     loading: q.isLoading,
     helpContact: q.data?.helpContact ?? null,
+    uploadLimitBytes: q.data?.uploadLimitBytes ?? null,
     setUser: (u) => {
-      qc.setQueryData(["auth"], (old: { helpContact?: string | null } | undefined) => ({
-        needsSetup: false,
-        user: u,
-        helpContact: old?.helpContact ?? null,
-      }));
+      qc.setQueryData(["auth"], (old: AuthState | undefined) => ({ ...emptyState, ...old, needsSetup: false, user: u }));
       if (!u) qc.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });
     },
   };

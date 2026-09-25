@@ -1906,3 +1906,139 @@
     justify-content: flex-end;
   }
 }
+
+/* Why the chosen file cannot be uploaded as-is, inside the file card. */
+.file-card-problem {
+  flex-basis: 100%;
+  margin-top: 4px;
+}
+.file-card-problem p {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+.file-card-problem p + p {
+  margin-top: 4px;
+}
+.file-card-problem .faint {
+  color: var(--ink-2);
+}
+
+/* Upload is retrying on its own after a dropped connection. */
+.bar-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--warn);
+  font-size: var(--step--1);
+}
+.bar-warn svg {
+  width: 14px;
+  height: 14px;
+}
+.spin {
+  animation: spin 1.1s linear infinite;
+}
+
+/* Recording scope next to the status: "Recording · mic only". */
+.rec-scope {
+  color: var(--ink);
+  font-weight: 600;
+}
+.rec-scope::before {
+  content: "·";
+  margin-right: 8px;
+  color: var(--ink-3);
+}
+.bar-rec {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+/* A source dropped out: visible from the bar even when the panel is scrolled away. */
+.bar-rec-alert {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 10px;
+  border-radius: var(--radius-pill, 999px);
+  font-size: var(--step--1);
+  font-weight: 600;
+}
+.bar-rec-alert svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.bar-rec-alert.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.bar-rec-alert.warn .btn {
+  background: var(--surface);
+}
+.bar-rec-alert.soft {
+  padding-right: 10px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+
+/* A source left out on purpose. */
+.source-row.off .source-row-name {
+  color: var(--ink-2);
+}
+.source-row.off .source-row-actions {
+  grid-column: 2;
+}
+
+/* Waiting on a browser permission prompt. */
+.rec-waiting {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: var(--shadow-1, none);
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.rec-waiting > svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+.rec-waiting strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: var(--step-0);
+  color: var(--ink);
+}
+.rec-waiting p {
+  margin: 0;
+  line-height: 1.6;
+}
+.rec-waiting p + p {
+  margin-top: 4px;
+}
+.rec-waiting-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--step--1);
+}
+.rec-waiting-inline svg {
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+}
+
+@media (max-width: 700px) {
+  .source-row.off .source-row-actions {
+    grid-column: 1;
+  }
+}

@@ -5,7 +5,8 @@ const SHARED_RULES = `Rules:
 - Base everything strictly on the transcript. Never invent names, numbers, dates or commitments.
 - Speaker labels such as "Speaker 1" are automatic. Use the given speaker names; only substitute a real name when the transcript makes it unambiguous.
 - The transcript comes from automatic speech recognition and can contain mis-recognised words. When the intended term is obvious from context (product names, jargon, acronyms), use the correct term; otherwise keep the original wording.
-- Cite the timestamp, as [hh:mm:ss], for every decision, date, number and commitment, so readers can check it against the recording.
+- Cite the timestamp, as [hh:mm:ss], for every decision, date, number and commitment, so readers can check it against the recording. Use the start time of the transcript line that actually states it (the line containing that number, date or commitment), not the start of the surrounding discussion, and put the citation right after the claim it supports.
+- A timestamp in a heading only marks where that topic begins; it does not replace citations for the claims under it.
 - If people said conflicting things (different dates, owners or figures), do not choose one. State both with their timestamps and list the conflict as an open question.
 - Skip small talk, filler and repetition.`;
 

@@ -67,6 +67,8 @@ authRoutes.get("/state", (c) => {
     needsSetup: countUsers() === 0,
     user: resolved ? publicUser(resolved.user) : null,
     helpContact: config.adminContact || null,
+    // Lets the upload page reject an oversized file before sending anything.
+    uploadLimitBytes: config.maxUploadBytes,
   });
 });
 

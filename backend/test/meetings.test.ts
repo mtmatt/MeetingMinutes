@@ -60,6 +60,10 @@ describe("meeting lifecycle", () => {
     expect(bad.status).toBe(415);
     const big = await c.post("/api/meetings", { title: "x", file: { name: "a.mp3", size: 11 * 1024 * 1024 } });
     expect(big.status).toBe(413);
+    // The client needs both numbers to explain the problem.
+    expect(await big.json()).toMatchObject({ code: "too_large", size: 11 * 1024 * 1024, limitBytes: config.maxUploadBytes });
+    const state = (await (await c.get("/api/auth/state")).json()) as any;
+    expect(state.uploadLimitBytes).toBe(config.maxUploadBytes);
   });
 
   test("chunked upload detects offset mismatch and incomplete uploads", async () => {
@@ -72,8 +76,10 @@ describe("meeting lifecycle", () => {
     await c.req("PUT", `/api/meetings/${meeting.id}/upload?offset=0`, { body: new Uint8Array(1000) });
     const early = await c.post(`/api/meetings/${meeting.id}/upload/complete`);
     expect(early.status).toBe(409);
+    // Past the declared size: a transfer error the client can resume from, not "file too large".
     const tooMuch = await c.req("PUT", `/api/meetings/${meeting.id}/upload?offset=1000`, { body: new Uint8Array(2500) });
-    expect(tooMuch.status).toBe(413);
+    expect(tooMuch.status).toBe(400);
+    expect(await tooMuch.json()).toMatchObject({ code: "bad_chunk", received: 1000 });
   });
 
   test("upload -> worker -> transcript -> automatic summary", async () => {

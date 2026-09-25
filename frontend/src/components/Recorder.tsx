@@ -1,10 +1,10 @@
-import { AlertTriangle, Headphones, Mic, MonitorSpeaker, RotateCcw, Trash2 } from "lucide-react";
+import { AlertTriangle, Headphones, Hourglass, Mic, MonitorSpeaker, RotateCcw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n, type TKey } from "../i18n";
 import { clock, dateTime } from "../lib/format";
 import { listMicrophones, recorderSupport, type RecordSource, type SourceKind, type SourceState } from "../lib/recorder";
 import { deleteRecording, listRecordings, loadRecording, type RecordingMeta } from "../lib/recordingStore";
-import { fileForRecording, type RecordedFile, type RecordingController } from "../lib/useRecording";
+import { fileForRecording, type RecordedFile, type RecordingController, type SourceHealth } from "../lib/useRecording";
 import { useConfirm } from "./Modal";
 
 /** Live input level, drawn without re-rendering React on every frame. */
@@ -45,6 +45,34 @@ function Meter({ read, silentHint }: { read: () => number | null; silentHint?: s
   );
 }
 
+/** "Mic only", "Meeting audio only", "No audio source", or null when every source is recording. */
+export function sourceScope(h: SourceHealth, t: (k: TKey) => string): string | null {
+  if (h.complete) return null;
+  if (h.capturing.length === 0) return t("recorder.scopeNone");
+  if (h.capturing.length === 1 && h.expected.length > 1) return t(h.capturing[0] === "mic" ? "recorder.scopeMicOnly" : "recorder.scopeMeetingOnly");
+  return null;
+}
+
+/** An unexpected dropout that needs attention (warn), or a source gone quiet (soft). */
+export function sourceAlert(h: SourceHealth, t: (k: TKey) => string): { text: string; kind: "warn" | "soft"; target: SourceKind } | null {
+  const [first] = h.interrupted;
+  if (first) {
+    if (h.interrupted.length > 1) return { text: t("recorder.alertAllEnded"), kind: "warn", target: first };
+    return { text: t(first === "meeting" ? "recorder.alertMeetingEnded" : "recorder.alertMicEnded"), kind: "warn", target: first };
+  }
+  const [quiet] = h.silent;
+  if (quiet) return { text: t(quiet === "meeting" ? "recorder.alertMeetingSilent" : "recorder.alertMicSilent"), kind: "soft", target: quiet };
+  return null;
+}
+
+/** Bring a source's row into view and put focus on its first action. */
+export function revealSource(kind: SourceKind) {
+  const row = document.getElementById(`source-row-${kind}`);
+  if (!row) return;
+  row.scrollIntoView({ block: "center", behavior: "smooth" });
+  row.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
+}
+
 const STATUS_KEY: Record<SourceState["status"], TKey> = {
   live: "recorder.connected",
   muted: "recorder.muted",
@@ -58,21 +86,50 @@ function SourceRow({
   rec,
   canDrop,
   paused,
+  dropped,
 }: {
   kind: SourceKind;
   state: SourceState | undefined;
   rec: RecordingController;
   canDrop: boolean;
   paused: boolean;
+  dropped: boolean;
 }) {
   const { t } = useI18n();
   const status = state?.status ?? "live";
+  const waiting = rec.awaiting === kind;
+  if (dropped) {
+    // Left out on purpose: say so, and offer to bring it back.
+    return (
+      <div className="source-row off" id={`source-row-${kind}`}>
+        <span className="source-row-name">
+          {kind === "meeting" ? <MonitorSpeaker /> : <Mic />}
+          {kind === "meeting" ? t("recorder.meterMeeting") : t("recorder.meterMic")}
+        </span>
+        <span className="source-row-status">
+          <span className="pill">{t("recorder.notUsed")}</span>
+          <span className="source-row-detail">{kind === "meeting" ? t("recorder.droppedMeeting") : t("recorder.droppedMic")}</span>
+        </span>
+        <div className="source-row-actions">
+          {waiting ? (
+            <span className="rec-waiting-inline">
+              <Hourglass /> {kind === "meeting" ? t("recorder.awaitShareShort") : t("recorder.awaitMicShort")}
+            </span>
+          ) : (
+            <button type="button" className="btn btn-sm" onClick={() => void rec.reconnect(kind)}>
+              {kind === "meeting" ? t("recorder.addMeetingBack") : t("recorder.addMicBack")}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
   const icon = kind === "meeting" ? <MonitorSpeaker /> : <Mic />;
   const name = kind === "meeting" ? t("recorder.meterMeeting") : t("recorder.meterMic");
   const detail = kind === "meeting" ? t("recorder.meetingSourceLabel") : state?.label || t("recorder.micDefault");
   const read = kind === "meeting" ? () => rec.levels().meeting : () => rec.levels().mic;
   return (
-    <div className={`source-row ${status}`}>
+    <div className={`source-row ${status}`} id={`source-row-${kind}`}>
       <span className="source-row-name">
         {icon}
         {name}
@@ -89,6 +146,11 @@ function SourceRow({
       ) : (
         <div className="source-row-ended">
           <p>{kind === "meeting" ? t("recorder.meetingEnded") : t("recorder.micEnded")}</p>
+          {waiting ? (
+            <p className="rec-waiting-inline">
+              <Hourglass /> {kind === "meeting" ? t("recorder.awaitShare") : t("recorder.awaitMic")}
+            </p>
+          ) : (
           <div className="source-row-actions">
             <button type="button" className="btn btn-sm btn-ink" onClick={() => void rec.reconnect(kind)}>
               {kind === "meeting" ? t("recorder.reselectTab") : t("recorder.reconnectMic")}
@@ -99,6 +161,7 @@ function SourceRow({
               </button>
             )}
           </div>
+          )}
         </div>
       )}
     </div>
@@ -139,7 +202,7 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
       setPending((p) => p.filter((x) => x.id !== m.id));
       return;
     }
-    onRecorded({ file: fileForRecording(blob, m), recordingId: m.id, startedAt: m.startedAt, source: m.source, durationMs: m.durationMs });
+    onRecorded({ file: await fileForRecording(blob, m), recordingId: m.id, startedAt: m.startedAt, source: m.source, durationMs: m.durationMs });
   };
 
   const dropPending = async (m: RecordingMeta) => {
@@ -155,9 +218,10 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
 
   if (rec.phase === "recording" || rec.phase === "paused" || rec.phase === "finishing") {
     const paused = rec.phase === "paused";
-    const kinds: SourceKind[] = rec.source === "meeting" || rec.sources.meeting ? ["meeting", "mic"] : ["mic"];
-    const shown = kinds.filter((k) => rec.sources[k]);
-    const allEnded = shown.length > 0 && shown.every((k) => rec.sources[k]?.status === "ended");
+    const h = rec.health;
+    const shown = h.expected.filter((k) => rec.sources[k] || h.dropped.includes(k));
+    const allEnded = h.capturing.length === 0 && h.interrupted.length > 0;
+    const scope = sourceScope(h, t);
     let saveLine: ReactNode;
     if (rec.saveFailed) {
       saveLine = (
@@ -179,12 +243,21 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
           <span className={`rec-status ${paused ? "paused" : ""}`}>
             <span className="rec-dot" />
             {rec.phase === "finishing" ? t("recorder.finishing") : paused ? t("recorder.paused") : t("recorder.recording")}
+            {scope && <span className="rec-scope">{scope}</span>}
           </span>
         </div>
         <div className="rec-clock">{clock(rec.elapsedMs / 1000, true)}</div>
         <div className="source-rows">
           {shown.map((k) => (
-            <SourceRow key={k} kind={k} state={rec.sources[k]} rec={rec} paused={paused} canDrop={shown.length > 1} />
+            <SourceRow
+              key={k}
+              kind={k}
+              state={rec.sources[k]}
+              rec={rec}
+              paused={paused}
+              dropped={h.dropped.includes(k)}
+              canDrop={h.capturing.length + h.interrupted.length > 1}
+            />
           ))}
         </div>
         {rec.reconnectError && (
@@ -296,6 +369,17 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
             <div className="callout danger" role="alert">
               <AlertTriangle />
               <div>{t(rec.error)}</div>
+            </div>
+          )}
+
+          {rec.phase === "starting" && rec.awaiting && (
+            <div className="rec-waiting" role="status" aria-live="polite">
+              <Hourglass />
+              <div>
+                <strong>{rec.awaiting === "meeting" ? t("recorder.awaitShareTitle") : t("recorder.awaitMicTitle")}</strong>
+                <p>{rec.awaiting === "meeting" ? t("recorder.awaitShare") : t("recorder.awaitMic")}</p>
+                {rec.awaiting === "meeting" && <p className="faint">{t("recorder.awaitCancelNote")}</p>}
+              </div>
             </div>
           )}
 

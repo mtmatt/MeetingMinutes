@@ -1,5 +1,5 @@
-import type { MeetingDetail, Segment, Summary } from "../api/types";
-import type { Locale } from "../api/types";
+import type { Locale, MeetingDetail, Segment, Summary } from "../api/types";
+import { downloadBlob } from "./download";
 
 /** "00:12:40": the same form the summary uses for its citations. */
 function stamp(sec: number): string {
@@ -113,12 +113,5 @@ export function safeFileName(name: string): string {
 }
 
 export function downloadText(filename: string, text: string, type = "text/markdown;charset=utf-8") {
-  const url = URL.createObjectURL(new Blob([text], { type }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  downloadBlob(filename, new Blob([text], { type }));
 }

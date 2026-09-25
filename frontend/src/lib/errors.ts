@@ -37,3 +37,39 @@ export function apiErrorMessage(err: unknown, t: TFn): string {
   }
   return err instanceof Error ? err.message : t("common.error");
 }
+
+/**
+ * Why an upload failed, sorted by what the person can do about it. Only
+ * "retry" failures are worth retrying as-is; the others need a different file,
+ * a server change, or signing in again.
+ */
+export type UploadFailure =
+  /** Dropped connection, server error or transfer mismatch: retrying resumes where it stopped. */
+  | { kind: "retry"; reason: "network" | "server" | "transfer" }
+  /** The file is over the server's MAX_UPLOAD_MB. */
+  | { kind: "too-large"; size: number; limit: number | null }
+  /** A reverse proxy in front of the app refused the request body (HTTP 413 without our error). */
+  | { kind: "server-limit" }
+  /** The server will not take this file (format, validation). */
+  | { kind: "rejected"; message: string }
+  /** Signed out while uploading. */
+  | { kind: "session" };
+
+export function classifyUploadError(err: unknown, fileSize: number, limit: number | null, t: TFn): UploadFailure {
+  if (!(err instanceof ApiError)) return { kind: "retry", reason: "network" };
+  const body = err.body as { limitBytes?: unknown };
+  if (err.code === "too_large") {
+    const max = typeof body.limitBytes === "number" ? body.limitBytes : limit;
+    // "Too large" for a file within the known limit cannot be about the file's size.
+    if (max != null && fileSize <= max) return { kind: "server-limit" };
+    return { kind: "too-large", size: fileSize, limit: max };
+  }
+  if (err.status === 413) return { kind: "server-limit" };
+  if (err.status === 401) return { kind: "session" };
+  if (err.status === 0 || err.code === "network") return { kind: "retry", reason: "network" };
+  if (err.status >= 500 || err.status === 408 || err.status === 429) return { kind: "retry", reason: "server" };
+  if (["bad_chunk", "offset_mismatch", "incomplete", "not_uploading"].includes(err.code) || err.status === 404) {
+    return { kind: "retry", reason: "transfer" };
+  }
+  return { kind: "rejected", message: apiErrorMessage(err, t) };
+}

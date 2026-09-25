@@ -384,9 +384,16 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
             <span className={`switch-state ${follow ? "on" : ""}`}>{follow ? t("common.on") : t("common.off")}</span>
           </span>
         </label>
-        <span className="faint mono transcript-count">
-          {locale === "zh-TW" ? t("meeting.chars", { n: totalWords.toLocaleString() }) : t("meeting.words", { n: totalWords.toLocaleString() })}
-        </span>
+        {follow && detached && activeId != null ? (
+          // In the sticky toolbar rather than floating, so it never covers transcript text.
+          <button type="button" className="btn btn-sm btn-ink back-to-playback" onClick={backToPlayback}>
+            <LocateFixed /> {t("meeting.backToPlayback")}
+          </button>
+        ) : (
+          <span className="faint mono transcript-count">
+            {locale === "zh-TW" ? t("meeting.chars", { n: totalWords.toLocaleString() }) : t("meeting.words", { n: totalWords.toLocaleString() })}
+          </span>
+        )}
       </div>
 
       <div className="transcript-body" ref={listRef}>
@@ -464,12 +471,6 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
           );
         })}
       </div>
-
-      {follow && detached && activeId != null && (
-        <button type="button" className="back-to-playback" onClick={backToPlayback}>
-          <LocateFixed /> {t("meeting.backToPlayback")}
-        </button>
-      )}
 
       {newSpeakerFor && (
         <Modal

@@ -1001,25 +1001,6 @@
 
 /* Shown when the reader scrolled away from the line being played. */
 .back-to-playback {
-  position: fixed;
-  bottom: calc(var(--player-h) + 18px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 46;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 16px;
-  border: 1px solid var(--ink);
-  border-radius: 999px;
-  background: var(--ink);
-  color: var(--bg);
-  font-size: var(--step--1);
-  font-weight: 600;
-  box-shadow: var(--shadow-2);
-  animation: rise-in 220ms var(--ease-out);
-}
-.back-to-playback svg {
-  width: 16px;
-  height: 16px;
+  flex: none;
+  animation: pop-in 180ms var(--ease-out);
 }

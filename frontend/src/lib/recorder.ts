@@ -128,6 +128,8 @@ export interface RecorderCallbacks {
   /** Writing to browser storage failed (quota, private mode...). Recording continues in memory. */
   onSaveError?: (error: unknown) => void;
   onSourceChange?: (kind: SourceKind, state: SourceState) => void;
+  /** The browser is about to ask for this permission (share dialog / microphone prompt). */
+  onAwaitPermission?: (what: SourceKind) => void;
 }
 
 interface Input {
@@ -166,9 +168,11 @@ export class MeetingRecorder {
     this.cb = opts;
     this.source = opts.source;
 
+    if (opts.source === "meeting") opts.onAwaitPermission?.("meeting");
     const tab = opts.source === "meeting" ? await captureTab() : null;
     let mic: MediaStream;
     try {
+      opts.onAwaitPermission?.("mic");
       mic = await captureMic(opts.micDeviceId);
     } catch (e) {
       tab?.getTracks().forEach((t) => t.stop());

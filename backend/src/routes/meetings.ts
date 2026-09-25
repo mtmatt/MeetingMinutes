@@ -116,7 +116,15 @@ meetingRoutes.post("/", async (c) => {
     }),
   );
   if (input.file.size > config.maxUploadBytes) {
-    httpError(413, `File is larger than the ${Math.round(config.maxUploadBytes / 1024 / 1024)} MB limit.`, "too_large");
+    return c.json(
+      {
+        error: `File is larger than the ${Math.round(config.maxUploadBytes / 1024 / 1024)} MB limit.`,
+        code: "too_large",
+        size: input.file.size,
+        limitBytes: config.maxUploadBytes,
+      },
+      413,
+    );
   }
   const ext = (input.file.name.split(".").pop() ?? "").toLowerCase();
   const isVideo = VIDEO_EXTENSIONS.includes(ext);
@@ -175,7 +183,8 @@ meetingRoutes.put("/:id/upload", async (c) => {
   const chunk = new Uint8Array(await c.req.arrayBuffer());
   if (chunk.byteLength === 0) httpError(400, "Empty chunk.", "bad_request");
   if (chunk.byteLength > config.uploadChunkBytes + 1024 || offset + chunk.byteLength > m.media_size) {
-    httpError(413, "Chunk exceeds the declared size.", "too_large");
+    // A transfer problem, not an oversized file: the client can resume from `received`.
+    return c.json({ error: "Chunk does not match the declared file size.", code: "bad_chunk", received: m.media_received }, 400);
   }
   const fh = await open(originalPath(m), offset === 0 ? "w" : "r+");
   try {

@@ -35,7 +35,8 @@ export function bytes(n: number): string {
     v /= 1024;
     i++;
   }
-  return `${v >= 100 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`;
+  // "4 GB" rather than "4.0 GB": limits and many sizes are round numbers.
+  return `${v >= 100 ? v.toFixed(0) : v.toFixed(1).replace(/\.0$/, "")} ${units[i]}`;
 }
 
 const intlLocale = (l: Locale) => (l === "zh-TW" ? "zh-TW" : "en-GB");
