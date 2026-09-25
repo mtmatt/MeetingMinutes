@@ -1,0 +1,215 @@
+/* ------------------------------------------------------------ masthead */
+
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: saturate(1.4) blur(12px);
+  -webkit-backdrop-filter: saturate(1.4) blur(12px);
+  border-bottom: 1px solid var(--rule);
+}
+.masthead::before {
+  /* Hairline in seal red along the very top edge. */
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--accent);
+}
+.masthead-inner {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  height: var(--masthead-h);
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  gap: 36px;
+}
+.masthead-brand {
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.wordmark-text {
+  font-family: var(--font-display);
+  font-size: 1.45rem;
+  font-weight: 560;
+  font-style: italic;
+  letter-spacing: -0.02em;
+  font-variation-settings: "opsz" 72, "SOFT" 100, "WONK" 1;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+.masthead-nav {
+  display: flex;
+  gap: 26px;
+  height: 100%;
+}
+.masthead-nav a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  font-size: var(--step--1);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink-3);
+  text-decoration: none;
+  transition: color var(--dur-fast);
+}
+.masthead-nav a:hover {
+  color: var(--ink);
+}
+.masthead-nav a.active {
+  color: var(--ink);
+}
+.masthead-nav a.active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--ink);
+}
+.masthead-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.masthead-new.active {
+  display: none;
+}
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px 3px 3px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  transition: border-color var(--dur-fast);
+}
+.user-chip:hover {
+  border-color: var(--rule-strong);
+}
+.user-chip-name {
+  font-size: var(--step--1);
+  font-weight: 600;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-chip .chev {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+}
+.menu-row {
+  display: flex;
+  gap: 4px;
+  padding: 4px 6px 8px;
+}
+.menu-chip {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  border-radius: var(--radius-s);
+  font-size: var(--step--2);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.menu-chip svg {
+  width: 13px;
+  height: 13px;
+}
+.menu-chip[aria-pressed="true"] {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+/* ---------------------------------------------------------------- page */
+
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 40px 28px 96px;
+  animation: fade-in 300ms ease;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding-bottom: 20px;
+  margin-bottom: 8px;
+}
+.page-head .eyebrow {
+  margin-bottom: 10px;
+}
+.page-head p.lede {
+  margin-top: 12px;
+  color: var(--ink-2);
+  max-width: 60ch;
+  font-size: var(--step-1);
+}
+
+.splash {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 60dvh;
+}
+.splash-seal {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@media (max-width: 760px) {
+  .masthead-inner {
+    padding: 0 16px;
+    gap: 16px;
+  }
+  .masthead-nav {
+    display: none;
+  }
+  .masthead-new span,
+  .user-chip-name,
+  .user-chip .chev {
+    display: none;
+  }
+  .masthead-new {
+    width: 34px;
+    padding: 0;
+  }
+  .user-chip {
+    padding: 3px;
+  }
+  .page {
+    padding: 24px 16px 80px;
+  }
+  .mobile-nav {
+    display: flex !important;
+  }
+}
+
+/* Bottom navigation for small screens. */
+.mobile-nav {
+  display: none;
+}

@@ -50,6 +50,9 @@ class WorkerConfig:
     diarization_model: str
     max_segment_sec: float
     poll_interval: float
+    # Seconds a GPU session waits for another job before exiting. 0 releases
+    # the GPU as soon as the queue is empty.
+    model_keepalive_sec: float
     extra: dict = field(default_factory=dict)
 
 
@@ -90,4 +93,5 @@ def load_config() -> WorkerConfig:
         diarization_model=os.environ.get("DIARIZATION_MODEL", "pyannote/speaker-diarization-community-1"),
         max_segment_sec=_float("MAX_SEGMENT_SEC", 30.0),
         poll_interval=_float("MM_POLL_INTERVAL", 3.0),
+        model_keepalive_sec=max(0.0, _float("MODEL_KEEPALIVE_SEC", 0.0)),
     )

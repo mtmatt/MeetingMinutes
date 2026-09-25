@@ -151,23 +151,21 @@ meetingRoutes.put("/:id/upload", async (c) => {
   if (!Number.isSafeInteger(offset) || offset !== m.media_received) {
     return c.json({ error: "Offset mismatch.", code: "offset_mismatch", received: m.media_received }, 409);
   }
-  const stream = c.req.raw.body;
-  if (!stream) httpError(400, "Empty chunk.", "bad_request");
-  const path = originalPath(m);
-  const fh = await open(path, offset === 0 ? "w" : "r+");
-  let written = 0;
+  // Chunks are bounded (UPLOAD_CHUNK_MB, enforced by Bun's maxRequestBodySize),
+  // so buffering one chunk in memory is cheap and avoids streaming quirks.
+  const chunk = new Uint8Array(await c.req.arrayBuffer());
+  if (chunk.byteLength === 0) httpError(400, "Empty chunk.", "bad_request");
+  if (chunk.byteLength > config.uploadChunkBytes + 1024 || offset + chunk.byteLength > m.media_size) {
+    httpError(413, "Chunk exceeds the declared size.", "too_large");
+  }
+  const fh = await open(originalPath(m), offset === 0 ? "w" : "r+");
   try {
-    for await (const chunk of stream as unknown as AsyncIterable<Uint8Array>) {
-      if (written + chunk.byteLength > config.uploadChunkBytes + 1024 || offset + written + chunk.byteLength > m.media_size) {
-        httpError(413, "Chunk exceeds the declared size.", "too_large");
-      }
-      await fh.write(chunk, 0, chunk.byteLength, offset + written);
-      written += chunk.byteLength;
-    }
-    await fh.truncate(offset + written);
+    await fh.write(chunk, 0, chunk.byteLength, offset);
+    await fh.truncate(offset + chunk.byteLength);
   } finally {
     await fh.close();
   }
+  const written = chunk.byteLength;
   const received = offset + written;
   db.query("UPDATE meetings SET media_received = $r, progress = $p, updated_at = $t WHERE id = $id").run({
     id: m.id,

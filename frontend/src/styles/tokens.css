@@ -1,0 +1,180 @@
+/*
+ * Minutes design tokens.
+ * Concept: a well-kept minutes ledger. Warm paper, carbon ink, hairline
+ * rules, and a vermilion seal as the single accent. Dark mode is a warm
+ * "night desk" rather than a cold grey.
+ */
+
+:root {
+  --font-display: "Fraunces Variable", "Noto Serif TC", "Songti TC", "Source Han Serif TC", Georgia, serif;
+  --font-sans: "Geist Variable", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --step--2: 0.72rem;
+  --step--1: 0.8125rem;
+  --step-0: 0.9375rem;
+  --step-1: 1.0625rem;
+  --step-2: 1.3rem;
+  --step-3: 1.7rem;
+  --step-4: 2.3rem;
+  --step-5: clamp(2.4rem, 1.6rem + 3vw, 3.6rem);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 72px;
+
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 16px;
+  --radius-pill: 999px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur: 220ms;
+
+  --page-max: 1240px;
+  --masthead-h: 64px;
+  --player-h: 112px;
+
+  /* Light: paper */
+  --bg: #f5f2eb;
+  --bg-grain: #efeae0;
+  --surface: #fbf9f4;
+  --surface-2: #f0ece3;
+  --surface-3: #e7e2d7;
+  --ink: #1c1b18;
+  --ink-2: #57534a;
+  --ink-3: #8a8479;
+  --ink-4: #b3ada1;
+  --rule: #ddd7cb;
+  --rule-strong: #c9c2b4;
+  --accent: #c8412b;
+  --accent-hover: #b0361f;
+  --accent-ink: #fffaf5;
+  --accent-soft: #f6e0d8;
+  --accent-wash: rgba(200, 65, 43, 0.08);
+  --focus: rgba(200, 65, 43, 0.45);
+  --ok: #3b7a55;
+  --ok-soft: #dcebdf;
+  --warn: #a8701a;
+  --warn-soft: #f3e6cc;
+  --danger: #b42318;
+  --danger-soft: #f7dcd8;
+  --info: #3b5b8f;
+  --info-soft: #dfe6f1;
+  --shadow-1: 0 1px 0 rgba(28, 27, 24, 0.04), 0 1px 2px rgba(28, 27, 24, 0.06);
+  --shadow-2: 0 1px 0 rgba(28, 27, 24, 0.04), 0 8px 24px -8px rgba(28, 27, 24, 0.18);
+  --shadow-3: 0 24px 64px -16px rgba(28, 27, 24, 0.35);
+  --scrim: rgba(28, 27, 24, 0.38);
+  --highlight: #f4e3a1;
+
+  --spk-0: #4f5bd5;
+  --spk-1: #0f8b8d;
+  --spk-2: #c07c10;
+  --spk-3: #c2456e;
+  --spk-4: #5f8a1f;
+  --spk-5: #8a56c2;
+  --spk-6: #2d82bd;
+  --spk-7: #b35f35;
+  --spk-8: #56687a;
+  --spk-9: #3b8a5a;
+
+  color-scheme: light;
+}
+
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14130f;
+    --bg-grain: #181712;
+    --surface: #1b1a16;
+    --surface-2: #23211c;
+    --surface-3: #2c2a24;
+    --ink: #ede8dd;
+    --ink-2: #b6afa1;
+    --ink-3: #807a6e;
+    --ink-4: #5c574d;
+    --rule: #2e2b25;
+    --rule-strong: #3d3a32;
+    --accent: #e5664b;
+    --accent-hover: #ef7b62;
+    --accent-ink: #1a0f0c;
+    --accent-soft: #3a211b;
+    --accent-wash: rgba(229, 102, 75, 0.1);
+    --focus: rgba(229, 102, 75, 0.5);
+    --ok: #7cc198;
+    --ok-soft: #1e3126;
+    --warn: #e0ad5a;
+    --warn-soft: #362a16;
+    --danger: #f08a7e;
+    --danger-soft: #3b1d19;
+    --info: #93b0e0;
+    --info-soft: #1d2638;
+    --shadow-1: 0 1px 0 rgba(0, 0, 0, 0.3);
+    --shadow-2: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
+    --shadow-3: 0 30px 80px -20px rgba(0, 0, 0, 0.75);
+    --scrim: rgba(0, 0, 0, 0.55);
+    --highlight: #5a4a17;
+    --spk-0: #8e97f0;
+    --spk-1: #4fc2c0;
+    --spk-2: #e3a94a;
+    --spk-3: #ea7ea0;
+    --spk-4: #9cc45a;
+    --spk-5: #b98ce8;
+    --spk-6: #6db4e6;
+    --spk-7: #e39068;
+    --spk-8: #97a8b8;
+    --spk-9: #74c28f;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #14130f;
+  --bg-grain: #181712;
+  --surface: #1b1a16;
+  --surface-2: #23211c;
+  --surface-3: #2c2a24;
+  --ink: #ede8dd;
+  --ink-2: #b6afa1;
+  --ink-3: #807a6e;
+  --ink-4: #5c574d;
+  --rule: #2e2b25;
+  --rule-strong: #3d3a32;
+  --accent: #e5664b;
+  --accent-hover: #ef7b62;
+  --accent-ink: #1a0f0c;
+  --accent-soft: #3a211b;
+  --accent-wash: rgba(229, 102, 75, 0.1);
+  --focus: rgba(229, 102, 75, 0.5);
+  --ok: #7cc198;
+  --ok-soft: #1e3126;
+  --warn: #e0ad5a;
+  --warn-soft: #362a16;
+  --danger: #f08a7e;
+  --danger-soft: #3b1d19;
+  --info: #93b0e0;
+  --info-soft: #1d2638;
+  --shadow-1: 0 1px 0 rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
+  --shadow-3: 0 30px 80px -20px rgba(0, 0, 0, 0.75);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --highlight: #5a4a17;
+  --spk-0: #8e97f0;
+  --spk-1: #4fc2c0;
+  --spk-2: #e3a94a;
+  --spk-3: #ea7ea0;
+  --spk-4: #9cc45a;
+  --spk-5: #b98ce8;
+  --spk-6: #6db4e6;
+  --spk-7: #e39068;
+  --spk-8: #97a8b8;
+  --spk-9: #74c28f;
+  color-scheme: dark;
+}

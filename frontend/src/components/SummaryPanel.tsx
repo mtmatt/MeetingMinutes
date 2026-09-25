@@ -1,0 +1,410 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, Check, ChevronDown, Copy, Download, FileText, MoreHorizontal, Pencil, Plus, Sparkles, Square, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { api } from "../api/client";
+import type { MeetingDetail, Summary, SummaryRequest } from "../api/types";
+import { useI18n } from "../i18n";
+import { clock, relative } from "../lib/format";
+import { usePlayer } from "../lib/player";
+import { Menu } from "./Menu";
+import { Modal, useConfirm } from "./Modal";
+import { SummaryComposer, defaultOutputLanguage, templateName, useTemplates } from "./SummaryComposer";
+import { useToast } from "./Toast";
+
+const TIMESTAMP = /\[?\b(\d{1,2}):(\d{2}):(\d{2})\b\]?/g;
+
+/** Turn [hh:mm:ss] mentions into links the renderer maps to seek buttons. */
+function linkTimestamps(md: string, duration: number): string {
+  // Leave fenced code blocks untouched.
+  return md
+    .split(/(```[\s\S]*?```)/g)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part.replace(TIMESTAMP, (m, h, mi, s, offset, whole) => {
+            // Skip timestamps that are already link text: [..](..)
+            if (whole[offset + m.length] === "(") return m;
+            const sec = Number(h) * 3600 + Number(mi) * 60 + Number(s);
+            // A time of day ("10:30:00") beyond the recording is left as text.
+            if (duration > 0 && sec > duration + 5) return m;
+            return `[${h.padStart(2, "0")}:${mi}:${s}](#t=${sec})`;
+          }),
+    )
+    .join("");
+}
+
+function Markdown({ content }: { content: string }) {
+  const { seek, duration } = usePlayer();
+  const md = useMemo(() => linkTimestamps(content, duration), [content, duration]);
+  return (
+    <div className="prose">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a({ href, children }) {
+            if (href?.startsWith("#t=")) {
+              const sec = Number(href.slice(3));
+              return (
+                <button className="ts-link mono" onClick={() => seek(sec, true)} title={clock(sec, true)}>
+                  {children}
+                </button>
+              );
+            }
+            return (
+              <a href={href} target="_blank" rel="noopener noreferrer">
+                {children}
+              </a>
+            );
+          },
+          table({ children }) {
+            return (
+              <div className="prose-table">
+                <table>{children}</table>
+              </div>
+            );
+          },
+        }}
+      >
+        {md}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+function Elapsed({ since }: { since: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return <span className="mono">{clock((now - since) / 1000)}</span>;
+}
+
+function Writing({ summary, onCancel }: { summary: Summary; onCancel: () => void }) {
+  const { t } = useI18n();
+  const running = summary.status === "running";
+  return (
+    <div className="writing">
+      <div className="writing-head">
+        <span className="writing-pen">
+          <Sparkles />
+        </span>
+        <div>
+          <div className="writing-title">{running ? t("summary.running") : t("summary.queued")}</div>
+          {running && summary.startedAt && (
+            <div className="faint" style={{ fontSize: "var(--step--1)" }}>
+              <Elapsed since={summary.startedAt} />
+            </div>
+          )}
+        </div>
+        <button className="btn btn-sm btn-ghost" onClick={onCancel} style={{ marginLeft: "auto" }}>
+          <Square /> {t("summary.cancel")}
+        </button>
+      </div>
+      <div className="writing-lines" aria-hidden="true">
+        {[92, 78, 85, 40, 88, 70, 60].map((w, i) => (
+          <div key={i} className="skeleton" style={{ width: `${w}%`, animationDelay: `${i * 120}ms` }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function download(filename: string, text: string) {
+  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function Composer({ meeting, onClose, initial }: { meeting: MeetingDetail; onClose: () => void; initial?: SummaryRequest }) {
+  const { t, locale } = useI18n();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [value, setValue] = useState<SummaryRequest>(
+    initial ?? meeting.autoSummary ?? { templateId: "builtin-minutes", prompt: "", outputLanguage: defaultOutputLanguage(locale) },
+  );
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await api.createSummary(meeting.id, value);
+      await qc.invalidateQueries({ queryKey: ["meeting", meeting.id] });
+      onClose();
+    } catch (e) {
+      toast.error(e);
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      wide
+      title={t("summary.composerTitle")}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn btn-ghost" onClick={onClose}>
+            {t("common.cancel")}
+          </button>
+          <button className="btn btn-primary" onClick={submit} disabled={busy || !value.prompt.trim()}>
+            {busy ? <span className="spinner" /> : <Sparkles />} {t("summary.generate")}
+          </button>
+        </>
+      }
+    >
+      <SummaryComposer value={value} onChange={setValue} />
+    </Modal>
+  );
+}
+
+export function SummaryPanel({ meeting }: { meeting: MeetingDetail }) {
+  const { t, tMaybe, locale } = useI18n();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const qc = useQueryClient();
+  const { data: tpl } = useTemplates();
+  const summaries = meeting.summaries;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [composer, setComposer] = useState<SummaryRequest | null | false>(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Follow the newest version when one is added.
+  const newestId = summaries[0]?.id ?? null;
+  useEffect(() => {
+    setSelectedId(newestId);
+  }, [newestId]);
+
+  const current = summaries.find((s) => s.id === selectedId) ?? summaries[0] ?? null;
+  const versionOf = (s: Summary) => summaries.length - summaries.indexOf(s);
+  const labelOf = (s: Summary) => {
+    const known = s.templateId ? tpl?.templates.find((x) => x.id === s.templateId) : undefined;
+    if (known) return templateName(known, tMaybe);
+    if (s.templateId?.startsWith("builtin-")) return tMaybe(`builtin.${s.templateId}.name`) ?? s.templateName ?? t("summary.custom");
+    return s.templateName ?? t("summary.custom");
+  };
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["meeting", meeting.id] });
+
+  const cancel = async (s: Summary) => {
+    await api.cancelSummary(meeting.id, s.id).catch(toast.error);
+    await invalidate();
+  };
+
+  const remove = async (s: Summary) => {
+    if (!(await confirm({ title: t("summary.deleteTitle"), confirmLabel: t("common.delete"), danger: true }))) return;
+    await api.deleteSummary(meeting.id, s.id).catch(toast.error);
+    await invalidate();
+  };
+
+  const copy = async (s: Summary) => {
+    await navigator.clipboard.writeText(s.content ?? "");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  let body: ReactNode;
+  if (meeting.status !== "ready") {
+    body = (
+      <div className="summary-empty">
+        <FileText />
+        <p>{t("summary.waitTranscript")}</p>
+      </div>
+    );
+  } else if (!current) {
+    body = (
+      <div className="summary-empty">
+        <span className="summary-empty-mark">
+          <Sparkles />
+        </span>
+        <h3>{t("summary.none")}</h3>
+        <p>{t("summary.noneBody")}</p>
+        <button className="btn btn-primary" onClick={() => setComposer(null)}>
+          <Sparkles /> {t("summary.generate")}
+        </button>
+      </div>
+    );
+  } else if (current.status === "queued" || current.status === "running") {
+    body = <Writing summary={current} onCancel={() => cancel(current)} />;
+  } else if (current.status === "failed" || current.status === "canceled") {
+    body = (
+      <div className="summary-failed">
+        <div className={`callout ${current.status === "failed" ? "danger" : ""}`}>
+          <AlertTriangle />
+          <div>
+            <strong>{current.status === "failed" ? t("summary.failed") : t("summary.canceled")}</strong>
+            {current.error && <pre className="summary-error mono">{current.error}</pre>}
+          </div>
+        </div>
+        <button
+          className="btn btn-ink"
+          onClick={() => setComposer({ templateId: current.templateId, prompt: current.prompt, outputLanguage: current.outputLanguage })}
+        >
+          {t("common.retry")}
+        </button>
+      </div>
+    );
+  } else if (editing === current.id) {
+    body = <SummaryEditor summary={current} onDone={() => setEditing(null)} meetingId={meeting.id} />;
+  } else {
+    body = (
+      <>
+        <Markdown content={current.content ?? ""} />
+        <div className="summary-foot">
+          <button className="summary-prompt-toggle" onClick={() => setShowPrompt((v) => !v)} aria-expanded={showPrompt}>
+            <ChevronDown style={{ transform: showPrompt ? "rotate(180deg)" : undefined }} /> {t("summary.promptUsed")}
+          </button>
+          <span className="faint mono">
+            {current.model && <>{current.model} · </>}
+            {current.usage?.input_tokens != null &&
+              t("summary.tokens", {
+                input: current.usage.input_tokens.toLocaleString(),
+                output: (current.usage.output_tokens ?? 0).toLocaleString(),
+              })}
+          </span>
+        </div>
+        {showPrompt && <pre className="summary-prompt mono">{current.prompt}</pre>}
+      </>
+    );
+  }
+
+  return (
+    <div className="summary-panel">
+      <header className="summary-head">
+        <div className="summary-head-left">
+          <h2>{t("meeting.summary")}</h2>
+          {current && summaries.length > 0 && (
+            <Menu
+              align="left"
+              trigger={({ toggle }) => (
+                <button className="version-chip" onClick={toggle}>
+                  <span className="mono">v{versionOf(current)}</span>
+                  <span className="version-chip-name">{labelOf(current)}</span>
+                  <ChevronDown />
+                </button>
+              )}
+            >
+              {(close) =>
+                summaries.map((s) => (
+                  <button
+                    key={s.id}
+                    className="menu-item"
+                    onClick={() => {
+                      setSelectedId(s.id);
+                      close();
+                    }}
+                  >
+                    <span className="mono faint">v{versionOf(s)}</span>
+                    <span>{labelOf(s)}</span>
+                    <span className="end" style={{ fontSize: "var(--step--2)" }}>
+                      {s.status === "done" ? relative(s.createdAt, t, locale) : t(`status.${s.status === "failed" ? "summaryFailed" : s.status === "running" ? "summarizing" : s.status === "queued" ? "summaryQueued" : "failed"}`)}
+                    </span>
+                  </button>
+                ))
+              }
+            </Menu>
+          )}
+        </div>
+        {meeting.status === "ready" && (
+          <div className="summary-actions">
+            {current?.status === "done" && editing !== current.id && (
+              <>
+                <button className="icon-btn" onClick={() => copy(current)} title={t("summary.copyMarkdown")} aria-label={t("summary.copyMarkdown")}>
+                  {copied ? <Check /> : <Copy />}
+                </button>
+                <button
+                  className="icon-btn"
+                  onClick={() => download(`${meeting.title} - v${versionOf(current)}.md`, current.content ?? "")}
+                  title={t("summary.downloadMarkdown")}
+                  aria-label={t("summary.downloadMarkdown")}
+                >
+                  <Download />
+                </button>
+              </>
+            )}
+            {current && (
+              <Menu
+                trigger={({ toggle }) => (
+                  <button className="icon-btn" onClick={toggle} aria-label="More">
+                    <MoreHorizontal />
+                  </button>
+                )}
+              >
+                {(close) => (
+                  <>
+                    {current.status === "done" && (
+                      <button
+                        className="menu-item"
+                        onClick={() => {
+                          setEditing(current.id);
+                          close();
+                        }}
+                      >
+                        <Pencil /> {t("summary.editMarkdown")}
+                      </button>
+                    )}
+                    <button
+                      className="menu-item danger"
+                      onClick={() => {
+                        close();
+                        void remove(current);
+                      }}
+                    >
+                      <Trash2 /> {t("summary.deleteVersion")}
+                    </button>
+                  </>
+                )}
+              </Menu>
+            )}
+            {current && (
+              <button className="btn btn-sm" onClick={() => setComposer(null)}>
+                <Plus /> {t("summary.new")}
+              </button>
+            )}
+          </div>
+        )}
+      </header>
+      <div className="summary-body">{body}</div>
+      {composer !== false && <Composer meeting={meeting} onClose={() => setComposer(false)} initial={composer ?? undefined} />}
+    </div>
+  );
+}
+
+function SummaryEditor({ summary, meetingId, onDone }: { summary: Summary; meetingId: string; onDone: () => void }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [text, setText] = useState(summary.content ?? "");
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.updateSummary(meetingId, summary.id, text);
+      await qc.invalidateQueries({ queryKey: ["meeting", meetingId] });
+      onDone();
+    } catch (e) {
+      toast.error(e);
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="summary-editor">
+      <textarea className="textarea code" value={text} onChange={(e) => setText(e.target.value)} rows={24} autoFocus />
+      <div className="summary-editor-actions">
+        <button className="btn btn-ghost" onClick={onDone}>
+          {t("common.cancel")}
+        </button>
+        <button className="btn btn-ink" onClick={save} disabled={busy}>
+          {busy && <span className="spinner" />} {t("common.save")}
+        </button>
+      </div>
+    </div>
+  );
+}
