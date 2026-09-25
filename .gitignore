@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+data/
+*.log
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.codex-home/
