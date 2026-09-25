@@ -1,0 +1,12 @@
+numpy>=1.26
+imageio-ffmpeg>=0.5.1
+opencc-python-reimplemented>=0.1.7
+
+[gpu]
+torch>=2.8
+torchaudio>=2.8
+qwen-asr==0.0.6
+pyannote.audio<5,>=4.0.1
+
+[vllm]
+qwen-asr[vllm]==0.0.6

@@ -1,0 +1,2 @@
+[console_scripts]
+mm-worker = mm_worker.__main__:main

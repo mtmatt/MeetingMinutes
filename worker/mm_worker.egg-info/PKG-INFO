@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: mm-worker
+Version: 0.1.0
+Summary: GPU transcription worker for MeetingMinutes (Qwen3-ASR + pyannote diarization)
+Requires-Python: <3.13,>=3.10
+Requires-Dist: numpy>=1.26
+Requires-Dist: imageio-ffmpeg>=0.5.1
+Requires-Dist: opencc-python-reimplemented>=0.1.7
+Provides-Extra: gpu
+Requires-Dist: torch>=2.8; extra == "gpu"
+Requires-Dist: torchaudio>=2.8; extra == "gpu"
+Requires-Dist: qwen-asr==0.0.6; extra == "gpu"
+Requires-Dist: pyannote.audio<5,>=4.0.1; extra == "gpu"
+Provides-Extra: vllm
+Requires-Dist: qwen-asr[vllm]==0.0.6; extra == "vllm"
