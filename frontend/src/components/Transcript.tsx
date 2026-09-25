@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Crosshair, Pencil, Search, UserPlus, Users, X } from "lucide-react";
+import { Check, Pencil, Search, UserPlus, Users, X } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api } from "../api/client";
 import type { MeetingDetail, Segment, Speaker } from "../api/types";
@@ -318,9 +318,14 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("meeting.searchTranscript")} />
           {q && <span className="faint mono" style={{ fontSize: "var(--step--2)" }}>{t("meeting.matches", { n: matchCount })}</span>}
         </label>
-        <button className="btn btn-ghost btn-sm" aria-pressed={follow} onClick={() => setFollow((f) => !f)} title={t("meeting.follow")}>
-          <Crosshair style={{ color: follow ? "var(--accent)" : undefined }} /> {t("meeting.follow")}
-        </button>
+        <label className="switch switch-sm" title={t("meeting.followHint")}>
+          <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
+          <span className="switch-track" />
+          <span className="switch-label">
+            {t("meeting.follow")}
+            <span className={`switch-state ${follow ? "on" : ""}`}>{follow ? t("common.on") : t("common.off")}</span>
+          </span>
+        </label>
         <span className="faint mono transcript-count">
           {locale === "zh-TW" ? t("meeting.chars", { n: totalWords.toLocaleString() }) : t("meeting.words", { n: totalWords.toLocaleString() })}
         </span>

@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, ChevronDown, Copy, Download, FileText, MoreHorizontal, Pencil, Plus, Sparkles, Square, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Copy, Download, FileText, MoreHorizontal, Pencil, RefreshCw, Sparkles, Square, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -10,7 +10,7 @@ import { clock, relative } from "../lib/format";
 import { usePlayer } from "../lib/player";
 import { Menu } from "./Menu";
 import { Modal, useConfirm } from "./Modal";
-import { SummaryComposer, defaultOutputLanguage, templateName, useTemplates } from "./SummaryComposer";
+import { DataFlowNote, SummaryComposer, defaultOutputLanguage, normalizeRequest, templateName, useTemplates } from "./SummaryComposer";
 import { useToast } from "./Toast";
 
 const TIMESTAMP = /\[?\b(\d{1,2}):(\d{2}):(\d{2})\b\]?/g;
@@ -129,13 +129,17 @@ export function Composer({ meeting, onClose, initial }: { meeting: MeetingDetail
   const toast = useToast();
   const qc = useQueryClient();
   const [value, setValue] = useState<SummaryRequest>(
-    initial ?? meeting.autoSummary ?? { templateId: "builtin-minutes", prompt: "", outputLanguage: defaultOutputLanguage(locale) },
+    initial ??
+      (meeting.autoSummary
+        ? { ...meeting.autoSummary, prompt: meeting.autoSummary.templateId ? "" : meeting.autoSummary.prompt }
+        : { templateId: "builtin-minutes", prompt: "", outputLanguage: defaultOutputLanguage(locale) }),
   );
   const [busy, setBusy] = useState(false);
+  const { data: templates } = useTemplates();
   const submit = async () => {
     setBusy(true);
     try {
-      await api.createSummary(meeting.id, value);
+      await api.createSummary(meeting.id, normalizeRequest(value, templates?.templates ?? []));
       await qc.invalidateQueries({ queryKey: ["meeting", meeting.id] });
       onClose();
     } catch (e) {
@@ -146,7 +150,7 @@ export function Composer({ meeting, onClose, initial }: { meeting: MeetingDetail
   return (
     <Modal
       wide
-      title={t("summary.composerTitle")}
+      title={meeting.summaries.length ? t("summary.regenerate") : t("summary.generate")}
       onClose={onClose}
       footer={
         <>
@@ -159,7 +163,9 @@ export function Composer({ meeting, onClose, initial }: { meeting: MeetingDetail
         </>
       }
     >
+      <p className="composer-note">{meeting.summaries.length ? t("summary.regenerateNote") : t("summary.firstNote")}</p>
       <SummaryComposer value={value} onChange={setValue} />
+      <DataFlowNote />
     </Modal>
   );
 }
@@ -280,13 +286,12 @@ export function SummaryPanel({ meeting }: { meeting: MeetingDetail }) {
       <header className="summary-head">
         <div className="summary-head-left">
           <h2>{t("meeting.summary")}</h2>
-          {current && summaries.length > 0 && (
+          {current && summaries.length > 1 && (
             <Menu
               align="left"
               trigger={({ toggle }) => (
-                <button className="version-chip" onClick={toggle}>
-                  <span className="mono">v{versionOf(current)}</span>
-                  <span className="version-chip-name">{labelOf(current)}</span>
+                <button className="version-chip" onClick={toggle} title={t("summary.versions")}>
+                  {t("summary.versionOf", { n: versionOf(current), total: summaries.length })}
                   <ChevronDown />
                 </button>
               )}
@@ -301,7 +306,7 @@ export function SummaryPanel({ meeting }: { meeting: MeetingDetail }) {
                       close();
                     }}
                   >
-                    <span className="mono faint">v{versionOf(s)}</span>
+                    <span className="faint">{t("summary.version", { n: versionOf(s) })}</span>
                     <span>{labelOf(s)}</span>
                     <span className="end" style={{ fontSize: "var(--step--2)" }}>
                       {s.status === "done" ? relative(s.createdAt, t, locale) : t(`status.${s.status === "failed" ? "summaryFailed" : s.status === "running" ? "summarizing" : s.status === "queued" ? "summaryQueued" : "failed"}`)}
@@ -364,13 +369,34 @@ export function SummaryPanel({ meeting }: { meeting: MeetingDetail }) {
               </Menu>
             )}
             {current && (
-              <button className="btn btn-sm" onClick={() => setComposer(null)}>
-                <Plus /> {t("summary.new")}
+              <button
+                className="btn btn-sm"
+                onClick={() =>
+                  // Template-based summaries start from the template's current text;
+                  // only a fully custom prompt is carried over verbatim.
+                  setComposer({
+                    templateId: current.templateId,
+                    prompt: current.templateId ? "" : current.prompt,
+                    outputLanguage: current.outputLanguage,
+                  })
+                }
+                title={t("summary.regenerateHint")}
+              >
+                <RefreshCw /> {t("summary.regenerate")}
               </button>
             )}
           </div>
         )}
       </header>
+      {current && meeting.status === "ready" && (
+        <div className="summary-context">
+          <span>
+            {t("summary.templateLabel")}：{labelOf(current)}
+          </span>
+          <span>{relative(current.createdAt, t, locale)}</span>
+          {summaries.length === 1 && <span>{t("summary.version", { n: 1 })}</span>}
+        </div>
+      )}
       <div className="summary-body">{body}</div>
       {composer !== false && <Composer meeting={meeting} onClose={() => setComposer(false)} initial={composer ?? undefined} />}
     </div>

@@ -10,11 +10,12 @@ import {
   MoreHorizontal,
   RefreshCw,
   Trash2,
+  Upload,
   Users,
   Video,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, api, mediaUrl } from "../api/client";
 import type { MeetingDetail } from "../api/types";
 import { Menu } from "../components/Menu";
@@ -27,6 +28,7 @@ import { Transcript } from "../components/Transcript";
 import { useI18n, type TKey } from "../i18n";
 import { bytes, dateTime, duration } from "../lib/format";
 import { PlayerProvider, usePlayer, usePlayerShortcuts } from "../lib/player";
+import { apiErrorMessage, describeFailure } from "../lib/errors";
 
 const PIPELINE: { key: string; label: TKey; stages: string[] }[] = [
   { key: "queued", label: "status.queued", stages: ["queued", "starting", "retrying"] },
@@ -36,22 +38,45 @@ const PIPELINE: { key: string; label: TKey; stages: string[] }[] = [
   { key: "transcribe", label: "stage.transcribing", stages: ["transcribing", "finalizing"] },
 ];
 
-function Pipeline({ meeting }: { meeting: MeetingDetail }) {
+function Pipeline({ meeting, onRetry }: { meeting: MeetingDetail; onRetry: () => void }) {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const current = meeting.status === "queued" ? "queued" : meeting.stage ?? "starting";
   const activeIdx = PIPELINE.findIndex((p) => p.stages.includes(current));
   const pct = Math.round(meeting.progress * 100);
 
   if (meeting.status === "failed") {
+    const failure = describeFailure(meeting.error);
     return (
       <div className="processing failed">
-        <div className="callout danger">
-          <AlertTriangle />
+        <div className="failure-head">
+          <span className="failure-icon">
+            <AlertTriangle />
+          </span>
           <div>
-            <strong>{t("meeting.failedTitle")}</strong>
-            {meeting.error && <pre className="summary-error mono">{meeting.error}</pre>}
+            <h2>{t("meeting.failedTitle")}</h2>
+            <p>{t(failure.key)}</p>
+            <p className="muted">{t(`${failure.key}Next` as TKey)}</p>
           </div>
         </div>
+        <div className="failure-actions">
+          {failure.canRetry && (
+            <button className="btn btn-ink" onClick={onRetry}>
+              <RefreshCw /> {t("library.retry")}
+            </button>
+          )}
+          {failure.reupload && (
+            <button className="btn" onClick={() => navigate("/new")}>
+              <Upload /> {t("library.reupload")}
+            </button>
+          )}
+        </div>
+        {meeting.error && (
+          <details className="tech-details">
+            <summary>{t("meeting.technicalDetails")}</summary>
+            <pre className="mono">{meeting.error}</pre>
+          </details>
+        )}
       </div>
     );
   }
@@ -166,6 +191,15 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
   const [videoMode, setVideoMode] = useState(false);
   const [tab, setTab] = useState<"transcript" | "summary">("transcript");
   usePlayerShortcuts();
+
+  // Deep link from a search result: /m/:id?t=seconds
+  const [params] = useSearchParams();
+  const { seek } = usePlayer();
+  useEffect(() => {
+    const t0 = Number(params.get("t"));
+    if (Number.isFinite(t0) && t0 > 0) seek(t0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ready = meeting.status === "ready";
   const when = meeting.occurredAt ?? meeting.createdAt;
@@ -300,7 +334,17 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
         </div>
       </header>
 
-      {!ready && <Pipeline meeting={meeting} />}
+      {!ready && (
+        <Pipeline
+          meeting={meeting}
+          onRetry={() =>
+            void api
+              .retranscribe(meeting.id)
+              .then(() => qc.invalidateQueries({ queryKey: ["meeting", meeting.id] }))
+              .catch((e) => toast.error(apiErrorMessage(e, t)))
+          }
+        />
+      )}
 
       {ready && (
         <>

@@ -1,13 +1,16 @@
-import { useQuery } from "@tanstack/react-query";
-import { Clock, FileVideo, Languages, Search, Upload, Users, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, Clock, FileVideo, Languages, RefreshCw, Search, Trash2, Upload, Users, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 import { api } from "../api/client";
 import type { MeetingSummary } from "../api/types";
 import { Seal } from "../components/Seal";
 import { MeetingStatus } from "../components/Status";
 import { useI18n, type TKey } from "../i18n";
-import { dayParts, duration, monthYear, time } from "../lib/format";
+import { clock, dateLong, dayParts, duration, monthYear, time } from "../lib/format";
+import { apiErrorMessage, describeFailure } from "../lib/errors";
+import { useConfirm } from "../components/Modal";
+import { useToast } from "../components/Toast";
 import { setPendingFile } from "../lib/pendingFile";
 
 function useDebounced<T>(value: T, ms: number): T {
@@ -27,21 +30,84 @@ function languageLabel(lang: string | null, tMaybe: (k: string) => string | unde
     .join(" + ");
 }
 
-function Row({ m }: { m: MeetingSummary }) {
+function highlight(text: string, q: string): ReactNode {
+  if (!q) return text;
+  const i = text.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0) return text;
+  return (
+    <>
+      {text.slice(0, i)}
+      <mark>{text.slice(i, i + q.length)}</mark>
+      {text.slice(i + q.length)}
+    </>
+  );
+}
+
+function Row({ m, query }: { m: MeetingSummary; query: string }) {
   const { t, tMaybe, locale } = useI18n();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const qc = useQueryClient();
+  const navigate = useNavigate();
   const when = m.occurredAt ?? m.createdAt;
   const { day, weekday } = dayParts(when, locale);
   const lang = languageLabel(m.language, tMaybe);
+  const failure = m.status === "failed" ? describeFailure(m.error) : null;
+
+  // Buttons inside the row link must not trigger navigation.
+  const act = (fn: () => Promise<void> | void) => (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void fn();
+  };
+  const retry = async () => {
+    try {
+      await api.retranscribe(m.id);
+      await qc.invalidateQueries({ queryKey: ["meetings"] });
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t));
+    }
+  };
+  const remove = async () => {
+    if (!(await confirm({ title: t("meeting.deleteTitle"), body: t("meeting.deleteBody"), confirmLabel: t("common.delete"), danger: true }))) return;
+    await api.deleteMeeting(m.id).catch((err) => toast.error(apiErrorMessage(err, t)));
+    await qc.invalidateQueries({ queryKey: ["meetings"] });
+  };
+
+  let preview: ReactNode = null;
+  if (m.match) {
+    preview = (
+      <p className="ledger-preview">
+        <span className="ledger-preview-label">
+          {t("library.foundAt", { t: clock(m.match.start) })}
+        </span>
+        {highlight(m.match.text, query)}
+      </p>
+    );
+  } else if (m.summaryExcerpt) {
+    preview = (
+      <p className="ledger-preview">
+        <span className="ledger-preview-label">{t("library.fromSummary")}</span>
+        {m.summaryExcerpt}
+      </p>
+    );
+  } else if (m.preview) {
+    preview = (
+      <p className="ledger-preview muted-preview">
+        <span className="ledger-preview-label">{t("library.fromTranscript")}</span>
+        {m.preview}
+      </p>
+    );
+  }
+
   return (
-    <Link to={`/m/${m.id}`} className="ledger-row">
-      <div className="ledger-date">
+    <Link to={m.match ? `/m/${m.id}?t=${Math.ceil(m.match.start * 10) / 10}` : `/m/${m.id}`} className={`ledger-row ${failure ? "is-failed" : ""}`}>
+      <div className="ledger-date" aria-label={dateLong(when, locale)}>
         <span className="ledger-day">{day}</span>
-        <span className="smallcaps">{weekday}</span>
+        <span className="ledger-weekday">{weekday}</span>
       </div>
       <div className="ledger-main">
-        <div className="ledger-title-row">
-          <h3 className="ledger-title">{m.title}</h3>
-        </div>
+        <h3 className="ledger-title">{m.title}</h3>
         <div className="ledger-meta">
           <span>
             <Clock /> {time(when, locale)}
@@ -59,12 +125,34 @@ function Row({ m }: { m: MeetingSummary }) {
           )}
           {m.media.hasVideo && (
             <span>
-              <FileVideo />
+              <FileVideo /> {t("library.video")}
             </span>
           )}
         </div>
-        {m.preview && <p className="ledger-preview">{m.preview}</p>}
-        {m.status === "failed" && m.error && <p className="ledger-error">{m.error}</p>}
+        {failure ? (
+          <div className="ledger-failure">
+            <p>
+              <AlertTriangle /> {t(failure.key)}
+            </p>
+            <div className="ledger-failure-actions">
+              {failure.canRetry && (
+                <button className="btn btn-sm" onClick={act(retry)}>
+                  <RefreshCw /> {t("library.retry")}
+                </button>
+              )}
+              {failure.reupload && (
+                <button className="btn btn-sm" onClick={act(() => navigate("/new"))}>
+                  <Upload /> {t("library.reupload")}
+                </button>
+              )}
+              <button className="btn btn-sm btn-ghost btn-danger" onClick={act(remove)}>
+                <Trash2 /> {t("common.delete")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          preview
+        )}
       </div>
       <div className="ledger-status">
         <MeetingStatus m={m} />
@@ -130,11 +218,11 @@ export function LibraryPage() {
     >
       <div className="page-head library-head">
         <div>
-          <div className="smallcaps eyebrow">{query ? `“${query}”` : (total === 1 ? t("library.countOne") : t("library.count", { n: total }))}</div>
+          <div className="eyebrow library-count">{query ? t("library.searchResults", { q: query, n: total }) : total === 1 ? t("library.countOne") : t("library.count", { n: total })}</div>
           <h1>{t("library.title")}</h1>
         </div>
         <div className="library-tools">
-          <label className="input-line library-search">
+          <label className="search-field library-search">
             <Search />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("library.search")} aria-label={t("library.search")} />
             {q && (
@@ -184,7 +272,7 @@ export function LibraryPage() {
                 <span className="ledger-month-count mono">{String(g.items.length).padStart(2, "0")}</span>
               </h2>
               {g.items.map((m) => (
-                <Row key={m.id} m={m} />
+                <Row key={m.id} m={m} query={query} />
               ))}
             </section>
           ))}

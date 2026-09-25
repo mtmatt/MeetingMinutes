@@ -261,3 +261,20 @@ describe("templates", () => {
     expect((await c.del(`/api/templates/${created.template.id}`)).status).toBe(200);
   });
 });
+
+describe("list previews", () => {
+  test("search results include the matching transcript context", async () => {
+    const c = await adminClient();
+    const list = (await (await c.get(`/api/meetings?q=${encodeURIComponent("release")}`)).json()) as any;
+    const hit = list.meetings.find((m: any) => m.match);
+    expect(hit.match.text.toLowerCase()).toContain("release");
+    expect(typeof hit.match.start).toBe("number");
+  });
+
+  test("summarized meetings expose a summary excerpt", async () => {
+    const c = await adminClient();
+    const list = (await (await c.get("/api/meetings")).json()) as any;
+    const withSummary = list.meetings.find((m: any) => m.latestSummary?.status === "done");
+    expect(withSummary.summaryExcerpt).toContain("Prompt length");
+  });
+});

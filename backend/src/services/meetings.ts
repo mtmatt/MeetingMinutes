@@ -52,6 +52,54 @@ export function touchMeeting(m: MeetingRow) {
   publish(m.owner_id, { type: "meeting.updated", meetingId: m.id });
 }
 
+/** Plain text of a Markdown line, for previews. */
+function plain(md: string): string {
+  return md
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`>#|]+/g, "")
+    .replace(/^\s*([-+]|\d+\.)\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * The gist of a summary for list previews: the paragraph under a
+ * "Summary / 摘要 / TL;DR" heading when present, otherwise the first prose
+ * paragraph after the title.
+ */
+export function summaryExcerpt(content: string, max = 180): string | null {
+  const lines = content.replace(/```[\s\S]*?```/g, "").split("\n");
+  const isHeading = (l: string) => /^#{1,6}\s/.test(l);
+  const gist = /^#{1,4}\s*(summary|tl;?dr|overview|摘要|重點|概要|總結)/i;
+  const collect = (from: number) => {
+    const out: string[] = [];
+    for (let i = from; i < lines.length; i++) {
+      const l = lines[i]!.trim();
+      if (isHeading(l)) {
+        if (out.length) break;
+        continue;
+      }
+      if (!l) {
+        if (out.length) break;
+        continue;
+      }
+      if (/^\|/.test(l)) continue;
+      out.push(plain(l));
+    }
+    return out.join(" ").trim();
+  };
+  const at = lines.findIndex((l) => gist.test(l.trim()));
+  let text = at >= 0 ? collect(at + 1) : "";
+  if (!text) {
+    // Skip the title and a short metadata line directly under it.
+    const first = lines.findIndex((l) => /^#\s/.test(l.trim()));
+    text = collect(first >= 0 ? first + 1 : 0);
+    if (text.length < 40) text = collect(lines.findIndex((l, i) => i > first + 1 && isHeading(l.trim())) + 1) || text;
+  }
+  if (!text) return null;
+  return text.length > max ? text.slice(0, max - 1).trimEnd() + "…" : text;
+}
+
 export function meetingSummary(m: MeetingRow) {
   const latest = db
     .query<Pick<SummaryRow, "id" | "status" | "created_at">, { m: string }>(
@@ -60,6 +108,11 @@ export function meetingSummary(m: MeetingRow) {
     .get({ m: m.id });
   const speakerCount =
     db.query<{ n: number }, { m: string }>("SELECT COUNT(*) AS n FROM speakers WHERE meeting_id = $m").get({ m: m.id })?.n ?? 0;
+  const latestDone = db
+    .query<{ content: string | null }, { m: string }>(
+      "SELECT content FROM summaries WHERE meeting_id = $m AND status = 'done' ORDER BY created_at DESC LIMIT 1",
+    )
+    .get({ m: m.id });
   const preview = db
     .query<{ text: string }, { m: string }>(
       "SELECT group_concat(text, ' ') AS text FROM (SELECT text FROM segments WHERE meeting_id = $m ORDER BY idx LIMIT 6)",
@@ -88,6 +141,7 @@ export function meetingSummary(m: MeetingRow) {
     options,
     speakerCount,
     preview: preview ? preview.slice(0, 220) : null,
+    summaryExcerpt: latestDone?.content ? summaryExcerpt(latestDone.content) : null,
     latestSummary: latest ? { id: latest.id, status: latest.status, createdAt: latest.created_at } : null,
     createdAt: m.created_at,
     updatedAt: m.updated_at,

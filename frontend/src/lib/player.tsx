@@ -97,7 +97,11 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
       const clamped = Math.max(0, t);
       setTime(clamped);
       emit(clamped);
-      if (!el) return;
+      if (!el) {
+        // No media element yet (e.g. a deep link on first render): apply once it loads.
+        pendingSeek.current = { t: clamped, play: autoplay };
+        return;
+      }
       if (el.readyState >= 1) {
         el.currentTime = clamped;
         if (autoplay) void el.play().catch(() => undefined);

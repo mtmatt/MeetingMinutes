@@ -44,6 +44,13 @@ h4 {
   font-variation-settings: "opsz" 72, "SOFT" 30;
 }
 
+:lang(zh-Hant-TW) h1,
+:lang(zh-Hant-TW) h2,
+:lang(zh-Hant-TW) h3 {
+  font-family: var(--font-title);
+  font-weight: 620;
+  letter-spacing: 0;
+}
 h1 {
   font-size: var(--step-5);
   font-variation-settings: "opsz" 144, "SOFT" 50, "WONK" 0;

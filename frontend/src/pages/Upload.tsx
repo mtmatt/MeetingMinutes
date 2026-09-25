@@ -1,13 +1,13 @@
-import { AudioLines, FileAudio, FileVideo, Minus, Plus, Upload as UploadIcon, X } from "lucide-react";
+import { AlertCircle, AudioLines, ChevronRight, FileAudio, FileVideo, Minus, Plus, Upload as UploadIcon, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { ApiError, api, uploadFile } from "../api/client";
 import type { Script, SummaryRequest, TranscribeOptions } from "../api/types";
-import { SummaryComposer, defaultOutputLanguage } from "../components/SummaryComposer";
-import { useToast } from "../components/Toast";
+import { DataFlowNote, SummaryComposer, defaultOutputLanguage, normalizeRequest, useTemplates } from "../components/SummaryComposer";
 import { useI18n } from "../i18n";
 import { bytes, clock, fromLocalInput, toLocalInput } from "../lib/format";
 import { takePendingFile } from "../lib/pendingFile";
+import { apiErrorMessage } from "../lib/errors";
 
 const MAX_BYTES = 4096 * 1024 * 1024;
 const AUDIO = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "oga", "opus", "wma", "amr", "aiff", "aif", "caf", "weba"];
@@ -29,13 +29,12 @@ function titleFromFile(name: string) {
     .trim();
 }
 
-function Step({ n, title, children, aside }: { n: string; title: string; children: ReactNode; aside?: ReactNode }) {
+function Step({ n, title, children }: { n: string; title: string; children: ReactNode }) {
   return (
     <section className="form-step">
       <header className="form-step-head">
-        <span className="form-step-n mono">{n}</span>
+        <span className="form-step-n">{n}</span>
         <h2>{title}</h2>
-        {aside && <div className="form-step-aside">{aside}</div>}
       </header>
       <div className="form-step-body">{children}</div>
     </section>
@@ -58,7 +57,6 @@ function Stepper({ value, onChange, min = 1, max = 20 }: { value: number; onChan
 
 export function UploadPage() {
   const { t, tMaybe, locale } = useI18n();
-  const toast = useToast();
   const navigate = useNavigate();
 
   const [file, setFile] = useState<File | null>(null);
@@ -79,6 +77,8 @@ export function UploadPage() {
     outputLanguage: defaultOutputLanguage(locale),
   });
   const [error, setError] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const { data: templates } = useTemplates();
   const [dragging, setDragging] = useState(false);
   const [upload, setUpload] = useState<{ sent: number; total: number; startedAt: number; finishing: boolean } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -159,7 +159,7 @@ export function UploadPage() {
         occurredAt: fromLocalInput(occurredAt),
         file: { name: file.name, size: file.size, type: file.type },
         options,
-        summary: autoSummary && summary.prompt.trim() ? summary : null,
+        summary: autoSummary && summary.prompt.trim() ? normalizeRequest(summary, templates?.templates ?? []) : null,
       });
       meetingIdRef.current = meeting.id;
       await uploadFile(meeting.id, file, chunkSize, (sent, total) => setUpload((u) => (u ? { ...u, sent, total } : u)), ctrl.signal);
@@ -169,8 +169,7 @@ export function UploadPage() {
     } catch (err) {
       setUpload(null);
       if (err instanceof ApiError && err.code === "aborted") return;
-      toast.error(err);
-      setError(err instanceof Error ? err.message : String(err));
+      setError(apiErrorMessage(err, t));
     }
   };
 
@@ -190,19 +189,34 @@ export function UploadPage() {
 
   const isVideo = file ? VIDEO.includes(extOf(file.name)) : false;
 
+  // One-line description of the current transcription settings, shown while collapsed.
+  const settingsSummary = [
+    tMaybe(`lang.${language}`) ?? language,
+    speakerMode === "auto"
+      ? t("upload.speakersAutoShort")
+      : speakerMode === "exact"
+        ? t("upload.speakersExactShort", { n: exact })
+        : speakerMode === "range"
+          ? t("upload.speakersRangeShort", { a: range[0], b: range[1] })
+          : t("upload.speakersOff"),
+    t(script === "zh-TW" ? "upload.scriptTW" : script === "zh-CN" ? "upload.scriptCN" : "upload.scriptNone"),
+    vocabulary.trim() ? t("upload.vocabularyCount", { n: vocabulary.split(/[,，、\n]+/).filter((w) => w.trim()).length }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <div className="upload">
       <div className="page-head">
         <div>
-          <div className="smallcaps eyebrow">{t("nav.new")}</div>
           <h1>{t("upload.title")}</h1>
           <p className="lede">{t("upload.lede")}</p>
         </div>
       </div>
       <hr className="rule-double" />
 
-      <form className="upload-form" onSubmit={submit}>
-        <Step n="01" title={t("upload.step1")}>
+      <form className="upload-form" onSubmit={submit} id="upload-form">
+        <Step n="1" title={t("upload.step1")}>
           {!file ? (
             <label
               className={`dropzone ${dragging ? "dragging" : ""}`}
@@ -228,17 +242,17 @@ export function UploadPage() {
               <span className="file-card-icon">{isVideo ? <FileVideo /> : <FileAudio />}</span>
               <div className="file-card-main">
                 <div className="file-card-name">{file.name}</div>
-                <div className="file-card-meta mono">
+                <div className="file-card-meta">
                   {bytes(file.size)}
                   {mediaDuration != null && <> · {clock(mediaDuration)}</>}
                   {" · "}
                   {extOf(file.name).toUpperCase()}
                 </div>
               </div>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => inputRef.current?.click()}>
+              <button type="button" className="btn btn-sm" onClick={() => inputRef.current?.click()}>
                 {t("upload.replace")}
               </button>
-              <button type="button" className="icon-btn" onClick={() => setFile(null)} aria-label={t("common.delete")}>
+              <button type="button" className="icon-btn" onClick={() => setFile(null)} aria-label={t("upload.removeFile")} title={t("upload.removeFile")}>
                 <X />
               </button>
               <input ref={inputRef} type="file" accept={ACCEPT} className="visually-hidden" onChange={(e) => e.target.files?.[0] && accept(e.target.files[0])} />
@@ -246,13 +260,13 @@ export function UploadPage() {
           )}
         </Step>
 
-        <Step n="02" title={t("upload.step2")}>
+        <Step n="2" title={t("upload.step2")}>
           <div className="grid-2">
             <div className="field">
               <label htmlFor="title">{t("upload.meetingTitle")}</label>
               <input
                 id="title"
-                className="input input-title"
+                className="input"
                 value={title}
                 placeholder={t("upload.titlePlaceholder")}
                 onChange={(e) => {
@@ -269,98 +283,126 @@ export function UploadPage() {
           </div>
         </Step>
 
-        <Step n="03" title={t("upload.step3")}>
-          <div className="field">
-            <span className="field-label">{t("upload.language")}</span>
-            <div className="segmented">
-              {LANGUAGES.map((l) => (
-                <button type="button" key={l} aria-pressed={language === l} onClick={() => setLanguage(l)}>
-                  {tMaybe(`lang.${l}`) ?? l}
-                </button>
-              ))}
-            </div>
-            <span className="field-hint">{t("upload.languageHint")}</span>
-          </div>
+        <Step n="3" title={t("upload.step4")}>
+          <label className="switch">
+            <input type="checkbox" checked={autoSummary} onChange={(e) => setAutoSummary(e.target.checked)} />
+            <span className="switch-track" />
+            <span className="switch-label">{t("upload.autoSummary")}</span>
+          </label>
+          {autoSummary ? (
+            <>
+              <SummaryComposer value={summary} onChange={setSummary} />
+              <DataFlowNote />
+            </>
+          ) : (
+            <p className="muted">{t("upload.noAutoSummary")}</p>
+          )}
+        </Step>
 
-          <div className="field">
-            <span className="field-label">{t("upload.speakers")}</span>
-            <div className="speaker-mode">
-              <div className="segmented">
-                {(["auto", "exact", "range", "off"] as SpeakerMode[]).map((m) => (
-                  <button type="button" key={m} aria-pressed={speakerMode === m} onClick={() => setSpeakerMode(m)}>
-                    {t(m === "auto" ? "upload.speakersAuto" : m === "exact" ? "upload.speakersExact" : m === "range" ? "upload.speakersRange" : "upload.speakersOff")}
-                  </button>
-                ))}
+        <section className="advanced">
+          <button type="button" className="advanced-toggle" aria-expanded={showAdvanced} onClick={() => setShowAdvanced((v) => !v)}>
+            <span className="advanced-title">
+              <ChevronRight />
+              {t("upload.step3")}
+            </span>
+            <span className="advanced-summary">{showAdvanced ? t("upload.advancedHint") : settingsSummary}</span>
+          </button>
+          {showAdvanced && (
+            <div className="advanced-body">
+              <div className="field">
+                <span className="field-label">{t("upload.language")}</span>
+                <div className="segmented">
+                  {LANGUAGES.map((l) => (
+                    <button type="button" key={l} aria-pressed={language === l} onClick={() => setLanguage(l)}>
+                      {tMaybe(`lang.${l}`) ?? l}
+                    </button>
+                  ))}
+                </div>
+                <span className="field-hint">{t("upload.languageHint")}</span>
               </div>
-              {speakerMode === "exact" && <Stepper value={exact} onChange={setExact} />}
-              {speakerMode === "range" && (
-                <span className="range-inputs">
-                  <Stepper value={range[0]} onChange={(n) => setRange([n, Math.max(n, range[1])])} />
-                  <span className="faint">{t("upload.and")}</span>
-                  <Stepper value={range[1]} onChange={(n) => setRange([Math.min(n, range[0]), n])} />
-                </span>
-              )}
-            </div>
-          </div>
 
-          <div className="field">
-            <label htmlFor="vocab">
-              <span>
-                {t("upload.vocabulary")} <span className="faint">· {t("common.optional")}</span>
-              </span>
-            </label>
-            <textarea
-              id="vocab"
-              className="textarea"
-              rows={2}
-              value={vocabulary}
-              onChange={(e) => setVocabulary(e.target.value)}
-              placeholder={t("upload.vocabularyPlaceholder")}
-              maxLength={2000}
-              style={{ minHeight: 64 }}
-            />
-            <span className="field-hint">{t("upload.vocabularyHint")}</span>
-          </div>
+              <div className="field">
+                <span className="field-label">{t("upload.speakers")}</span>
+                <div className="speaker-mode">
+                  <div className="segmented">
+                    {(["auto", "exact", "range", "off"] as SpeakerMode[]).map((m) => (
+                      <button type="button" key={m} aria-pressed={speakerMode === m} onClick={() => setSpeakerMode(m)}>
+                        {t(m === "auto" ? "upload.speakersAuto" : m === "exact" ? "upload.speakersExact" : m === "range" ? "upload.speakersRange" : "upload.speakersOff")}
+                      </button>
+                    ))}
+                  </div>
+                  {speakerMode === "exact" && <Stepper value={exact} onChange={setExact} />}
+                  {speakerMode === "range" && (
+                    <span className="range-inputs">
+                      <Stepper value={range[0]} onChange={(n) => setRange([n, Math.max(n, range[1])])} />
+                      <span className="faint">{t("upload.and")}</span>
+                      <Stepper value={range[1]} onChange={(n) => setRange([Math.min(n, range[0]), n])} />
+                    </span>
+                  )}
+                </div>
+                <span className="field-hint">{t("upload.speakersHint")}</span>
+              </div>
 
-          <div className="field">
-            <span className="field-label">{t("upload.script")}</span>
-            <div className="segmented">
-              {(["zh-TW", "zh-CN", "none"] as Script[]).map((s) => (
-                <button type="button" key={s} aria-pressed={script === s} onClick={() => setScript(s)}>
-                  {t(s === "zh-TW" ? "upload.scriptTW" : s === "zh-CN" ? "upload.scriptCN" : "upload.scriptNone")}
-                </button>
-              ))}
-            </div>
-          </div>
-        </Step>
+              <div className="field">
+                <label htmlFor="vocab">
+                  <span>
+                    {t("upload.vocabulary")} <span className="faint">· {t("common.optional")}</span>
+                  </span>
+                </label>
+                <textarea
+                  id="vocab"
+                  className="textarea"
+                  rows={2}
+                  value={vocabulary}
+                  onChange={(e) => setVocabulary(e.target.value)}
+                  placeholder={t("upload.vocabularyPlaceholder")}
+                  maxLength={2000}
+                  style={{ minHeight: 64 }}
+                />
+                <span className="field-hint">{t("upload.vocabularyHint")}</span>
+              </div>
 
-        <Step
-          n="04"
-          title={t("upload.step4")}
-          aside={
-            <label className="switch">
-              <input type="checkbox" checked={autoSummary} onChange={(e) => setAutoSummary(e.target.checked)} />
-              <span className="switch-track" />
-              <span className="switch-label">{t("upload.autoSummary")}</span>
-            </label>
-          }
-        >
-          <div className={autoSummary ? "" : "disabled-block"} aria-disabled={!autoSummary}>
-            <SummaryComposer value={summary} onChange={setSummary} />
-          </div>
-        </Step>
-
-        <div className="upload-submit">
-          {error && (
-            <div className="field-error" role="alert">
-              {error}
+              <div className="field">
+                <span className="field-label">{t("upload.script")}</span>
+                <div className="segmented">
+                  {(["zh-TW", "zh-CN", "none"] as Script[]).map((sc) => (
+                    <button type="button" key={sc} aria-pressed={script === sc} onClick={() => setScript(sc)}>
+                      {t(sc === "zh-TW" ? "upload.scriptTW" : sc === "zh-CN" ? "upload.scriptCN" : "upload.scriptNone")}
+                    </button>
+                  ))}
+                </div>
+                <span className="field-hint">{t("upload.scriptHint")}</span>
+              </div>
             </div>
           )}
-          <button className="btn btn-primary btn-lg" disabled={!file || !!upload}>
+        </section>
+      </form>
+
+      <div className="submit-bar">
+        <div className="submit-bar-inner">
+          <div className="submit-bar-info">
+            {error ? (
+              <span className="field-error" role="alert">
+                <AlertCircle /> {error}
+              </span>
+            ) : file ? (
+              <>
+                <strong>{title.trim() || file.name}</strong>
+                <span className="faint">
+                  {bytes(file.size)}
+                  {mediaDuration != null && <> · {clock(mediaDuration)}</>}
+                  {autoSummary && <> · {t("upload.willSummarize")}</>}
+                </span>
+              </>
+            ) : (
+              <span className="faint">{t("upload.needFile")}</span>
+            )}
+          </div>
+          <button className="btn btn-primary btn-lg" form="upload-form" disabled={!!upload}>
             <UploadIcon /> {t("upload.submit")}
           </button>
         </div>
-      </form>
+      </div>
 
       {upload && <UploadProgress upload={upload} fileName={file?.name ?? ""} onCancel={cancelUpload} />}
     </div>

@@ -55,6 +55,9 @@ export interface MeetingSummary {
   options: TranscribeOptions;
   speakerCount: number;
   preview: string | null;
+  summaryExcerpt: string | null;
+  /** Present on search results: where the query occurs in the transcript. */
+  match?: { text: string; start: number } | null;
   latestSummary: { id: string; status: SummaryStatus; createdAt: number } | null;
   createdAt: number;
   updatedAt: number;

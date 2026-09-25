@@ -4,9 +4,7 @@
   position: sticky;
   top: 0;
   z-index: 40;
-  background: color-mix(in srgb, var(--bg) 97%, transparent);
-  backdrop-filter: saturate(1.4) blur(12px);
-  -webkit-backdrop-filter: saturate(1.4) blur(12px);
+  background: var(--bg);
   border-bottom: 1px solid var(--rule);
 }
 .masthead::before {
@@ -167,7 +165,8 @@
 .page-head p.lede {
   margin-top: 12px;
   color: var(--ink-2);
-  max-width: 60ch;
+  max-width: 68ch;
+  text-wrap: pretty;
   font-size: var(--step-1);
 }
 

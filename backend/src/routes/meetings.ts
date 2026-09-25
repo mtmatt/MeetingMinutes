@@ -75,7 +75,26 @@ meetingRoutes.get("/", (c) => {
           "SELECT * FROM meetings WHERE owner_id = $u ORDER BY COALESCE(occurred_at, created_at) DESC LIMIT 500",
         )
         .all({ u: user.id });
-  return c.json({ meetings: rows.map(meetingSummary) });
+  if (!q) return c.json({ meetings: rows.map(meetingSummary) });
+  // For searches, show where the words were said.
+  const needle = q.toLowerCase();
+  const find = db.query<{ text: string; start_sec: number }, { m: string; q: string }>(
+    "SELECT text, start_sec FROM segments WHERE meeting_id = $m AND text LIKE $q ESCAPE '\\' ORDER BY idx LIMIT 1",
+  );
+  const like = `%${q.replace(/[\\%_]/g, (ch) => "\\" + ch)}%`;
+  return c.json({
+    meetings: rows.map((m) => {
+      const hit = find.get({ m: m.id, q: like });
+      let match: { text: string; start: number } | null = null;
+      if (hit) {
+        const i = hit.text.toLowerCase().indexOf(needle);
+        const from = Math.max(0, i - 40);
+        const to = Math.min(hit.text.length, i + needle.length + 90);
+        match = { text: (from > 0 ? "…" : "") + hit.text.slice(from, to) + (to < hit.text.length ? "…" : ""), start: hit.start_sec };
+      }
+      return { ...meetingSummary(m), match };
+    }),
+  });
 });
 
 // ---------------------------------------------------------------- create

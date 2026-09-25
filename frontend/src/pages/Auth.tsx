@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, KeyRound } from "lucide-react";
+import { AlertCircle, ArrowRight, KeyRound, Mail } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
-import { ApiError, api } from "../api/client";
+import { api } from "../api/client";
+import { apiErrorMessage } from "../lib/errors";
 import { Seal, Wordmark } from "../components/Seal";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
@@ -11,7 +12,7 @@ import { useAuth } from "../lib/auth";
 const SAMPLE = [
   { t: "00:02:14", who: "Speaker 1", c: 0, text: "所以這個 release 我們下週三前要完成 regression test。" },
   { t: "00:02:21", who: "Speaker 2", c: 1, text: "OK，我來負責 API 的部分，前端交給 Amy。" },
-  { t: "00:02:30", who: "Speaker 3", c: 3, text: "Then let's lock the scope today and review on Friday." },
+  { t: "00:02:30", who: "Speaker 3", c: 3, text: "Then let's lock the scope today and review on Thursday." },
 ];
 
 function AuthLayout({ children }: { children: ReactNode }) {
@@ -62,9 +63,6 @@ function AuthLayout({ children }: { children: ReactNode }) {
   );
 }
 
-function errorText(e: unknown, fallback: string): string {
-  return e instanceof ApiError ? e.message : fallback;
-}
 
 export function LoginPage() {
   const { t } = useI18n();
@@ -76,8 +74,14 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [showForgot, setShowForgot] = useState(false);
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!username.trim() || !password) {
+      setError(t("auth.missingFields"));
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -86,41 +90,67 @@ export function LoginPage() {
       const next = params.get("next");
       navigate(next && next.startsWith("/") && !next.startsWith("//") ? next : "/", { replace: true });
     } catch (err) {
-      setError(errorText(err, t("common.error")));
+      setError(apiErrorMessage(err, t));
       setBusy(false);
     }
   };
 
   return (
     <AuthLayout>
-      <form className="auth-form" onSubmit={submit}>
+      <form className="auth-form" onSubmit={submit} noValidate>
         <div>
           <h2>{t("auth.welcomeBack")}</h2>
-          <p className="muted">{t("auth.signInLede")}</p>
+          <p className="auth-lede">{t("auth.signInLede")}</p>
+          <p className="auth-invite-note">
+            <Mail /> {t("auth.invitedOnly")}
+          </p>
         </div>
         <div className="field">
           <label htmlFor="username">{t("auth.username")}</label>
-          <input id="username" className="input" autoComplete="username" autoFocus value={username} onChange={(e) => setUsername(e.target.value)} required />
+          <input
+            id="username"
+            className="input"
+            autoComplete="username"
+            autoFocus
+            value={username}
+            aria-invalid={!!error}
+            onChange={(e) => {
+              setUsername(e.target.value);
+              setError(null);
+            }}
+          />
         </div>
         <div className="field">
-          <label htmlFor="password">{t("auth.password")}</label>
+          <label htmlFor="password">
+            <span>{t("auth.password")}</span>
+            <button type="button" className="link-btn" onClick={() => setShowForgot((v) => !v)} aria-expanded={showForgot}>
+              {t("auth.forgot")}
+            </button>
+          </label>
           <input
             id="password"
             className="input"
             type="password"
             autoComplete="current-password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
+            aria-invalid={!!error}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setError(null);
+            }}
           />
+          {showForgot && <p className="auth-help">{t("auth.forgotBody")}</p>}
         </div>
-        {error && <div className="field-error" role="alert">{error}</div>}
-        <button className="btn btn-ink btn-lg btn-block" disabled={busy || !username || !password}>
+        {error && (
+          <div className="field-error" role="alert">
+            <AlertCircle /> {error}
+          </div>
+        )}
+        <button className="btn btn-ink btn-lg btn-block" disabled={busy}>
           {busy ? <span className="spinner" /> : null}
           {busy ? t("auth.signingIn") : t("auth.signIn")}
           {!busy && <ArrowRight />}
         </button>
-        <p className="faint auth-footnote">{t("auth.invitedOnly")}</p>
       </form>
     </AuthLayout>
   );
@@ -223,7 +253,7 @@ export function SetupPage() {
       setUser(user);
       navigate("/", { replace: true });
     } catch (err) {
-      setError(errorText(err, t("common.error")));
+      setError(apiErrorMessage(err, t));
       setBusy(false);
     }
   };
@@ -245,7 +275,11 @@ export function SetupPage() {
           <input id="token" className="input mono" value={token} onChange={(e) => setToken(e.target.value)} autoFocus required spellCheck={false} />
         </div>
         <NewAccountFields {...{ username, setUsername, displayName, setDisplayName, password, setPassword, confirm, setConfirm }} />
-        {error && <div className="field-error" role="alert">{error}</div>}
+        {error && (
+          <div className="field-error" role="alert">
+            <AlertCircle /> {error}
+          </div>
+        )}
         <button className="btn btn-primary btn-lg btn-block" disabled={busy}>
           {busy && <span className="spinner" />}
           {t("auth.createAdmin")}
@@ -282,7 +316,7 @@ export function InvitePage() {
       setUser(user);
       navigate("/", { replace: true });
     } catch (err) {
-      setError(errorText(err, t("common.error")));
+      setError(apiErrorMessage(err, t));
       setBusy(false);
     }
   };
@@ -311,7 +345,11 @@ export function InvitePage() {
             {...{ username, setUsername, displayName, setDisplayName, password, setPassword, confirm, setConfirm }}
             showIdentity={!isReset}
           />
-          {error && <div className="field-error" role="alert">{error}</div>}
+          {error && (
+          <div className="field-error" role="alert">
+            <AlertCircle /> {error}
+          </div>
+        )}
           <button className="btn btn-primary btn-lg btn-block" disabled={busy}>
             {busy && <span className="spinner" />}
             {isReset ? t("auth.setPassword") : t("auth.createAccount")}

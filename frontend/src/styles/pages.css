@@ -172,8 +172,42 @@
   gap: 16px;
   flex-wrap: wrap;
 }
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 8px 0 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  transition:
+    border-color var(--dur-fast),
+    box-shadow var(--dur-fast);
+}
+.search-field:focus-within {
+  border-color: var(--ink-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.search-field svg {
+  width: 18px;
+  height: 18px;
+  color: var(--ink-2);
+  flex: none;
+}
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: var(--step-0);
+}
+.search-field input::placeholder {
+  color: var(--ink-3);
+}
 .library-search {
-  width: min(340px, 70vw);
+  width: min(420px, 100%);
 }
 
 .ledger-group {
@@ -200,8 +234,8 @@
 
 .ledger-row {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) auto;
-  gap: 24px;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 20px;
   align-items: start;
   padding: 22px 12px 22px 0;
   border-bottom: 1px solid var(--rule);
@@ -234,14 +268,22 @@
   align-items: flex-start;
   gap: 2px;
 }
+/* The date is a quiet index; the title carries the row. */
 .ledger-day {
   font-family: var(--font-display);
-  font-size: 2.2rem;
+  font-size: 1.55rem;
   line-height: 1;
   font-weight: 400;
-  letter-spacing: -0.03em;
-  font-variation-settings: "opsz" 144;
+  color: var(--ink-2);
+  letter-spacing: -0.02em;
+  font-variation-settings: "opsz" 72;
   font-variant-numeric: lining-nums;
+}
+.ledger-weekday {
+  font-size: var(--step--2);
+  font-weight: 600;
+  color: var(--ink-3);
+  margin-top: 4px;
 }
 .ledger-main {
   display: grid;
@@ -249,8 +291,11 @@
   min-width: 0;
 }
 .ledger-title {
-  font-size: var(--step-2);
-  font-weight: 500;
+  font-family: var(--font-title);
+  font-size: 1.2rem;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
   transition: color var(--dur-fast);
   overflow-wrap: anywhere;
 }
@@ -259,7 +304,7 @@
   flex-wrap: wrap;
   gap: 4px 16px;
   font-size: var(--step--1);
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 .ledger-meta span {
   display: inline-flex;
@@ -271,18 +316,63 @@
   height: 13px;
 }
 .ledger-preview {
-  color: var(--ink-2);
-  font-size: var(--step--1);
-  line-height: 1.6;
+  color: var(--ink);
+  font-size: var(--step-0);
+  line-height: 1.65;
+  margin-top: 4px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   max-width: 78ch;
 }
-.ledger-error {
+.ledger-preview.muted-preview {
+  color: var(--ink-2);
+}
+.ledger-preview-label {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 0 7px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  font-size: var(--step--2);
+  font-weight: 600;
+  color: var(--ink-2);
+  vertical-align: 0.1em;
+  line-height: 1.6;
+}
+.ledger-preview mark {
+  background: var(--highlight);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.ledger-failure {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+}
+.ledger-failure p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: var(--danger);
-  font-size: var(--step--1);
+  font-weight: 550;
+}
+.ledger-failure svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.ledger-failure-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ledger-failure-actions .btn svg {
+  width: 14px;
+  height: 14px;
 }
 .ledger-status {
   padding-top: 4px;
@@ -336,7 +426,7 @@
 
 @media (max-width: 760px) {
   .ledger-row {
-    grid-template-columns: 52px minmax(0, 1fr);
+    grid-template-columns: 44px minmax(0, 1fr);
     gap: 14px;
   }
   .ledger-status {
@@ -344,7 +434,7 @@
     padding-top: 0;
   }
   .ledger-day {
-    font-size: 1.7rem;
+    font-size: 1.35rem;
   }
   .library-search {
     width: 100%;
@@ -362,9 +452,9 @@
 }
 .form-step {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 180px minmax(0, 1fr);
   gap: 32px;
-  padding: 36px 0;
+  padding: 32px 0;
   border-bottom: 1px solid var(--rule);
 }
 .form-step-head {
@@ -373,12 +463,18 @@
   gap: 10px;
 }
 .form-step-n {
-  font-size: var(--step--1);
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid var(--accent);
   color: var(--accent);
-  letter-spacing: 0.1em;
+  font-size: var(--step--1);
+  font-weight: 700;
 }
 .form-step-head h2 {
-  font-size: var(--step-3);
+  font-size: var(--step-2);
 }
 .form-step-aside {
   margin-top: 6px;
@@ -536,8 +632,8 @@
 }
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
 }
 .template-option {
   position: relative;
@@ -573,15 +669,15 @@
   background: var(--accent);
 }
 .template-option-name {
-  font-family: var(--font-display);
+  font-family: var(--font-title);
   font-size: var(--step-1);
-  font-weight: 500;
+  font-weight: 650;
   padding-right: 14px;
 }
 .template-option-desc {
-  font-size: var(--step--2);
-  color: var(--ink-3);
-  line-height: 1.45;
+  font-size: var(--step--1);
+  color: var(--ink-2);
+  line-height: 1.55;
 }
 .composer-prompt {
   min-height: 200px;
@@ -590,6 +686,158 @@
   opacity: 0.45;
   pointer-events: none;
   filter: grayscale(0.4);
+}
+
+.upload {
+  padding-bottom: 88px;
+}
+
+/* Collapsed transcription settings: one line tells you what the defaults are. */
+.advanced {
+  border-bottom: 1px solid var(--rule);
+}
+/* Same two columns as .form-step: label column, then content column. */
+.advanced-toggle {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 6px 32px;
+  align-items: center;
+  width: 100%;
+  padding: 24px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+.advanced-toggle svg {
+  width: 20px;
+  height: 20px;
+  color: var(--ink-2);
+  transition: transform var(--dur) var(--ease-out);
+}
+.advanced-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.advanced-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-title);
+  font-size: var(--step-1);
+  font-weight: 650;
+}
+.advanced-summary {
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.advanced-toggle:hover .advanced-title {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.advanced-body {
+  display: grid;
+  gap: 26px;
+  padding: 0 0 32px 212px;
+  animation: rise-in 240ms var(--ease-out);
+}
+
+/* The primary action stays reachable on a long form. */
+.submit-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  background: var(--surface);
+  border-top: 1px solid var(--rule-strong);
+  box-shadow: 0 -10px 30px -22px rgba(0, 0, 0, 0.35);
+}
+.submit-bar-inner {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 12px 28px calc(12px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.submit-bar-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--step--1);
+}
+.submit-bar-info strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disclosure {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+.disclosure-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--step--1);
+}
+.disclosure-toggle svg {
+  width: 16px;
+  height: 16px;
+  color: var(--ink-2);
+  transition: transform var(--dur) var(--ease-out);
+  flex: none;
+}
+.disclosure.open .disclosure-toggle svg {
+  transform: rotate(90deg);
+}
+.disclosure-hint {
+  font-weight: 400;
+}
+.disclosure-body {
+  display: grid;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+.disclosure-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.dataflow {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-m);
+  background: var(--info-soft);
+  color: var(--ink);
+  font-size: var(--step--1);
+  line-height: 1.6;
+}
+.dataflow svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--info);
+  margin-top: 2px;
+}
+.dataflow strong {
+  display: block;
+  margin-bottom: 2px;
+}
+.composer-note {
+  font-size: var(--step-0);
+  color: var(--ink-2);
 }
 
 .upload-submit {
@@ -648,6 +896,15 @@
     grid-template-columns: 1fr;
     gap: 18px;
     padding: 28px 0;
+  }
+  .advanced-toggle {
+    grid-template-columns: 1fr;
+  }
+  .advanced-body {
+    padding-left: 0;
+  }
+  .submit-bar-inner {
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
   }
   .grid-2 {
     grid-template-columns: 1fr;
@@ -1086,4 +1343,66 @@
 }
 .notfound .btn {
   margin-top: 12px;
+}
+
+/* CJK has no true italic; keep the month label upright in Chinese. */
+:lang(zh-Hant-TW) .ledger-month {
+  font-style: normal;
+  font-weight: 600;
+  font-size: var(--step-0);
+}
+
+.auth-lede {
+  color: var(--ink-2);
+  font-size: var(--step-0);
+}
+.auth-invite-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  font-size: var(--step--1);
+  color: var(--ink);
+  line-height: 1.55;
+}
+.auth-invite-note svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 2px;
+  color: var(--ink-2);
+}
+.auth-help {
+  font-size: var(--step--1);
+  color: var(--ink-2);
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-m);
+  line-height: 1.55;
+}
+.link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: var(--step--1);
+  font-weight: 550;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--rule-strong);
+}
+.link-btn:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+.library-count {
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 8px;
 }

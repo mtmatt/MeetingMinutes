@@ -1,4 +1,6 @@
 import { AlertTriangle, CheckCircle2, X } from "lucide-react";
+import { useI18n } from "../i18n";
+import { apiErrorMessage } from "../lib/errors";
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 
 interface ToastItem {
@@ -15,6 +17,7 @@ interface ToastApi {
 const ToastContext = createContext<ToastApi | null>(null);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
   const [items, setItems] = useState<ToastItem[]>([]);
   const seq = useRef(0);
 
@@ -31,9 +34,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const api = useMemo<ToastApi>(
     () => ({
       show: (m) => push(m, "info"),
-      error: (e) => push(typeof e === "string" ? e : e instanceof Error ? e.message : "Something went wrong", "error"),
+      error: (e) => push(typeof e === "string" ? e : apiErrorMessage(e, t), "error"),
     }),
-    [push],
+    [push, t],
   );
 
   return (

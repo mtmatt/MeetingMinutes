@@ -64,7 +64,7 @@ export function MeetingStatus({ m }: { m: Pick<MeetingSummary, "status" | "stage
       </span>
     );
   return (
-    <span className="pill ok">
+    <span className="pill neutral">
       <span className="dot" />
       {t("status.ready")}
     </span>

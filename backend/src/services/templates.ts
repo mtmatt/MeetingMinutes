@@ -5,6 +5,8 @@ const SHARED_RULES = `Rules:
 - Base everything strictly on the transcript. Never invent names, numbers, dates or commitments.
 - Speaker labels such as "Speaker 1" are automatic. Use the given speaker names; only substitute a real name when the transcript makes it unambiguous.
 - The transcript comes from automatic speech recognition and can contain mis-recognised words. When the intended term is obvious from context (product names, jargon, acronyms), use the correct term; otherwise keep the original wording.
+- Cite the timestamp, as [hh:mm:ss], for every decision, date, number and commitment, so readers can check it against the recording.
+- If people said conflicting things (different dates, owners or figures), do not choose one. State both with their timestamps and list the conflict as an open question.
 - Skip small talk, filler and repetition.`;
 
 interface BuiltinTemplate {

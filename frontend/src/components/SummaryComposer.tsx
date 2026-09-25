@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { RotateCcw } from "lucide-react";
-import { useEffect } from "react";
+import { ChevronRight, RotateCcw, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { OutputLanguage, SummaryRequest, Template } from "../api/types";
 import { useI18n } from "../i18n";
@@ -21,15 +21,43 @@ export function defaultOutputLanguage(locale: string): OutputLanguage {
   return locale === "en" ? "en" : "zh-TW";
 }
 
-/** Template chooser + editable prompt + output language. Controlled component. */
+/**
+ * What to send: a request keeps its templateId only when the prompt is the
+ * template's own text. An edited prompt is stored as custom, so later
+ * regenerations never mistake it for the (possibly updated) template.
+ */
+export function normalizeRequest(req: SummaryRequest, templates: Template[]): SummaryRequest {
+  const tpl = templates.find((x) => x.id === req.templateId);
+  if (tpl && tpl.body.trim() !== req.prompt.trim()) return { ...req, templateId: null };
+  return req;
+}
+
+/** Where meeting data goes: shown wherever a summary can be started. */
+export function DataFlowNote() {
+  const { t } = useI18n();
+  return (
+    <div className="dataflow">
+      <ShieldCheck />
+      <div>
+        <strong>{t("privacy.title")}</strong>
+        <p>{t("privacy.body")}</p>
+      </div>
+    </div>
+  );
+}
+
+/** Template chooser, optional prompt customisation, output language. Controlled. */
 export function SummaryComposer({ value, onChange }: { value: SummaryRequest; onChange: (v: SummaryRequest) => void }) {
   const { t, tMaybe } = useI18n();
   const { data } = useTemplates();
   const templates = data?.templates ?? [];
   const selected = templates.find((x) => x.id === value.templateId) ?? null;
-  const modified = selected ? selected.body.trim() !== value.prompt.trim() : false;
+  // An empty prompt is about to be filled from the template, so it is not "modified".
+  const modified = value.prompt.trim() !== "" && (selected ? selected.body.trim() !== value.prompt.trim() : true);
+  // Open by default only when the prompt already differs from its template.
+  const [open, setOpen] = useState(modified);
 
-  // Fill the prompt from the default template once templates load.
+  // Fill the prompt from the chosen (or first) template once templates load.
   useEffect(() => {
     if (!value.prompt && templates.length) {
       const first = templates.find((x) => x.id === value.templateId) ?? templates[0]!;
@@ -38,15 +66,13 @@ export function SummaryComposer({ value, onChange }: { value: SummaryRequest; on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templates.length]);
 
-  const pick = (tpl: Template) => {
-    onChange({ ...value, templateId: tpl.id, prompt: tpl.body });
-  };
+  const pick = (tpl: Template) => onChange({ ...value, templateId: tpl.id, prompt: tpl.body });
 
   return (
     <div className="composer">
       <div className="field">
         <span className="field-label">{t("upload.template")}</span>
-        <div className="template-grid" role="radiogroup">
+        <div className="template-grid" role="radiogroup" aria-label={t("upload.template")}>
           {templates.map((tpl) => (
             <button
               type="button"
@@ -63,26 +89,7 @@ export function SummaryComposer({ value, onChange }: { value: SummaryRequest; on
           ))}
         </div>
       </div>
-      <div className="field">
-        <div className="field-label">
-          <span>
-            {t("upload.prompt")} {modified && <span className="pill accent" style={{ height: 20, marginLeft: 6 }}>{t("upload.modified")}</span>}
-          </span>
-          {modified && selected && (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => pick(selected)}>
-              <RotateCcw /> {t("upload.resetPrompt")}
-            </button>
-          )}
-        </div>
-        <textarea
-          className="textarea code composer-prompt"
-          value={value.prompt}
-          onChange={(e) => onChange({ ...value, prompt: e.target.value })}
-          rows={10}
-          spellCheck={false}
-        />
-        <span className="field-hint">{t("upload.promptHint")}</span>
-      </div>
+
       <div className="field">
         <span className="field-label">{t("upload.outputLanguage")}</span>
         <div className="segmented" role="group">
@@ -92,6 +99,34 @@ export function SummaryComposer({ value, onChange }: { value: SummaryRequest; on
             </button>
           ))}
         </div>
+      </div>
+
+      <div className={`disclosure ${open ? "open" : ""}`}>
+        <button type="button" className="disclosure-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          <ChevronRight />
+          <span>{t("upload.customPrompt")}</span>
+          {modified ? <span className="pill accent">{t("upload.modified")}</span> : <span className="faint disclosure-hint">{t("upload.customPromptHint")}</span>}
+        </button>
+        {open && (
+          <div className="disclosure-body">
+            <textarea
+              className="textarea code composer-prompt"
+              value={value.prompt}
+              onChange={(e) => onChange({ ...value, prompt: e.target.value })}
+              rows={10}
+              spellCheck={false}
+              aria-label={t("upload.prompt")}
+            />
+            <div className="disclosure-foot">
+              <span className="field-hint">{t("upload.promptHint")}</span>
+              {modified && selected && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => pick(selected)}>
+                  <RotateCcw /> {t("upload.resetPrompt")}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

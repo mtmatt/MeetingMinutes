@@ -163,8 +163,18 @@
   color: var(--ink-3);
 }
 .field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   font-size: var(--step--1);
+  font-weight: 550;
   color: var(--danger);
+}
+.field-error svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 1px;
 }
 
 .input,
@@ -195,9 +205,14 @@
 .textarea:focus,
 .select:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-wash);
+  border-color: var(--ink-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent);
   background: var(--surface);
+}
+.input[aria-invalid="true"],
+.textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-soft);
 }
 .input {
   height: 42px;
@@ -294,6 +309,34 @@
   cursor: pointer;
   user-select: none;
 }
+.switch-sm .switch-track {
+  width: 32px;
+  height: 18px;
+}
+.switch-sm .switch-track::after {
+  width: 12px;
+  height: 12px;
+}
+.switch-sm input:checked + .switch-track::after {
+  transform: translateX(14px);
+}
+.switch-sm .switch-label {
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.switch-state {
+  font-size: var(--step--2);
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.switch-state.on {
+  color: var(--accent);
+}
 .switch input {
   position: absolute;
   opacity: 0;
@@ -358,6 +401,11 @@
 }
 .pill.live .dot {
   animation: pulse-dot 1.4s ease-in-out infinite;
+}
+.pill.neutral {
+  background: var(--surface);
+  color: var(--ink-2);
+  border-color: var(--rule-strong);
 }
 .pill.ok {
   background: var(--ok-soft);
