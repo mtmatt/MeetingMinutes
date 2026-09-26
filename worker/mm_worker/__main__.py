@@ -68,6 +68,9 @@ def cmd_transcribe(cfg: WorkerConfig, path: str, language: str, vocabulary: str,
 
 
 def main(argv: Optional[list[str]] = None):
+    # Playback audio, waveforms and temporary files hold meeting content:
+    # readable by this OS user only (GPU workstations are often shared).
+    os.umask(0o077)
     parser = argparse.ArgumentParser(prog="mm-worker", description="MeetingMinutes GPU transcription worker")
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="cmd")

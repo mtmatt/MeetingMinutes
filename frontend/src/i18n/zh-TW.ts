@@ -367,6 +367,7 @@ export const zhTW: Dict = {
     lastActive: "最後使用 {when}",
   },
   admin: {
+    codexPaused: "為了安全，摘要已暫停：無法確認 Codex 的工具都已關閉。",
     staleWorkersHidden: "另有 {n} 個超過一天沒有連線的 worker 未列出。",
     codexViaChatgpt: "以 ChatGPT 帳號登入",
     vramOthers: "其他程式使用中",
@@ -545,6 +546,7 @@ export const zhTW: Dict = {
     genericNext: "請重新轉錄；若仍失敗，請重新上傳檔案或聯絡管理員。",
   },
   apiError: {
+    tooManySummaries: "你已經有 3 份摘要正在產生，請等其中一份完成再試。",
     badCredentials: "帳號或密碼不正確，請重新輸入。",
     rateLimited: "嘗試次數過多，請等幾分鐘後再試。",
     network: "無法連線到伺服器，請檢查網路連線。",

@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import { getCookie } from "hono/cookie";
 import { requireUser } from "../auth/middleware";
+import { SESSION_COOKIE, resolveSession } from "../auth/service";
 import { subscribe, type AppEvent } from "../services/events";
 import type { AppEnv } from "../types";
 
@@ -10,6 +12,9 @@ eventRoutes.use(requireUser);
 /** Server-sent events stream of changes to the signed-in user's meetings. */
 eventRoutes.get("/", (c) => {
   const userId = c.get("user").id;
+  const token = getCookie(c, SESSION_COOKIE) ?? "";
+  /** Signed out, session revoked or account disabled: the stream ends too. */
+  const stillValid = () => resolveSession(token)?.user.id === userId;
   c.header("X-Accel-Buffering", "no");
   c.header("Cache-Control", "no-cache, no-transform");
   return streamSSE(c, async (stream) => {
@@ -33,6 +38,7 @@ eventRoutes.get("/", (c) => {
         wake = null;
       }
       if (stream.aborted || stream.closed) break;
+      if (!stillValid()) break;
       if (queue.length === 0) {
         await stream.write(": ping\n\n");
         continue;

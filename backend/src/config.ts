@@ -62,8 +62,17 @@ function loadOrCreateSecret(path: string, envValue: string | undefined): string 
   return secret;
 }
 
+// Recordings, transcripts and the database are private: new files are readable
+// by this OS user only, and the data directory is closed to other local users
+// (GPU workstations are often shared).
+process.umask(0o077);
 const dataDir = absPath(str("DATA_DIR", "data"));
-mkdirSync(dataDir, { recursive: true });
+mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+try {
+  chmodSync(dataDir, 0o700);
+} catch {
+  /* not ours to change (e.g. a mounted volume); left as configured */
+}
 
 const publicUrl = str("PUBLIC_URL", "").replace(/\/+$/, "");
 

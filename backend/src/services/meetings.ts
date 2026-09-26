@@ -23,6 +23,23 @@ export const DEFAULT_OPTIONS: TranscribeOptions = {
 export const AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "oga", "opus", "wma", "amr", "aiff", "aif", "caf", "weba"];
 export const VIDEO_EXTENSIONS = ["mp4", "mov", "mkv", "webm", "avi", "m4v", "wmv", "flv", "ts", "mts", "m2ts", "3gp", "mpeg", "mpg"];
 
+/**
+ * Content type for serving an original file, from its (allow-listed) extension.
+ * Never the type the browser declared at upload: that is user input, and e.g.
+ * "text/html" would be served from this site's origin.
+ */
+const MEDIA_TYPES: Record<string, string> = {
+  mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4", aac: "audio/aac", flac: "audio/flac", ogg: "audio/ogg",
+  oga: "audio/ogg", opus: "audio/ogg", wma: "audio/x-ms-wma", amr: "audio/amr", aiff: "audio/aiff", aif: "audio/aiff",
+  caf: "audio/x-caf", weba: "audio/webm", mp4: "video/mp4", mov: "video/quicktime", mkv: "video/x-matroska",
+  webm: "video/webm", avi: "video/x-msvideo", m4v: "video/mp4", wmv: "video/x-ms-wmv", flv: "video/x-flv",
+  ts: "video/mp2t", mts: "video/mp2t", m2ts: "video/mp2t", "3gp": "video/3gpp", mpeg: "video/mpeg", mpg: "video/mpeg",
+};
+
+export function mediaTypeFor(ext: string): string {
+  return MEDIA_TYPES[ext] ?? "application/octet-stream";
+}
+
 export function meetingDir(id: string): string {
   return join(config.mediaDir, id);
 }

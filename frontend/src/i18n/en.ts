@@ -365,6 +365,7 @@ export const en = {
     lastActive: "Last active {when}",
   },
   admin: {
+    codexPaused: "Summaries are paused for safety: Codex tools cannot be verified as disabled.",
     staleWorkersHidden: "{n} more workers have not connected for over a day and are not listed.",
     codexViaChatgpt: "signed in with a ChatGPT account",
     vramOthers: "used by other programs",
@@ -543,6 +544,7 @@ export const en = {
     genericNext: "Try again. If it fails again, upload the file again or contact your administrator.",
   },
   apiError: {
+    tooManySummaries: "You already have 3 summaries in progress. Wait for one to finish.",
     badCredentials: "Incorrect username or password. Please try again.",
     rateLimited: "Too many attempts. Please wait a few minutes and try again.",
     network: "Cannot reach the server. Check your connection.",

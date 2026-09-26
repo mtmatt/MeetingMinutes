@@ -58,6 +58,7 @@ cd "$ROOT"
 if [ ! -f .env ]; then
   say "Creating .env"
   cp .env.example .env
+  chmod 600 .env
   TOKEN=$(head -c 32 /dev/urandom | base64 | tr -d '/+=\n' | head -c 43)
   sed -i "s/^WORKER_TOKEN=.*/WORKER_TOKEN=$TOKEN/" .env
 fi

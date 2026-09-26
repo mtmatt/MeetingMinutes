@@ -2,6 +2,7 @@ import fixWebmDuration from "fix-webm-duration";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TKey } from "../i18n";
 import { MeetingRecorder, RecorderError, extensionFor, type RecordSource, type SourceKind, type SourceState } from "./recorder";
+import { useAuth } from "./auth";
 import { deleteRecording, type RecordingMeta } from "./recordingStore";
 
 export type RecordingPhase = "idle" | "starting" | "recording" | "paused" | "finishing";
@@ -63,6 +64,9 @@ export async function fileForRecording(blob: Blob, meta: RecordingMeta): Promise
  */
 export function useRecording() {
   const rec = useRef<MeetingRecorder | null>(null);
+  const { user } = useAuth();
+  const ownerRef = useRef<string | undefined>(user?.id);
+  ownerRef.current = user?.id;
   const [phase, setPhase] = useState<RecordingPhase>("idle");
   const [source, setSource] = useState<RecordSource>("meeting");
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -104,6 +108,7 @@ export function useRecording() {
         source: src,
         micDeviceId,
         withMic,
+        ownerId: ownerRef.current,
         onSaved: (m) => {
           setSavedMs(m.durationMs);
           setSaveFailed(false);

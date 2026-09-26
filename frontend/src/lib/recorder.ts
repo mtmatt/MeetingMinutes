@@ -143,6 +143,8 @@ interface StartOptions extends RecorderCallbacks {
   micDeviceId?: string;
   /** Meeting recordings only: false records the shared tab alone, without asking for the microphone. */
   withMic?: boolean;
+  /** Signed-in account; stored with the recording so only this account can restore it. */
+  ownerId?: string;
 }
 
 export class MeetingRecorder {
@@ -208,6 +210,7 @@ export class MeetingRecorder {
     this.meta = {
       id: crypto.randomUUID(),
       startedAt: Date.now(),
+      ownerId: opts.ownerId,
       mimeType: this.recorder.mimeType || mimeType || "audio/webm",
       source: opts.source,
       bytes: 0,

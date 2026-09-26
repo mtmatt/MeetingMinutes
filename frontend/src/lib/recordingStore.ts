@@ -18,6 +18,8 @@ export interface RecordingMeta {
   durationMs: number;
   /** True once the user pressed stop (false means it was interrupted). */
   finished: boolean;
+  /** Account that made the recording; on a shared computer, others must not see it. */
+  ownerId?: string;
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -60,12 +62,18 @@ export async function appendChunk(meta: RecordingMeta, chunk: Blob): Promise<voi
   await done(tx);
 }
 
-export async function listRecordings(): Promise<RecordingMeta[]> {
+/**
+ * Recordings kept in this browser by the given account. Recordings from before
+ * accounts were recorded (no ownerId) stay visible, so nobody loses one.
+ */
+export async function listRecordings(ownerId: string): Promise<RecordingMeta[]> {
   const db = await open();
   const tx = db.transaction("meta", "readonly");
   const req = tx.objectStore("meta").getAll();
   await done(tx);
-  return (req.result as RecordingMeta[]).sort((a, b) => b.startedAt - a.startedAt);
+  return (req.result as RecordingMeta[])
+    .filter((m) => !m.ownerId || m.ownerId === ownerId)
+    .sort((a, b) => b.startedAt - a.startedAt);
 }
 
 export async function loadRecording(id: string): Promise<Blob | null> {

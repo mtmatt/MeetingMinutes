@@ -60,3 +60,36 @@ def test_browser_recording_webm_opus(tmp_path):
     wav = audio.decode_pcm(str(out), duration=info.duration)
     assert abs(len(wav) / audio.SAMPLE_RATE - 4.0) < 0.2
     assert audio.write_playback(str(out), tmp_path / "playback.m4a")
+
+
+def test_decoding_stops_at_the_length_limit(tmp_path):
+    # A long recording (or a small file that expands to hours of audio) must not
+    # be decoded into memory past MAX_AUDIO_HOURS.
+    src = tmp_path / "long.wav"
+    sr = 16000
+    wav = (np.sin(np.arange(sr * 20) / sr * 2 * np.pi * 440) * 0.3).astype(np.float32)
+    import wave
+
+    with wave.open(str(src), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes((wav * 32767).astype(np.int16).tobytes())
+    assert len(audio.decode_pcm(str(src), max_seconds=30)) == sr * 20
+    with pytest.raises(audio.MediaError, match="hour limit"):
+        audio.decode_pcm(str(src), max_seconds=5)
+
+
+def test_crafted_playlists_cannot_reach_other_files_or_the_network(tmp_path):
+    # ffmpeg picks formats by content, so an ".mp3" may really be a playlist.
+    other = tmp_path / "other"
+    other.mkdir()
+    for name, body in {
+        "hls.mp3": "#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10,\nhttp://127.0.0.1:9/secret\n#EXT-X-ENDLIST\n",
+        "concat-up.mp3": "ffconcat version 1.0\nfile ../other/original.mp3\n",
+        "concat-abs.mp3": "ffconcat version 1.0\nfile /etc/hostname\n",
+        "concat-net.mp3": "ffconcat version 1.0\nfile http://127.0.0.1:9/secret\n",
+    }.items():
+        (tmp_path / name).write_text(body)
+        with pytest.raises(audio.MediaError):
+            audio.decode_pcm(str(tmp_path / name))

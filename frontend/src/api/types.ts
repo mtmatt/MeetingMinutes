@@ -163,7 +163,8 @@ export interface SystemInfo {
   workers: WorkerInfo[];
   jobs: { queued: number; running: number };
   summaries: { running: number; queued: number; concurrency: number };
-  codex: { available: boolean; loggedIn: boolean; version: string | null; detail: string };
+  /** isolationError: summaries are paused because Codex tools cannot be verified as disabled. */
+  codex: { available: boolean; loggedIn: boolean; version: string | null; detail: string; isolationError?: string | null };
   disk: { freeBytes: number; totalBytes: number } | null;
   stats: { users: number; meetings: number; audioHours: number };
 }

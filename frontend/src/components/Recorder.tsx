@@ -5,6 +5,7 @@ import { clock, dateTime } from "../lib/format";
 import { listMicrophones, recorderSupport, type RecordSource, type SourceKind, type SourceState } from "../lib/recorder";
 import { deleteRecording, listRecordings, loadRecording, type RecordingMeta } from "../lib/recordingStore";
 import { fileForRecording, type RecordedFile, type RecordingController, type SourceHealth } from "../lib/useRecording";
+import { useAuth } from "../lib/auth";
 import { useConfirm } from "./Modal";
 
 /** Live input level, drawn without re-rendering React on every frame. */
@@ -173,6 +174,7 @@ const NO_MIC = "none";
 
 export function Recorder({ rec, onRecorded }: { rec: RecordingController; onRecorded: (r: RecordedFile) => void }) {
   const { t, locale } = useI18n();
+  const { user } = useAuth();
   const confirm = useConfirm();
   const support = useRef(recorderSupport()).current;
   const [source, setSource] = useState<RecordSource>(support.meeting ? "meeting" : "mic");
@@ -188,12 +190,12 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
 
   useEffect(() => {
     void refreshMics();
-    void listRecordings()
+    void listRecordings(user?.id ?? "")
       .then(setPending)
       .catch(() => setPending([]));
     navigator.mediaDevices?.addEventListener?.("devicechange", refreshMics);
     return () => navigator.mediaDevices?.removeEventListener?.("devicechange", refreshMics);
-  }, [refreshMics]);
+  }, [refreshMics, user?.id]);
 
   // Device names become available once microphone permission is granted.
   useEffect(() => {

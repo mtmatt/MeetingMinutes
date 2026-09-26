@@ -170,6 +170,7 @@ class _JobRunner:
                 diarizer=diarizer,
                 max_segment_sec=self.cfg.max_segment_sec,
                 diarizer_unavailable=diarizer_unavailable,
+                max_audio_sec=self.cfg.max_audio_sec,
             )
             accepted = self.client.complete(job_id, result)
             log.info(

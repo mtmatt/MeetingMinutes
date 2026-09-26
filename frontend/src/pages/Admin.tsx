@@ -356,6 +356,16 @@ function System() {
             {data.codex.version} {data.codex.detail && `· ${/logged in using chatgpt/i.test(data.codex.detail) ? t("admin.codexViaChatgpt") : data.codex.detail}`}
           </p>
           {!data.codex.loggedIn && <p className="muted system-help">{t("admin.codexHelp")}</p>}
+          {data.codex.isolationError && (
+            <div className="callout danger" role="alert">
+              <div>
+                <strong>{t("admin.codexPaused")}</strong>
+                <p className="mono" style={{ margin: "4px 0 0", fontSize: "var(--step--2)" }}>
+                  {data.codex.isolationError}
+                </p>
+              </div>
+            </div>
+          )}
         </section>
         <section className="card system-card">
           <h3 className="system-h">

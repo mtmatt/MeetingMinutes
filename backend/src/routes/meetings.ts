@@ -17,6 +17,7 @@ import {
   enqueueTranscription,
   ensureMeetingDir,
   getOwnedMeeting,
+  mediaTypeFor,
   meetingDetail,
   meetingDir,
   meetingSummary,
@@ -46,6 +47,9 @@ const summaryRequestSchema = z.object({
   prompt: z.string().trim().min(1, "The prompt cannot be empty.").max(20000),
   outputLanguage: z.enum(["zh-TW", "en", "auto"]).default("zh-TW"),
 });
+
+/** Queued or running summaries one person may have at once (they use the shared Codex quota). */
+const MAX_ACTIVE_SUMMARIES = 3;
 
 function owned(c: { get(k: "user"): { id: string } }, id: string): MeetingRow {
   const m = getOwnedMeeting(id, c.get("user").id);
@@ -275,6 +279,8 @@ function serveFile(c: any, path: string, mime: string, downloadName?: string) {
   const size = statSync(path).size;
   const headers: Record<string, string> = {
     "Content-Type": mime,
+    // Media is never interpreted as anything else, even by old browsers.
+    "X-Content-Type-Options": "nosniff",
     "Accept-Ranges": "bytes",
     "Cache-Control": "private, max-age=3600",
   };
@@ -313,14 +319,14 @@ meetingRoutes.get("/:id/media/audio", (c) => {
   const m = owned(c, c.req.param("id"));
   if (m.has_playback) return serveFile(c, join(meetingDir(m.id), PLAYBACK_FILE), "audio/mp4");
   if (m.status === "uploading") httpError(404, "Media not available yet.", "not_found");
-  return serveFile(c, originalPath(m), m.media_mime);
+  return serveFile(c, originalPath(m), mediaTypeFor(m.media_ext));
 });
 
 meetingRoutes.get("/:id/media/original", (c) => {
   const m = owned(c, c.req.param("id"));
   if (m.status === "uploading") httpError(404, "Media not available yet.", "not_found");
   const download = c.req.query("download") === "1";
-  return serveFile(c, originalPath(m), m.media_mime, download ? m.media_name : undefined);
+  return serveFile(c, originalPath(m), mediaTypeFor(m.media_ext), download ? m.media_name : undefined);
 });
 
 meetingRoutes.get("/:id/peaks", async (c) => {
@@ -483,6 +489,14 @@ meetingRoutes.post("/:id/summaries", async (c) => {
   if (m.status !== "ready") httpError(409, "The transcript is not ready yet.", "not_ready");
   const input = await body(c, summaryRequestSchema);
   validateTemplate(user.id, input.templateId);
+  // Summaries spend the server's shared Codex quota: a few at a time per person.
+  const active =
+    db
+      .query<{ n: number }, { u: string }>("SELECT COUNT(*) AS n FROM summaries WHERE created_by = $u AND status IN ('queued', 'running')")
+      .get({ u: user.id })?.n ?? 0;
+  if (active >= MAX_ACTIVE_SUMMARIES) {
+    httpError(429, `You already have ${active} summaries in progress. Wait for one to finish.`, "too_many_summaries");
+  }
   const s = enqueueSummary(m, user.id, input);
   return c.json({ summary: summaryPublic(s) }, 201);
 });
@@ -516,8 +530,11 @@ meetingRoutes.patch("/:id/summaries/:sid", async (c) => {
 meetingRoutes.delete("/:id/summaries/:sid", (c) => {
   const m = owned(c, c.req.param("id"));
   const sid = c.req.param("sid");
-  cancelSummary(sid);
-  db.query("DELETE FROM summaries WHERE id = $id AND meeting_id = $m").run({ id: sid, m: m.id });
+  // Only a summary of this (owned) meeting may be stopped or deleted.
+  const s = db.query<{ id: string }, { id: string; m: string }>("SELECT id FROM summaries WHERE id = $id AND meeting_id = $m").get({ id: sid, m: m.id });
+  if (!s) httpError(404, "Summary not found.", "not_found");
+  cancelSummary(s.id);
+  db.query("DELETE FROM summaries WHERE id = $id AND meeting_id = $m").run({ id: s.id, m: m.id });
   touchMeeting(m);
   return c.json({ ok: true });
 });

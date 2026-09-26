@@ -33,6 +33,15 @@ export function createApp() {
       },
       strictTransportSecurity: config.cookieSecure ? "max-age=31536000; includeSubDomains" : false,
       referrerPolicy: "same-origin",
+      // Recording needs the microphone and tab sharing; nothing else is used.
+      permissionsPolicy: {
+        microphone: ["self"],
+        displayCapture: ["self"],
+        camera: [],
+        geolocation: [],
+        payment: [],
+        usb: [],
+      },
       crossOriginEmbedderPolicy: false,
       crossOriginResourcePolicy: "same-origin",
     }),

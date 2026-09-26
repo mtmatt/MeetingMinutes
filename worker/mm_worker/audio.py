@@ -48,10 +48,15 @@ class MediaInfo:
 _DURATION = re.compile(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)")
 
 
+# Uploaded media is untrusted: ffmpeg may only open local files, never network
+# URLs or other protocols a crafted playlist could point at.
+SAFE_INPUT = ["-protocol_whitelist", "file"]
+
+
 def probe(path: str) -> MediaInfo:
     """Inspect streams using `ffmpeg -i` (ffprobe is not bundled with imageio-ffmpeg)."""
     proc = subprocess.run(
-        [ffmpeg_bin(), "-hide_banner", "-nostdin", "-i", path],
+        [ffmpeg_bin(), "-hide_banner", "-nostdin", *SAFE_INPUT, "-i", path],
         capture_output=True,
         text=True,
         errors="replace",
@@ -71,14 +76,25 @@ def probe(path: str) -> MediaInfo:
     return MediaInfo(duration=duration, has_audio=has_audio, has_video=has_video)
 
 
-def decode_pcm(path: str, progress: Optional[Callable[[float], None]] = None, duration: Optional[float] = None) -> np.ndarray:
-    """Decode the first audio stream to 16 kHz mono float32."""
+def decode_pcm(
+    path: str,
+    progress: Optional[Callable[[float], None]] = None,
+    duration: Optional[float] = None,
+    max_seconds: Optional[float] = None,
+) -> np.ndarray:
+    """Decode the first audio stream to 16 kHz mono float32.
+
+    ``max_seconds`` bounds the decoded length regardless of what the file's
+    header claims, so a small crafted file cannot expand into more audio than
+    fits in memory.
+    """
     cmd = [
         ffmpeg_bin(),
         "-hide_banner",
         "-nostdin",
         "-loglevel",
         "error",
+        *SAFE_INPUT,
         "-i",
         path,
         "-map",
@@ -97,12 +113,17 @@ def decode_pcm(path: str, progress: Optional[Callable[[float], None]] = None, du
     chunks: list[bytes] = []
     total = 0
     expected = int((duration or 0) * SAMPLE_RATE * 4)
+    limit = int(max_seconds * SAMPLE_RATE * 4) if max_seconds else None
     while True:
         buf = proc.stdout.read(1 << 22)
         if not buf:
             break
         chunks.append(buf)
         total += len(buf)
+        if limit is not None and total > limit:
+            proc.kill()
+            proc.wait()
+            raise MediaError(f"The recording is longer than the {max_seconds / 3600:g}-hour limit (MAX_AUDIO_HOURS).")
         if progress and expected:
             progress(min(1.0, total / expected))
     stderr = proc.stderr.read().decode(errors="replace") if proc.stderr else ""
@@ -124,6 +145,7 @@ def write_playback(src: str, dest: Path, bitrate: str = "64k") -> bool:
         "-loglevel",
         "error",
         "-y",
+        *SAFE_INPUT,
         "-i",
         src,
         "-map",

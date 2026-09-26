@@ -5,6 +5,10 @@
 # interface up to date before starting, so the browser never gets a stale UI.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# .env holds secrets (worker token, HF token): readable by this user only.
+if [ -f .env ] && [ -n "$(find .env -perm /077 2>/dev/null)" ]; then
+  chmod go-rwx .env && echo "==> Restricted .env to this user (it holds secrets)"
+fi
 export PATH="$HOME/.bun/bin:$PATH"
 
 # Dependencies: reinstall when the lockfile changed since the last install.

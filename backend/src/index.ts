@@ -47,6 +47,12 @@ const url = `${scheme}://${config.host === "0.0.0.0" ? "localhost" : config.host
 console.log(`MeetingMinutes backend listening on ${url}${config.publicUrl ? ` (public URL ${config.publicUrl})` : ""}`);
 if (internal) console.log(`Worker API on http://127.0.0.1:${internal.port} (loopback only)`);
 const loopback = ["127.0.0.1", "localhost", "::1"].includes(config.host);
+if (config.tls && config.trustProxy) {
+  console.warn("");
+  console.warn("  WARNING: TRUST_PROXY=true while serving HTTPS directly. Without a proxy in front, clients can");
+  console.warn("  set X-Forwarded-For themselves and slip past per-IP sign-in limits. Set TRUST_PROXY=false.");
+  console.warn("");
+}
 if (!config.tls && !loopback && !config.trustProxy) {
   console.warn("");
   console.warn(`  WARNING: serving plain HTTP on ${config.host}. Passwords would cross the network unencrypted,`);

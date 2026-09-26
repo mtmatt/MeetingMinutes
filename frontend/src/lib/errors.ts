@@ -27,6 +27,7 @@ const API_ERRORS: Record<string, TKey> = {
   already_setup: "apiError.alreadySetup",
   too_large: "apiError.tooLarge",
   unsupported_type: "apiError.unsupportedType",
+  too_many_summaries: "apiError.tooManySummaries",
 };
 
 /** A localised message for an API error, falling back to the server's text. */

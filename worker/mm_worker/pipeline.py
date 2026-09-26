@@ -98,6 +98,7 @@ def run_job(
     diarizer: Optional[DiarizerLike],
     max_segment_sec: float = 30.0,
     diarizer_unavailable: Optional[str] = None,
+    max_audio_sec: Optional[float] = None,
 ) -> dict:
     """Transcribe one job. ``diarizer_unavailable`` is why there is no diarizer, if there is none."""
     opts = job.options
@@ -109,7 +110,11 @@ def run_job(
     info = audio.probe(job.media_path)
     if not info.has_audio:
         raise audio.MediaError("The file has no audio track.")
-    wav = audio.decode_pcm(job.media_path, progress=lambda f: progress("decoding", f), duration=info.duration)
+    if max_audio_sec and info.duration and info.duration > max_audio_sec:
+        raise audio.MediaError(f"The recording is longer than the {max_audio_sec / 3600:g}-hour limit (MAX_AUDIO_HOURS).")
+    wav = audio.decode_pcm(
+        job.media_path, progress=lambda f: progress("decoding", f), duration=info.duration, max_seconds=max_audio_sec
+    )
     sr = audio.SAMPLE_RATE
     duration = len(wav) / sr
     if duration < 0.5:

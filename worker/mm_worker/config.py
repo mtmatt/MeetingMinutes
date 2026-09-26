@@ -53,6 +53,8 @@ class WorkerConfig:
     # Seconds a GPU session waits for another job before exiting. 0 releases
     # the GPU as soon as the queue is empty.
     model_keepalive_sec: float
+    # Longest recording accepted, in seconds (MAX_AUDIO_HOURS); bounds decoded audio in memory.
+    max_audio_sec: float = 8 * 3600
     extra: dict = field(default_factory=dict)
 
 
@@ -99,4 +101,5 @@ def load_config() -> WorkerConfig:
         max_segment_sec=_float("MAX_SEGMENT_SEC", 30.0),
         poll_interval=_float("MM_POLL_INTERVAL", 3.0),
         model_keepalive_sec=max(0.0, _float("MODEL_KEEPALIVE_SEC", 0.0)),
+        max_audio_sec=max(0.1, _float("MAX_AUDIO_HOURS", 8.0)) * 3600,
     )

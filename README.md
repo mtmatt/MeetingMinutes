@@ -203,12 +203,13 @@ All settings are environment variables. Put them in `.env` at the repository roo
 | `TLS_CERT_FILE` / `TLS_KEY_FILE` | empty | Serve HTTPS directly (see "Option A"). |
 | `INTERNAL_PORT` | `8788` | Loopback-only worker API port, used when `TLS_CERT_FILE` is set. |
 | `MAX_UPLOAD_MB` / `UPLOAD_CHUNK_MB` | `4096` / `32` | Largest accepted file, and the size of each upload request. The upload page shows `MAX_UPLOAD_MB` and rejects larger files before sending. A reverse proxy must allow request bodies larger than `UPLOAD_CHUNK_MB` (for example nginx `client_max_body_size 64m`); otherwise users see "the server refused the upload (HTTP 413)". |
+| `MAX_AUDIO_HOURS` | `8` | Longest recording a worker decodes. Longer (or crafted) files fail with a clear message instead of exhausting memory. |
 | `HF_TOKEN` | – | Enables speaker diarization. |
 | `ASR_MODEL` / `ASR_BACKEND` | `Qwen/Qwen3-ASR-1.7B` / `transformers` | Recognition model and engine (`vllm` for speed). |
 | `WORKER_GPUS` | all | GPUs to run workers on, e.g. `0,1`. |
 | `MODEL_KEEPALIVE_SEC` | `0` | Seconds a GPU session waits for more work before releasing the GPU. |
 | `CODEX_MODEL` / `CODEX_REASONING_EFFORT` | Codex defaults | Summary model settings. |
-| `CODEX_CONCURRENCY` | `1` | Parallel summaries (each uses quota). |
+| `CODEX_CONCURRENCY` | `1` | Parallel summaries (each uses quota). Each person can have at most 3 summaries queued or running. |
 
 ## How summaries use Codex
 
@@ -219,7 +220,14 @@ codex exec --ephemeral --sandbox read-only --ignore-user-config --skip-git-repo-
            --disable shell_tool --disable unified_exec … -c web_search="disabled" --json -o <file> -
 ```
 
-It runs in an empty temporary directory, with the prompt (instructions, meeting metadata, and the speaker-labelled transcript) on stdin. Codex has no tools and no writable disk. The prompt tells the model to treat the transcript as untrusted data. The backend only disables feature flags that the installed Codex version actually reports, because unknown flags are a hard error. The admin page shows whether Codex is signed in.
+It runs in an empty temporary directory, with the prompt (instructions, meeting metadata, and the speaker-labelled transcript) on stdin. The prompt tells the model to treat the transcript as untrusted data, but the safeguards below do not rely on the model obeying it:
+
+- **Tools off, verified**: before the first run, the backend reads `codex features list` and checks that every tool that could act on the machine (`shell_tool`, `unified_exec`, `view_image`) is known and will be disabled. If the listing cannot be read, or a newer Codex renames one of them, summaries are paused (fail closed) and the admin page says why, instead of running with a tool left on. Unknown flags are a hard error in Codex, so only features the installed version reports are passed.
+- **Tripwire**: the run is watched through `--json`. Any event other than text, reasoning, or a plan (for example a command or file access) kills Codex immediately and discards the result.
+- **No secrets in reach**: Codex gets only an allowlisted environment (what it needs to run and sign in: `PATH`, `HOME`, `CODEX_HOME`, its own API key if you use one, locale, CA and proxy settings), never the worker token, `HF_TOKEN`, or the data directory path. The read-only sandbox prevents writes.
+- **Output check**: a summary that contains a server credential (the worker token, API keys, or the Codex login) is discarded.
+
+The admin page shows whether Codex is signed in, and whether summaries are paused.
 
 ## Security model
 
@@ -228,9 +236,19 @@ It runs in an empty temporary directory, with the prompt (instructions, meeting 
 - **CSRF**: every state-changing API call must carry a custom `X-MM-Client` header, which cross-site forms cannot send and cross-origin scripts cannot send without a CORS preflight that is never granted. A foreign `Origin` header is also rejected.
 - **Brute force**: failed sign-ins are limited per IP (20 per 15 minutes) and per username (8 per 15 minutes). Setup and invite tokens are rate-limited too, and unknown usernames take the same time to fail as wrong passwords.
 - **Bootstrap**: the first admin needs the setup token from the server log or data directory, so a fresh public instance cannot be claimed by a stranger.
-- **Isolation**: every meeting, media file, export, and summary query is scoped to its owner.
-- **Headers**: a strict Content-Security-Policy (no third-party origins; fonts are self-hosted), `frame-ancestors 'none'`, and HSTS over HTTPS.
-- **Workers** authenticate with a shared bearer token (`WORKER_TOKEN` or `data/worker.token`), compared in constant time.
+- **Isolation**: every meeting, media file, export, and summary query is scoped to its owner; someone else's meeting or summary is answered with 404, not 403, so IDs cannot be probed. The live-update stream closes when its session is signed out or the account is disabled.
+- **Uploaded files**: stored under random IDs, served with a media type derived from the checked file extension (never the type the browser declared), `X-Content-Type-Options: nosniff`, and the site CSP, so an uploaded HTML or SVG file cannot run as a page. ffmpeg reads them with `-protocol_whitelist file`, so a crafted playlist cannot fetch URLs or other files, and decoding stops at `MAX_AUDIO_HOURS`.
+- **Browser recordings**: unsent recordings kept in the browser (IndexedDB) are tagged with the account that made them and are shown only to that account on a shared computer.
+- **Quotas**: at most 3 summaries queued or running per person, so one account cannot drain the shared Codex plan.
+- **Files on disk**: the server and worker create everything with mode `0600`/`0700` (`umask 077`), and the data directory is restricted to its owner at every start. The scripts make `.env` readable by its owner only.
+- **Headers**: a strict Content-Security-Policy (no third-party origins; fonts are self-hosted), `frame-ancestors 'none'`, HSTS over HTTPS, and a Permissions-Policy that allows only the microphone and tab capture (for recording) and only on this site.
+- **Workers** authenticate with a shared bearer token (`WORKER_TOKEN` or `data/worker.token`), compared in constant time. With built-in HTTPS, the worker API listens only on loopback (`INTERNAL_PORT`).
+
+Recommended for a deployment:
+
+- Run the server and worker as a dedicated OS user that owns only this checkout, the data directory, and its Codex login; nothing else of value should be readable by that user.
+- Open only the HTTPS port in the firewall. Keep `TRUST_PROXY=false` unless a reverse proxy is in front; with built-in HTTPS, trusting `X-Forwarded-For` would let clients choose the address used for sign-in rate limits (the server warns about this at startup).
+- Dependencies: `bun audit` is clean. `pip-audit` on the worker reports advisories in `transformers`, `accelerate`, `torch`, and `vllm`. They concern loading untrusted model checkpoints, the vLLM HTTP server, or local attackers, none of which this worker does or exposes: it loads only the configured Hugging Face models, and vLLM (optional) is used in-process. Upgrade when `qwen-asr` allows newer pins.
 
 ## Development
 
@@ -273,4 +291,5 @@ deploy/    Caddyfile, nginx.conf, systemd user units
   If pyannote runs but still merges people, give the number of speakers: automatic detection can merge similar voices into one, while a given count (or range) splits into exactly that many.
 - **Backups**: copy `data/`. SQLite runs in WAL mode; use `sqlite3 data/meetingminutes.sqlite ".backup backup.sqlite"` for a consistent snapshot while the server is running.
 - **Stuck jobs**: if a worker dies mid-job, the backend notices the missing heartbeat within 3 minutes and requeues the job (up to 3 attempts).
+- **Summaries paused**: if the admin page says summaries are paused, the installed Codex could not prove that its tools are off (usually after a Codex upgrade renamed a feature). Check `backend/node_modules/.bin/codex features list`, and update this project or pin the previous Codex version.
 - **Admin CLI**: `bun run admin list-users | reset-password <user> | create-admin <user> | setup-token | worker-token`.

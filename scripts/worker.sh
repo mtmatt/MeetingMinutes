@@ -9,6 +9,10 @@
 # while jobs are being processed.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# .env holds secrets (worker token, HF token): readable by this user only.
+if [ -f .env ] && [ -n "$(find .env -perm /077 2>/dev/null)" ]; then
+  chmod go-rwx .env && echo "==> Restricted .env to this user (it holds secrets)"
+fi
 export PATH="$HOME/.local/bin:$PATH"
 ROOT=$PWD
 
