@@ -1,0 +1,6 @@
+# `bun test` from the repository root runs the backend tests with the same
+# isolation as `bun run test`: a throwaway data directory and a fake Codex, so
+# tests never touch real data or spend the real Codex quota.
+[test]
+root = "backend"
+preload = ["./backend/test/setup.ts"]

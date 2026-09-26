@@ -1,0 +1,226 @@
+/* Rendered summaries: a printed-minutes look. */
+
+.prose {
+  font-size: 0.98rem;
+  line-height: 1.75;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.prose > :first-child {
+  margin-top: 0;
+}
+.prose h1 {
+  font-family: var(--font-title);
+  font-weight: var(--h2-weight);
+  font-size: var(--step-2);
+  line-height: 1.15;
+  margin: 0 0 18px;
+  letter-spacing: -0.02em;
+  font-variation-settings: "opsz" 96, "SOFT" 50;
+}
+.prose h2 {
+  font-size: var(--step-1);
+  font-family: var(--font-sans);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 32px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--step--1);
+}
+.prose h3 {
+  font-family: var(--font-title);
+  font-weight: var(--h3-weight);
+  font-size: var(--step-1);
+  margin: 24px 0 8px;
+}
+.prose h4 {
+  font-size: var(--step-0);
+  margin: 18px 0 6px;
+}
+.prose p {
+  margin: 0 0 12px;
+}
+.prose ul,
+.prose ol {
+  margin: 0 0 14px;
+  padding-left: 1.3em;
+}
+.prose li {
+  margin: 4px 0;
+  padding-left: 4px;
+}
+.prose li::marker {
+  color: var(--ink-3);
+}
+.prose ol li::marker {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+.prose strong {
+  font-weight: 650;
+}
+.prose em {
+  font-style: italic;
+}
+.prose a {
+  color: var(--accent);
+}
+.prose blockquote {
+  margin: 14px 0;
+  padding: 4px 0 4px 16px;
+  border-left: 2px solid var(--accent);
+  color: var(--ink-2);
+  font-size: 1rem;
+}
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.prose pre {
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  padding: 14px;
+  overflow-x: auto;
+}
+.prose pre code {
+  border: 0;
+  padding: 0;
+  background: none;
+}
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 24px 0;
+}
+
+/* GFM task lists render as checkboxes. */
+.prose li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-left: -1.3em;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.prose input[type="checkbox"] {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--ink-3);
+  border-radius: 4px;
+  flex: none;
+  transform: translateY(2px);
+  margin: 0;
+}
+.prose input[type="checkbox"]:checked {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.prose-table {
+  overflow-x: auto;
+  margin: 8px 0 18px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+}
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--step--1);
+  line-height: 1.5;
+}
+.prose th {
+  text-align: left;
+  font-weight: 650;
+  font-size: var(--step--2);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+.prose td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+.prose tr:last-child td {
+  border-bottom: 0;
+}
+
+.ts-link {
+  display: inline;
+  border: 0;
+  padding: 0 4px;
+  margin: 0 1px;
+  border-radius: 4px;
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-size: 0.8em;
+  font-weight: 600;
+  cursor: pointer;
+  vertical-align: 0.05em;
+}
+.ts-link:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Hover/focus preview of the transcript at a summary timestamp. */
+.ts-wrap {
+  position: relative;
+  display: inline;
+}
+.ts-quote {
+  position: absolute;
+  z-index: 30;
+  /* Placed below by default; flipped above and nudged sideways in JS when it would be clipped. */
+  left: var(--dx, 0px);
+  top: calc(100% + 6px);
+  width: min(380px, 80vw);
+  display: none;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  font-size: var(--step--1);
+  line-height: 1.6;
+  color: var(--ink);
+  text-align: left;
+  white-space: normal;
+}
+.ts-quote.above {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+.ts-wrap:hover .ts-quote,
+.ts-wrap:focus-within .ts-quote {
+  display: grid;
+  animation: pop-in 160ms var(--ease-out);
+}
+.ts-quote-head {
+  font-size: var(--step--2);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.ts-quote-line {
+  display: grid;
+  gap: 1px;
+}
+.ts-quote-line + .ts-quote-line {
+  opacity: 0.75;
+}
+.ts-quote-who {
+  font-weight: 650;
+  font-size: var(--step--2);
+}

@@ -1,0 +1,295 @@
+# Minutes
+
+A self-hosted meeting-minutes service. Upload a recording (audio or video). It is transcribed **locally on your own GPUs**, with speaker separation and Taiwan Traditional Chinese output, and then summarised by **Codex**, billed to your ChatGPT plan, using a prompt you choose.
+
+- **Backend**: TypeScript on Bun, with Hono and SQLite (`bun:sqlite`).
+- **Frontend**: React and Vite with a custom design system, in English and 繁體中文, with light and dark themes.
+- **GPU worker**: Python, running Qwen3-ASR-1.7B for recognition and pyannote community-1 for speaker diarization.
+- **No root required** anywhere: install, run, and update all happen as a normal user.
+
+```
+ browser ──HTTPS──▶ Caddy/nginx ──▶ backend (Bun, :8787) ──── SQLite + media files (data/)
+                                     │    ▲         │
+                     spawns per job  │    │ pull    │ codex exec (read-only, tools off)
+                                     ▼    │ jobs    ▼
+                                  ChatGPT/Codex   GPU worker supervisor (no CUDA while idle)
+                                                        │ spawns on demand
+                                                        ▼
+                                                  GPU session: Qwen3-ASR + pyannote → exits, VRAM freed
+```
+
+## Features
+
+- **Upload** audio or video up to 4 GB. Uploads are chunked and resumable, so they survive flaky connections and proxy body limits.
+- **Record in the browser**:
+  - **Online meeting** (Google Meet, Teams and other meetings in a browser tab): captures the meeting tab's audio and your microphone, mixed into one track. The tab alone would miss your own voice, because a meeting tab never plays it back.
+  - **Microphone**: for in-room meetings.
+  - The recording is saved to the browser's IndexedDB every 5 seconds, so a closed tab or crash loses at most a few seconds; interrupted recordings can be restored and uploaded later.
+- **Transcription options**: language (auto-detect handles Mandarin–English code-switching), speaker count (auto, exact, or range), a vocabulary list fed to the recogniser as context, and Chinese script (Taiwan Traditional via OpenCC `s2twp`, Simplified, or as recognised).
+- **Summaries**: pick a template, edit the prompt for this upload, and choose the output language. Summaries can run automatically when the transcript is ready, and you can re-run them any time with a different prompt; every run is kept as a version.
+- **Meeting view**:
+  - a waveform with one lane per speaker;
+  - a transcript that highlights and follows playback;
+  - click any line or any `[hh:mm:ss]` in a summary to jump there;
+  - rename speakers, reassign paragraphs, edit text;
+  - talk-time per speaker;
+  - search inside the transcript;
+  - optional video pane.
+- **Exports**: TXT, Markdown, SRT, WebVTT, JSON, the original media, and summaries as `.md`.
+- **Templates**: six built-ins (minutes, action items, executive brief, detailed notes, decision log, lecture notes) plus your own.
+- **Accounts**:
+  - first-run admin setup protected by a one-time token;
+  - invitation links;
+  - password reset links;
+  - roles, disabling users, and a per-user session list with remote sign-out.
+- **Admin system page**: GPU workers (model state, VRAM), queue, Codex login status, and disk usage.
+- **Live updates** over Server-Sent Events: progress, stages, and summaries appear without reloading.
+
+## Choosing the ASR model (RTX 4090)
+
+The target is Mandarin–English code-switched meetings, with Traditional Chinese output, on one or two RTX 4090s (24 GB each).
+
+| Option | Chinese | English | Code-switching | Notes |
+| --- | --- | --- | --- | --- |
+| **Qwen3-ASR-1.7B** (chosen) | AISHELL-2 WER **2.71** | LibriSpeech 1.63 / 3.38 | strong; language ID per chunk | Apache-2.0 (2026). Accepts a text *context* for names and jargon. Transformers and vLLM backends. About 5 GB of VRAM in bf16. |
+| Whisper large-v3 / turbo | AISHELL-2 WER 5.06 | 1.51 / 3.97 | good | Tends to output Simplified. Known hallucination loops on silence. |
+| Breeze-ASR-25 (Whisper-v2 fine-tune) | tuned for Taiwanese Mandarin | good | good | Worth trying as an alternative; still has Whisper's failure modes. |
+| SenseVoice / Paraformer | very fast, strong Mandarin | weaker English | weak | Better suited to Mandarin-only audio. |
+| Parakeet / Canary | – | best-in-class | – | English only. |
+
+Qwen3-ASR-1.7B roughly halves Whisper-large-v3's Chinese error rate, keeps English at parity, and takes a vocabulary prompt, which matters for product names in meetings. The 0.6B variant exists if throughput matters more than accuracy.
+
+Speaker diarization uses **pyannote `speaker-diarization-community-1`**. It improves on 3.1 for speaker counting (for example AliMeeting DER 20.3 vs 24.5). The worker takes each speaker turn, merges short same-speaker turns, splits long ones at quiet points (≤ 30 s), and transcribes those segments in batches. Segment boundaries become the transcript timestamps.
+
+On a 4090, both models together use roughly 6–8 GB. Each GPU runs its own worker, so two GPUs process two meetings in parallel. `ASR_BACKEND=vllm` (install with `--vllm`) gives higher throughput on long recordings.
+
+Sources: [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR), [Qwen3-ASR technical report](https://arxiv.org/abs/2601.21337), [pyannote community-1 benchmarks](https://github.com/pyannote/pyannote-audio).
+
+### GPU policy: models are loaded only when there is work
+
+The worker supervisor that runs all the time never imports PyTorch or creates a CUDA context, so **an idle worker uses no GPU memory**. When the backend has a job, the supervisor starts a separate GPU process. That process:
+
+1. loads the models (shown as *Loading models* in the UI);
+2. processes the job, and any other jobs already waiting, back to back;
+3. exits.
+
+Process exit is what guarantees all VRAM is returned, including the CUDA context that `torch.cuda.empty_cache()` cannot release. The cost is model-loading latency at the start of each busy period (typically tens of seconds from a warm disk cache). `MODEL_KEEPALIVE_SEC` (default `0`) can keep a session warm for a few seconds if you ever want to trade that off. GPU status on the admin page comes from `nvidia-smi`, which does not allocate VRAM.
+
+## Requirements
+
+- Linux x86-64 with an NVIDIA driver recent enough for CUDA 12.8 PyTorch wheels (R570 or newer is safest). No CUDA toolkit is needed; PyTorch wheels bundle the runtime.
+- Around 15 GB of disk for Python packages and models, plus space for recordings.
+- Outbound HTTPS for installation, model downloads (Hugging Face), and Codex.
+- A ChatGPT plan that includes Codex, for summaries.
+- A Hugging Face account, for diarization. Accept the conditions of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1) and create a read token. Without it, transcripts are produced without speaker labels.
+
+Nothing needs root. The installer puts Bun in `~/.bun` and uv in `~/.local/bin`. ffmpeg comes from the `imageio-ffmpeg` wheel, and Python comes from uv.
+
+## Installation
+
+```bash
+git clone <this repo> ~/MeetingMinutes && cd ~/MeetingMinutes
+scripts/install.sh              # add --vllm for the faster ASR backend, --no-gpu on a web-only host
+$EDITOR .env                    # PUBLIC_URL, TRUST_PROXY, HF_TOKEN
+bun run codex:login             # device-code login with the ChatGPT account that pays for summaries
+scripts/worker.sh check         # optional: download both models now and confirm the GPU works
+```
+
+Run it:
+
+```bash
+scripts/start.sh                # web server; prints the one-time setup token on first start
+scripts/worker.sh               # one worker per GPU (WORKER_GPUS=0,1 or all GPUs by default)
+```
+
+Open the site, enter the setup token (also saved in `data/setup.token`), and create the administrator. Invite everyone else from **Admin → Invitations**. You can also create an admin from the shell with `bun run admin create-admin <username>`.
+
+To keep both processes running as systemd user services, see `deploy/systemd/`. The unit files explain the `loginctl enable-linger` caveat.
+
+### Exposing it on a public IP
+
+People need HTTPS: it protects passwords on the way in, and browsers only allow recording on HTTPS pages. There are two ways to get it.
+
+#### Option A: serve HTTPS directly on a port (no reverse proxy)
+
+The web server can serve HTTPS itself on any unprivileged port, so this needs no sudo.
+
+1. Create a certificate for the server's address:
+
+   ```bash
+   scripts/make-cert.sh 203.0.113.10          # the public IP; add host names if you have them
+   ```
+
+   This creates `data/tls/ca.crt` (a private CA for your team, created once) and `data/tls/server.crt` / `server.key`, then prints the lines for `.env`.
+
+2. Put them in `.env`:
+
+   ```
+   HOST=0.0.0.0
+   PORT=8443
+   TLS_CERT_FILE=data/tls/server.crt
+   TLS_KEY_FILE=data/tls/server.key
+   PUBLIC_URL=https://203.0.113.10:8443
+   ```
+
+3. Restart `scripts/start.sh` and `scripts/worker.sh`. People open `https://203.0.113.10:8443`. Plain `http://` on that port does not work.
+
+GPU workers on the same machine connect to a separate plain-HTTP port, `INTERNAL_PORT` (default 8788). It listens on 127.0.0.1 only, serves nothing but the token-protected worker API, and workers pick it up automatically when `TLS_CERT_FILE` is set. A worker on another machine needs `MM_SERVER_URL` pointed at a reachable address, for example through an SSH tunnel.
+
+**Certificate warning.** Browsers do not know your team CA, so they show a warning. There are two ways to handle it:
+
+- **Trust the CA on each computer (recommended).** Import `data/tls/ca.crt` once:
+  - Windows: double-click it, then *Install Certificate → Current User → Place all certificates in: Trusted Root Certification Authorities*. This needs no admin rights and covers Chrome and Edge.
+  - macOS: open it in Keychain Access, then set *Trust → Always Trust*.
+  - Chrome on Linux: *Settings → Privacy and security → Security → Manage certificates → Authorities → Import*.
+  - Firefox (all systems): *Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import*.
+
+  Afterwards there is no warning, and re-issuing the server certificate (for example after an IP change) needs nothing new on clients.
+- **Accept the warning.** Each person clicks through the warning once, after checking that the SHA-256 fingerprint shown by the browser matches the one `make-cert.sh` printed. Recording works either way.
+
+**Publicly trusted certificate instead.** If the server has a domain name, a public certificate avoids the warning altogether. [acme.sh](https://github.com/acmesh-official/acme.sh) can issue one without root, using a DNS challenge (`--dns`), so no port 80 is needed. Point `TLS_CERT_FILE` / `TLS_KEY_FILE` at its output and restart the server after each renewal (acme.sh `--reloadcmd`). Let's Encrypt also issues certificates for bare IP addresses, but they last only about six days and must be validated on port 80 or 443, which normally needs privileges.
+
+If the machine runs a firewall, the chosen port (8443 above) has to be open.
+
+#### Option B: behind a reverse proxy
+
+Keep `HOST=127.0.0.1` and put a TLS-terminating proxy in front: `deploy/Caddyfile` (automatic HTTPS) or `deploy/nginx.conf`. Then set:
+
+```
+PUBLIC_URL=https://minutes.example.com
+TRUST_PROXY=true
+```
+
+The proxy must accept request bodies larger than `UPLOAD_CHUNK_MB` (32 MB by default).
+
+With either option, HTTPS turns on `Secure`, `__Host-` session cookies and HSTS. The server prints a warning at startup if it would serve plain HTTP on a network address.
+
+## Recording meetings in the browser
+
+**New recording → Record a meeting** offers two sources:
+
+| Source | Captures | Browsers |
+| --- | --- | --- |
+| Online meeting | The shared meeting tab (other participants) plus your microphone, or the tab alone when the microphone is set to *No microphone* | Desktop Chrome, Edge and other Chromium browsers |
+| Microphone | Only the microphone | Any modern browser |
+
+To record Google Meet:
+
+1. Start the recording.
+2. Pick the Meet tab in the share dialog.
+3. Turn on **Also share tab audio**.
+
+With *No microphone*, the browser never asks for the microphone, and your own voice is not recorded, since the meeting tab does not play it back. You can still add the microphone during the recording.
+
+Wear headphones, so the meeting audio from your speakers is not picked up a second time by the microphone. Echo cancellation is on, but headphones are more reliable.
+
+A few limits to know about:
+
+- **HTTPS is required.** Browsers only allow audio capture on HTTPS pages, or on `localhost`.
+- **Firefox and Safari** cannot capture tab audio, so they only offer microphone recording.
+- **Recording continues in the background.** You can switch tabs, but if you close the Minutes tab, recording stops. What was already recorded is kept locally and can be restored.
+- **Tell participants** before you record.
+
+## Configuration
+
+All settings are environment variables. Put them in `.env` at the repository root; `.env.example` documents each one. The most relevant:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PUBLIC_URL` | – | External URL. Controls secure cookies and invite links. |
+| `ADMIN_CONTACT` | – | Contact shown on the sign-in page for people without an account or who forgot their password (an email becomes a mailto link). |
+| `TRUST_PROXY` | `false` | Trust `X-Forwarded-*` headers from your proxy. |
+| `DATA_DIR` | `data` | SQLite database, media, and tokens. Back this directory up. |
+| `TLS_CERT_FILE` / `TLS_KEY_FILE` | empty | Serve HTTPS directly (see "Option A"). |
+| `INTERNAL_PORT` | `8788` | Loopback-only worker API port, used when `TLS_CERT_FILE` is set. |
+| `MAX_UPLOAD_MB` / `UPLOAD_CHUNK_MB` | `4096` / `32` | Largest accepted file, and the size of each upload request. The upload page shows `MAX_UPLOAD_MB` and rejects larger files before sending. A reverse proxy must allow request bodies larger than `UPLOAD_CHUNK_MB` (for example nginx `client_max_body_size 64m`); otherwise users see "the server refused the upload (HTTP 413)". |
+| `MAX_AUDIO_HOURS` | `8` | Longest recording a worker decodes. Longer (or crafted) files fail with a clear message instead of exhausting memory. |
+| `HF_TOKEN` | – | Enables speaker diarization. |
+| `ASR_MODEL` / `ASR_BACKEND` | `Qwen/Qwen3-ASR-1.7B` / `transformers` | Recognition model and engine (`vllm` for speed). |
+| `WORKER_GPUS` | all | GPUs to run workers on, e.g. `0,1`. |
+| `MODEL_KEEPALIVE_SEC` | `0` | Seconds a GPU session waits for more work before releasing the GPU. |
+| `CODEX_MODEL` / `CODEX_REASONING_EFFORT` | Codex defaults | Summary model settings. |
+| `CODEX_CONCURRENCY` | `1` | Parallel summaries (each uses quota). Each person can have at most 3 summaries queued or running. |
+
+## How summaries use Codex
+
+For each summary, the backend runs:
+
+```
+codex exec --ephemeral --sandbox read-only --ignore-user-config --skip-git-repo-check \
+           --disable shell_tool --disable unified_exec … -c web_search="disabled" --json -o <file> -
+```
+
+It runs in an empty temporary directory, with the prompt (instructions, meeting metadata, and the speaker-labelled transcript) on stdin. The prompt tells the model to treat the transcript as untrusted data, but the safeguards below do not rely on the model obeying it:
+
+- **Tools off, verified**: before the first run, the backend reads `codex features list` and checks that every tool that could act on the machine (`shell_tool`, `unified_exec`, `view_image`) is known and will be disabled. If the listing cannot be read, or a newer Codex renames one of them, summaries are paused (fail closed) and the admin page says why, instead of running with a tool left on. Unknown flags are a hard error in Codex, so only features the installed version reports are passed.
+- **Tripwire**: the run is watched through `--json`. Any event other than text, reasoning, or a plan (for example a command or file access) kills Codex immediately and discards the result.
+- **No secrets in reach**: Codex gets only an allowlisted environment (what it needs to run and sign in: `PATH`, `HOME`, `CODEX_HOME`, its own API key if you use one, locale, CA and proxy settings), never the worker token, `HF_TOKEN`, or the data directory path. The read-only sandbox prevents writes.
+- **Output check**: a summary that contains a server credential (the worker token, API keys, or the Codex login) is discarded.
+
+The admin page shows whether Codex is signed in, and whether summaries are paused.
+
+## Security model
+
+- **Passwords**: argon2id (Bun's native implementation), 10 characters minimum.
+- **Sessions**: random 256-bit tokens; only their SHA-256 hash is stored. Cookies are `HttpOnly` and `SameSite=Lax`, and `Secure` with the `__Host-` prefix when served over HTTPS. Sessions slide over 30 days, and changing your password signs out your other devices.
+- **CSRF**: every state-changing API call must carry a custom `X-MM-Client` header, which cross-site forms cannot send and cross-origin scripts cannot send without a CORS preflight that is never granted. A foreign `Origin` header is also rejected.
+- **Brute force**: failed sign-ins are limited per IP (20 per 15 minutes) and per username (8 per 15 minutes). Setup and invite tokens are rate-limited too, and unknown usernames take the same time to fail as wrong passwords.
+- **Bootstrap**: the first admin needs the setup token from the server log or data directory, so a fresh public instance cannot be claimed by a stranger.
+- **Isolation**: every meeting, media file, export, and summary query is scoped to its owner; someone else's meeting or summary is answered with 404, not 403, so IDs cannot be probed. The live-update stream closes when its session is signed out or the account is disabled.
+- **Uploaded files**: stored under random IDs, served with a media type derived from the checked file extension (never the type the browser declared), `X-Content-Type-Options: nosniff`, and the site CSP, so an uploaded HTML or SVG file cannot run as a page. ffmpeg reads them with `-protocol_whitelist file`, so a crafted playlist cannot fetch URLs or other files, and decoding stops at `MAX_AUDIO_HOURS`.
+- **Browser recordings**: unsent recordings kept in the browser (IndexedDB) are tagged with the account that made them and are shown only to that account on a shared computer.
+- **Quotas**: at most 3 summaries queued or running per person, so one account cannot drain the shared Codex plan.
+- **Files on disk**: the server and worker create everything with mode `0600`/`0700` (`umask 077`), and the data directory is restricted to its owner at every start. The scripts make `.env` readable by its owner only.
+- **Headers**: a strict Content-Security-Policy (no third-party origins; fonts are self-hosted), `frame-ancestors 'none'`, HSTS over HTTPS, and a Permissions-Policy that allows only the microphone and tab capture (for recording) and only on this site.
+- **Workers** authenticate with a shared bearer token (`WORKER_TOKEN` or `data/worker.token`), compared in constant time. With built-in HTTPS, the worker API listens only on loopback (`INTERNAL_PORT`).
+
+Recommended for a deployment:
+
+- Run the server and worker as a dedicated OS user that owns only this checkout, the data directory, and its Codex login; nothing else of value should be readable by that user.
+- Open only the HTTPS port in the firewall. Keep `TRUST_PROXY=false` unless a reverse proxy is in front; with built-in HTTPS, trusting `X-Forwarded-For` would let clients choose the address used for sign-in rate limits (the server warns about this at startup).
+- Dependencies: `bun audit` is clean. `pip-audit` on the worker reports advisories in `transformers`, `accelerate`, `torch`, and `vllm`. They concern loading untrusted model checkpoints, the vLLM HTTP server, or local attackers, none of which this worker does or exposes: it loads only the configured Hugging Face models, and vLLM (optional) is used in-process. Upgrade when `qwen-asr` allows newer pins.
+
+## Development
+
+```bash
+bun install
+bun run dev:backend             # API on :8787 (auto-reload)
+bun run dev:frontend            # Vite on :5173, proxies /api
+cd worker && uv sync            # the pipeline without GPU packages
+ASR_BACKEND=fake uv run python -m mm_worker run   # stand-in models, no GPU or torch needed
+```
+
+Tests:
+
+```bash
+bun run test                    # backend: auth, CSRF, uploads, worker protocol, Codex runner (fake codex)
+bun run typecheck               # backend + frontend
+cd worker && uv run pytest      # segmentation, text normalisation, ffmpeg, pipeline, GPU-session lifecycle
+```
+
+Project layout:
+
+```
+backend/   Bun + Hono API, SQLite schema/migrations, Codex runner, job queue, SSE
+frontend/  React app: pages/, components/, i18n/ (en, zh-TW), styles/ (design tokens)
+worker/    mm_worker: supervisor, GPU session, audio (ffmpeg), segmenter, ASR, diarization
+scripts/   install.sh, start.sh, worker.sh, codex-login.sh
+deploy/    Caddyfile, nginx.conf, systemd user units
+```
+
+## Operations
+
+- **Updating**: `git pull`, then restart `scripts/start.sh` and `scripts/worker.sh` (or the systemd services). `start.sh` reinstalls JavaScript dependencies when `bun.lock` changed and rebuilds the web interface when its sources changed, so browsers get the new UI after a reload. If `worker/uv.lock` changed, run `scripts/install.sh` once (repeat `--vllm` if you use it).
+- **Speaker diarization status**: the admin page shows a warning on a worker only after loading the diarization model actually failed, with the reason. Each meeting also records whether diarization ran; a transcript without speakers says why and offers **Separate speakers again**.
+- **Everyone appears as one speaker**: usually pyannote is not running. To enable it:
+  1. With a Hugging Face account, accept the conditions of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1).
+  2. Create a *read* token, and put it in `.env` as `HF_TOKEN=hf_…`. A token saved with `huggingface-cli login` as the worker's user also works.
+  3. Restart `scripts/worker.sh`, then run `scripts/worker.sh check`: it must print `Diarization: ready`.
+  4. On affected meetings, choose **Separate speakers again** (the meeting's ⋯ menu).
+
+  If pyannote runs but still merges people, give the number of speakers: automatic detection can merge similar voices into one, while a given count (or range) splits into exactly that many.
+- **Backups**: copy `data/`. SQLite runs in WAL mode; use `sqlite3 data/meetingminutes.sqlite ".backup backup.sqlite"` for a consistent snapshot while the server is running.
+- **Stuck jobs**: if a worker dies mid-job, the backend notices the missing heartbeat within 3 minutes and requeues the job (up to 3 attempts).
+- **Summaries paused**: if the admin page says summaries are paused, the installed Codex could not prove that its tools are off (usually after a Codex upgrade renamed a feature). Check `backend/node_modules/.bin/codex features list`, and update this project or pin the previous Codex version.
+- **Admin CLI**: `bun run admin list-users | reset-password <user> | create-admin <user> | setup-token | worker-token`.

@@ -1,0 +1,19 @@
+# Caddy terminates TLS (automatic Let's Encrypt) and proxies to the backend.
+# Caddy is a single static binary; run it as your user and let it bind 80/443 via
+# an admin-provided port redirect, or run it on 8443 if your policy forbids low ports.
+#
+# In .env set: PUBLIC_URL=https://minutes.example.com  TRUST_PROXY=true
+
+minutes.example.com {
+	encode zstd gzip
+
+	# Uploads arrive in chunks of UPLOAD_CHUNK_MB (default 32 MB).
+	request_body {
+		max_size 64MB
+	}
+
+	reverse_proxy 127.0.0.1:8787 {
+		# Server-sent events must not be buffered.
+		flush_interval -1
+	}
+}

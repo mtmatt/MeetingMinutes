@@ -1,0 +1,39 @@
+[project]
+name = "mm-worker"
+version = "0.1.0"
+description = "GPU transcription worker for MeetingMinutes (Qwen3-ASR + pyannote diarization)"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+  "numpy>=1.26",
+  "imageio-ffmpeg>=0.5.1",
+  "opencc-python-reimplemented>=0.1.7",
+]
+
+[project.optional-dependencies]
+# Everything needed to run on a GPU box. Kept optional so the pure-Python
+# pipeline logic can be tested on machines without CUDA.
+gpu = [
+  "torch>=2.8",
+  "torchaudio>=2.8",
+  "qwen-asr==0.0.6",
+  "pyannote.audio>=4.0.1,<5",
+]
+vllm = [
+  "qwen-asr[vllm]==0.0.6",
+]
+
+[project.scripts]
+mm-worker = "mm_worker.__main__:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["mm_worker*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

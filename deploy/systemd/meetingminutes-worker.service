@@ -1,0 +1,15 @@
+[Unit]
+Description=MeetingMinutes GPU transcription worker(s)
+After=meetingminutes.service
+
+[Service]
+WorkingDirectory=%h/MeetingMinutes
+ExecStart=%h/MeetingMinutes/scripts/worker.sh
+Restart=on-failure
+RestartSec=10
+# Give an in-flight job time to report back before shutdown.
+TimeoutStopSec=30
+KillMode=mixed
+
+[Install]
+WantedBy=default.target
