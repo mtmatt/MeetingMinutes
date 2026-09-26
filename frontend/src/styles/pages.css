@@ -1837,6 +1837,16 @@
   font-size: var(--step--1);
   color: var(--ink-2);
 }
+/* Recording the tab without a microphone: say whose voice is missing. */
+.rec-nomic-note {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+  font-size: var(--step--1);
+  line-height: 1.6;
+  color: var(--ink);
+  text-wrap: pretty;
+}
 
 /* Bottom bar stages */
 .submit-bar-actions {

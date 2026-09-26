@@ -418,6 +418,8 @@ export const en = {
     daysAgo: "{n} d ago",
   },
   recorder: {
+    micNone: "No microphone (tab audio only)",
+    noMicNote: "Only what the tab plays is recorded. Your own voice is not played back by the meeting tab, so it will not be in the recording; you can add the microphone during the recording if needed.",
     scopeNone: "no audio source",
     scopeMicOnly: "mic only",
     scopeMeetingOnly: "meeting audio only",

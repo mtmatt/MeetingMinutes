@@ -168,6 +168,9 @@ function SourceRow({
   );
 }
 
+/** Value of the "no microphone" choice in the microphone menu. */
+const NO_MIC = "none";
+
 export function Recorder({ rec, onRecorded }: { rec: RecordingController; onRecorded: (r: RecordedFile) => void }) {
   const { t, locale } = useI18n();
   const confirm = useConfirm();
@@ -175,6 +178,8 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
   const [source, setSource] = useState<RecordSource>(support.meeting ? "meeting" : "mic");
   const [mics, setMics] = useState<MediaDeviceInfo[]>([]);
   const [micId, setMicId] = useState<string>("");
+  // "No microphone" exists only for meeting recordings; a microphone recording always needs one.
+  const noMic = source === "meeting" && micId === NO_MIC;
   const [pending, setPending] = useState<RecordingMeta[]>([]);
 
   const refreshMics = useCallback(async () => {
@@ -344,16 +349,25 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
               <ol className="rec-steps">
                 <li>{t("recorder.step1")}</li>
                 <li>{t("recorder.step2")}</li>
-                <li>
-                  <Headphones /> {t("recorder.step3")}
-                </li>
+                {/* Headphones only matter when a microphone could pick up the speakers. */}
+                {!noMic && (
+                  <li>
+                    <Headphones /> {t("recorder.step3")}
+                  </li>
+                )}
               </ol>
+              {noMic && <p className="rec-nomic-note">{t("recorder.noMicNote")}</p>}
             </div>
           )}
 
           <div className="field">
             <label htmlFor="mic">{t("recorder.micLabel")}</label>
-            <select id="mic" className="select rec-mic" value={micId} onChange={(e) => setMicId(e.target.value)}>
+            <select
+              id="mic"
+              className="select rec-mic"
+              value={micId === NO_MIC && source !== "meeting" ? "" : micId}
+              onChange={(e) => setMicId(e.target.value)}
+            >
               <option value="">{t("recorder.micDefault")}</option>
               {mics
                 .filter((m) => m.deviceId && m.deviceId !== "default")
@@ -362,6 +376,7 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
                     {m.label || t("recorder.micN", { n: i + 1 })}
                   </option>
                 ))}
+              {source === "meeting" && <option value={NO_MIC}>{t("recorder.micNone")}</option>}
             </select>
           </div>
 
@@ -384,7 +399,7 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
           )}
 
           <div className="rec-start">
-            <button type="button" className="btn btn-primary btn-lg" onClick={() => void rec.start(source, micId || undefined)} disabled={rec.phase === "starting"}>
+            <button type="button" className="btn btn-primary btn-lg" onClick={() => void rec.start(source, micId && micId !== NO_MIC ? micId : undefined, !noMic)} disabled={rec.phase === "starting"}>
               {rec.phase === "starting" ? <span className="spinner" /> : <span className="rec-dot static" />}
               {rec.error ? t("recorder.tryAgain") : source === "meeting" ? t("recorder.startMeeting") : t("recorder.startMic")}
             </button>

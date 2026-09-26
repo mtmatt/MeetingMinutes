@@ -89,7 +89,8 @@ export function useRecording() {
   // Stop capturing if the page goes away mid-recording; saved chunks remain restorable.
   useEffect(() => () => void rec.current?.stop().catch(() => undefined), []);
 
-  const start = useCallback(async (src: RecordSource, micDeviceId?: string) => {
+  /** `withMic: false` (meeting recordings) leaves the microphone out; it can be added later. */
+  const start = useCallback(async (src: RecordSource, micDeviceId?: string, withMic = true) => {
     setError(null);
     setReconnectError(null);
     setSaveFailed(false);
@@ -102,6 +103,7 @@ export function useRecording() {
       rec.current = await MeetingRecorder.start({
         source: src,
         micDeviceId,
+        withMic,
         onSaved: (m) => {
           setSavedMs(m.durationMs);
           setSaveFailed(false);
@@ -111,6 +113,8 @@ export function useRecording() {
         onAwaitPermission: setAwaiting,
       });
       setAwaiting(null);
+      // Left out on purpose: shown as a choice ("not used"), not as a dropout.
+      if (src === "meeting" && !withMic) setDropped(["mic"]);
       setElapsedMs(0);
       setPhase("recording");
     } catch (e) {

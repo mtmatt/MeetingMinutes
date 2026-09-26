@@ -170,7 +170,7 @@ With either option, HTTPS turns on `Secure`, `__Host-` session cookies and HSTS.
 
 | Source | Captures | Browsers |
 | --- | --- | --- |
-| Online meeting | The shared meeting tab (other participants) plus your microphone | Desktop Chrome, Edge and other Chromium browsers |
+| Online meeting | The shared meeting tab (other participants) plus your microphone, or the tab alone when the microphone is set to *No microphone* | Desktop Chrome, Edge and other Chromium browsers |
 | Microphone | Only the microphone | Any modern browser |
 
 To record Google Meet:
@@ -178,6 +178,8 @@ To record Google Meet:
 1. Start the recording.
 2. Pick the Meet tab in the share dialog.
 3. Turn on **Also share tab audio**.
+
+With *No microphone*, the browser never asks for the microphone, and your own voice is not recorded, since the meeting tab does not play it back. You can still add the microphone during the recording.
 
 Wear headphones, so the meeting audio from your speakers is not picked up a second time by the microphone. Echo cancellation is on, but headphones are more reliable.
 

@@ -138,6 +138,13 @@ interface Input {
   analyser: AnalyserNode;
 }
 
+interface StartOptions extends RecorderCallbacks {
+  source: RecordSource;
+  micDeviceId?: string;
+  /** Meeting recordings only: false records the shared tab alone, without asking for the microphone. */
+  withMic?: boolean;
+}
+
 export class MeetingRecorder {
   meta!: RecordingMeta;
   source!: RecordSource;
@@ -154,13 +161,13 @@ export class MeetingRecorder {
   private chunks: Blob[] = [];
   private cb: RecorderCallbacks = {};
 
-  static async start(opts: { source: RecordSource; micDeviceId?: string } & RecorderCallbacks): Promise<MeetingRecorder> {
+  static async start(opts: StartOptions): Promise<MeetingRecorder> {
     const r = new MeetingRecorder();
     await r.init(opts);
     return r;
   }
 
-  private async init(opts: { source: RecordSource; micDeviceId?: string } & RecorderCallbacks) {
+  private async init(opts: StartOptions) {
     const support = recorderSupport();
     if (!support.secure) throw new RecorderError("insecure", "Recording needs HTTPS.");
     if (!support.mic) throw new RecorderError("unsupported", "This browser cannot record audio.");
@@ -168,15 +175,19 @@ export class MeetingRecorder {
     this.cb = opts;
     this.source = opts.source;
 
+    // Only a meeting tab can be recorded without a microphone.
+    const withMic = opts.source === "mic" || opts.withMic !== false;
     if (opts.source === "meeting") opts.onAwaitPermission?.("meeting");
     const tab = opts.source === "meeting" ? await captureTab() : null;
-    let mic: MediaStream;
-    try {
-      opts.onAwaitPermission?.("mic");
-      mic = await captureMic(opts.micDeviceId);
-    } catch (e) {
-      tab?.getTracks().forEach((t) => t.stop());
-      throw e;
+    let mic: MediaStream | null = null;
+    if (withMic) {
+      try {
+        opts.onAwaitPermission?.("mic");
+        mic = await captureMic(opts.micDeviceId);
+      } catch (e) {
+        tab?.getTracks().forEach((t) => t.stop());
+        throw e;
+      }
     }
 
     this.ctx = new AudioContext();
@@ -187,7 +198,7 @@ export class MeetingRecorder {
     keepAlive.connect(this.dest);
     keepAlive.start();
     if (tab) this.attach("meeting", tab);
-    this.attach("mic", mic);
+    if (mic) this.attach("mic", mic);
 
     // Ask the browser not to evict our storage under pressure (best effort).
     void navigator.storage?.persist?.().catch(() => false);

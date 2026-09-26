@@ -420,6 +420,8 @@ export const zhTW: Dict = {
     daysAgo: "{n} 天前",
   },
   recorder: {
+    micNone: "不使用麥克風（只錄分頁聲音）",
+    noMicNote: "只會錄到分頁播出的聲音。你自己說的話不會從會議分頁播出，所以不會被錄進去；需要時可以在錄音中加入麥克風。",
     scopeNone: "沒有聲音來源",
     scopeMicOnly: "僅麥克風",
     scopeMeetingOnly: "僅會議聲音",
