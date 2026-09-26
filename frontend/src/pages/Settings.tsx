@@ -148,7 +148,7 @@ export function SettingsPage() {
       <Section title={t("settings.security")}>
         <form className="settings-form" onSubmit={changePassword}>
           <input type="text" autoComplete="username" value={user?.username ?? ""} readOnly hidden />
-          <div className="grid-2">
+          <div className="grid-2 even">
             <div className="field">
               <label htmlFor="cur">{t("settings.currentPassword")}</label>
               <input id="cur" className="input" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />

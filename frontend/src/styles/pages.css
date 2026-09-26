@@ -495,6 +495,9 @@
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
   gap: 16px;
 }
+.grid-2.even {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .input-title {
   font-family: var(--font-title);
   font-size: var(--step-1);
@@ -944,7 +947,8 @@
   .submit-bar-inner {
     padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
   }
-  .grid-2 {
+  .grid-2,
+  .grid-2.even {
     grid-template-columns: 1fr;
   }
 }
