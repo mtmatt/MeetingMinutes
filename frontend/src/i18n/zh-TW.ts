@@ -349,6 +349,12 @@ export const zhTW: Dict = {
     lastActive: "最後使用 {when}",
   },
   admin: {
+    staleWorkersHidden: "另有 {n} 個超過一天沒有連線的 worker 未列出。",
+    codexViaChatgpt: "以 ChatGPT 帳號登入",
+    vramOthers: "其他程式使用中",
+    diarizationNeedsToken: "需要 Hugging Face 權杖，並在模型頁面接受使用條款。",
+    diarizationMissingPackage: "未安裝 pyannote.audio。",
+    diarizationFailed: "載入發言者模型失敗，詳見 worker 記錄。",
     title: "系統管理",
     users: "成員",
     invites: "邀請",

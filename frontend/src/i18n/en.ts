@@ -347,6 +347,12 @@ export const en = {
     lastActive: "Last active {when}",
   },
   admin: {
+    staleWorkersHidden: "{n} more workers have not connected for over a day and are not listed.",
+    codexViaChatgpt: "signed in with a ChatGPT account",
+    vramOthers: "used by other programs",
+    diarizationNeedsToken: "Needs a Hugging Face token and the model's conditions accepted.",
+    diarizationMissingPackage: "pyannote.audio is not installed.",
+    diarizationFailed: "The speaker model failed to load; see the worker log.",
     title: "Administration",
     users: "People",
     invites: "Invitations",

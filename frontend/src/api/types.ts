@@ -144,7 +144,9 @@ export interface WorkerInfo {
     vramFreeGb?: number;
     asrModel?: string;
     asrBackend?: string;
-    diarization?: boolean;
+    /** Speaker diarization as found by the worker's last GPU session ("unknown" before any). Older workers sent a boolean. */
+    diarization?: "unknown" | "ready" | "unavailable" | boolean;
+    diarizationError?: string | null;
     state?: string;
     jobId?: string | null;
     cuda?: boolean | null;

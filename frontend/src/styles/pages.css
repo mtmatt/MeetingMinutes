@@ -1312,6 +1312,17 @@
   font-size: var(--step--2);
   margin: 6px 0;
 }
+/* Memory held by other programs while this worker is idle: shown, but not as ours. */
+.worker-vram.others .progress > span {
+  background: var(--ink-4);
+}
+.worker-warn {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  font-size: var(--step--2);
+  line-height: 1.5;
+}
 .worker-load {
   display: flex;
   align-items: center;

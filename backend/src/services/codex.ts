@@ -171,20 +171,30 @@ export interface CodexStatus {
   detail: string;
 }
 
+/**
+ * Turn `codex --version` and `codex login status` output into a status line.
+ * Codex prints housekeeping warnings on the same streams (e.g. "WARNING: failed
+ * to clean up stale arg0 temp dirs"); those are not part of the status.
+ */
+export function parseCodexStatus(versionOut: string, loginOut: string, loginExit: number): Omit<CodexStatus, "available"> {
+  const meaningful = (text: string) =>
+    text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l && !/^warning\b/i.test(l));
+  const version = meaningful(versionOut).find((l) => /\d+\.\d+/.test(l)) ?? null;
+  return { loggedIn: loginExit === 0, version, detail: meaningful(loginOut).join("\n") };
+}
+
 export async function codexStatus(): Promise<CodexStatus> {
   try {
     const v = Bun.spawn([config.codex.bin, "--version"], { env: codexEnv(), stdout: "pipe", stderr: "pipe" });
-    const version = (await new Response(v.stdout).text()).trim() || null;
+    const [vOut, vErr] = await Promise.all([new Response(v.stdout).text(), new Response(v.stderr).text()]);
     await v.exited;
     const s = Bun.spawn([config.codex.bin, "login", "status"], { env: codexEnv(), stdout: "pipe", stderr: "pipe" });
     const [out, err] = await Promise.all([new Response(s.stdout).text(), new Response(s.stderr).text()]);
     const code = await s.exited;
-    const detail = (out + "\n" + err)
-      .split("\n")
-      .filter((l) => l.trim() && !l.startsWith("WARNING: proceeding"))
-      .join("\n")
-      .trim();
-    return { available: true, loggedIn: code === 0, version, detail };
+    return { available: true, ...parseCodexStatus(vOut + "\n" + vErr, out + "\n" + err, code) };
   } catch (e) {
     return { available: false, loggedIn: false, version: null, detail: String(e) };
   }

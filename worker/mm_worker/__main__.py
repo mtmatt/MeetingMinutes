@@ -32,14 +32,17 @@ def cmd_run(cfg: WorkerConfig):
 def cmd_check(cfg: WorkerConfig):
     print(json.dumps({"serverUrl": cfg.server_url, "workerId": cfg.worker_id, **gpu_info()}, indent=2))
     t0 = time.monotonic()
-    _, diarizer = build_models(cfg)
+    _, _, diarization = build_models(cfg)
     print(f"ASR model loaded: {cfg.asr_model} ({time.monotonic() - t0:.1f}s including diarization)")
-    print(f"Diarization: {'ready' if diarizer else 'UNAVAILABLE (set HF_TOKEN and accept the model terms)'}")
+    if diarization["state"] == "ready":
+        print("Diarization: ready")
+    else:
+        print(f"Diarization: UNAVAILABLE ({diarization.get('reason')})")
     print(json.dumps(gpu_info(), indent=2))
 
 
 def cmd_transcribe(cfg: WorkerConfig, path: str, language: str, vocabulary: str, no_diarize: bool, script: str):
-    transcriber, diarizer = build_models(cfg)
+    transcriber, diarizer, _ = build_models(cfg)
     with tempfile.TemporaryDirectory() as out:
         t0 = time.monotonic()
         result = run_job(

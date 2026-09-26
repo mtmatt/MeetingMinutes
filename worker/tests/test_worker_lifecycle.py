@@ -67,6 +67,8 @@ def test_gpu_session_loads_on_demand_drains_queue_and_exits(two_speaker_wav, tmp
     backend = FakeBackend(jobs)
     sup = Supervisor(cfg(backend.url))
     assert sup.info()["state"] == "idle" and sup.info()["modelsLoaded"] is False
+    # Nothing is known about speaker diarization before a session has loaded it.
+    assert sup.info()["diarization"] == "unknown"
 
     t = threading.Thread(target=sup.run, daemon=True)
     t.start()
@@ -90,5 +92,7 @@ def test_gpu_session_loads_on_demand_drains_queue_and_exits(two_speaker_wav, tmp
     assert sup.child is None and sup.models_loaded is False
     # The long-lived supervisor never imported torch (so it never created a CUDA context).
     assert "torch" not in sys.modules
+    # After the session, the worker reports what loading actually found.
+    assert sup.info()["diarization"] == "ready" and sup.info()["diarizationError"] is None
     complete = next(b for p, b in backend.events if p == "/jobs/j0/complete")
     assert complete["result"]["segments"] and complete["result"]["speakers"] == ["SPEAKER_00", "SPEAKER_01"]

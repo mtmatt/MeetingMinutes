@@ -54,11 +54,20 @@ def gpu_info() -> dict:
 
 
 def build_models(cfg: WorkerConfig):
+    """Load the models. Returns (transcriber, diarizer or None, diarization status).
+
+    The status records what actually happened when loading the diarization
+    pipeline: {"state": "ready"} or {"state": "unavailable", "reason": ...}.
+    Whether it works cannot be known in advance: pyannote also finds a token
+    saved by `huggingface-cli login`, not only HF_TOKEN.
+    """
     if cfg.asr_backend == "fake":
         from .fakes import FakeDiarizer, FakeTranscriber
 
         log.info("using fake models (ASR_BACKEND=fake)")
-        return FakeTranscriber(float(os.environ.get("MM_FAKE_LOAD_SEC", "0"))).load(), FakeDiarizer().load()
+        if os.environ.get("MM_FAKE_NO_DIARIZATION") == "1":
+            return FakeTranscriber(0).load(), None, {"state": "unavailable", "reason": "Fake diarization disabled."}
+        return FakeTranscriber(float(os.environ.get("MM_FAKE_LOAD_SEC", "0"))).load(), FakeDiarizer().load(), {"state": "ready"}
 
     from .asr import Transcriber
     from .diarize import DiarizationUnavailable, Diarizer
@@ -70,14 +79,16 @@ def build_models(cfg: WorkerConfig):
     t0 = time.monotonic()
     log.info("loading ASR model %s (%s backend)", cfg.asr_model, cfg.asr_backend)
     transcriber.load()
+    status = {"state": "ready"}
     try:
         log.info("loading diarization pipeline %s", cfg.diarization_model)
         diarizer.load()
     except DiarizationUnavailable as e:
         log.warning("speaker diarization disabled: %s", e)
         diarizer = None
+        status = {"state": "unavailable", "reason": str(e)[:300]}
     log.info("models ready in %.1fs", time.monotonic() - t0)
-    return transcriber, diarizer
+    return transcriber, diarizer, status
 
 
 def is_retryable(exc: BaseException) -> bool:
@@ -199,13 +210,13 @@ def gpu_session(cfg: WorkerConfig, first_job: dict, events) -> None:
             log.info("job %s was canceled before models were loaded", job["jobId"])
             events.put(("done", job["jobId"]))
             return
-        transcriber, diarizer = build_models(cfg)
+        transcriber, diarizer, diarization = build_models(cfg)
     except Exception as e:
         log.error("could not load models: %s\n%s", e, traceback.format_exc())
         runner.fail(job["jobId"], f"Could not load models: {type(e).__name__}: {e}", True)
         events.put(("done", job["jobId"]))
         return
-    events.put(("loaded", None))
+    events.put(("loaded", diarization))
 
     while job and not stop.is_set():
         runner.begin(job)
@@ -238,13 +249,17 @@ class Supervisor:
         self.child: Optional[mp.process.BaseProcess] = None
         self.models_loaded = False
         self.current_job: Optional[str] = None
+        # Speaker diarization as found by the last GPU session. "unknown" until a
+        # session has loaded the models (idle workers load nothing).
+        self.diarization: dict = {"state": "unknown"}
 
     def info(self) -> dict:
         return {
             "version": __version__,
             "asrModel": self.cfg.asr_model,
             "asrBackend": self.cfg.asr_backend,
-            "diarization": bool(self.cfg.hf_token),
+            "diarization": self.diarization["state"],
+            "diarizationError": self.diarization.get("reason"),
             "state": "busy" if self.child is not None else "idle",
             "modelsLoaded": self.models_loaded,
             "loadPolicy": "on-demand",
@@ -305,6 +320,8 @@ class Supervisor:
                 self.current_job = None
             elif kind == "loaded":
                 self.models_loaded = True
+                if value:
+                    self.diarization = value
                 self._heartbeat_now()
         child.join()
         if child.exitcode not in (0, None) and in_flight:

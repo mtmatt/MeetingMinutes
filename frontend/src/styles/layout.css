@@ -155,7 +155,9 @@
   padding: 4px 6px 8px;
 }
 .menu-chip {
-  flex: 1;
+  /* Sized by the label, never wrapped: "跟隨系統" stays on one line. */
+  flex: 1 1 auto;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   justify-content: center;

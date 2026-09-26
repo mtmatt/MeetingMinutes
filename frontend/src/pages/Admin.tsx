@@ -2,11 +2,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cpu, HardDrive, KeyRound, Link2, MoreHorizontal, Plus, ShieldCheck, Sparkles, Trash2, UserCheck, UserMinus, UserX } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api/client";
-import type { AdminUser, Role } from "../api/types";
+import type { AdminUser, Role, WorkerInfo } from "../api/types";
 import { Menu } from "../components/Menu";
 import { Modal, useConfirm } from "../components/Modal";
 import { useToast } from "../components/Toast";
-import { useI18n } from "../i18n";
+import { useI18n, type TKey } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { bytes, initials, relative, until } from "../lib/format";
 
@@ -276,6 +276,14 @@ function System() {
   const { data, isLoading } = useQuery({ queryKey: ["admin", "system"], queryFn: api.adminSystem, refetchInterval: 10_000 });
   if (isLoading || !data) return <div className="skeleton" style={{ height: 240 }} />;
   const diskUsed = data.disk ? 1 - data.disk.freeBytes / data.disk.totalBytes : 0;
+  // Online workers first, in name order (gpu0, gpu1, …); workers gone for more
+  // than a day (renamed, retired machines) are counted but not listed.
+  const DAY = 24 * 60 * 60 * 1000;
+  const recent = data.workers.filter((w) => w.online || Date.now() - w.lastSeenAt < DAY);
+  const shownWorkers = [...recent].sort(
+    (a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name, undefined, { numeric: true }),
+  );
+  const hiddenWorkers = data.workers.length - recent.length;
   return (
     <div className="system">
       <section>
@@ -285,8 +293,9 @@ function System() {
         {data.workers.length === 0 ? (
           <div className="callout">{t("admin.noWorkers")}</div>
         ) : (
+          <>
           <div className="worker-grid">
-            {data.workers.map((w) => (
+            {shownWorkers.map((w) => (
               <div key={w.id} className={`card worker ${w.online ? "" : "offline"}`}>
                 <div className="worker-top">
                   <span className={`pill ${w.online ? (w.info.state === "busy" ? "accent live" : "ok") : ""}`}>
@@ -299,16 +308,7 @@ function System() {
                 </div>
                 <div className="worker-gpu">{w.info.gpu ?? (w.info.cuda === false ? "CPU" : "GPU")}</div>
                 <div className="worker-name mono faint">{w.name}</div>
-                {w.info.vramTotalGb != null && (
-                  <div className="worker-vram">
-                    <div className="progress">
-                      <span style={{ width: `${(1 - (w.info.vramFreeGb ?? 0) / w.info.vramTotalGb) * 100}%` }} />
-                    </div>
-                    <span className="mono faint">
-                      {(w.info.vramTotalGb - (w.info.vramFreeGb ?? 0)).toFixed(1)} / {w.info.vramTotalGb} GB
-                    </span>
-                  </div>
-                )}
+                {w.info.vramTotalGb != null && <VramBar info={w.info} />}
                 <div className="worker-model mono">
                   {w.info.asrModel} · {w.info.asrBackend}
                 </div>
@@ -318,10 +318,18 @@ function System() {
                     {w.info.modelsLoaded ? t("admin.modelsLoaded") : t("admin.modelsUnloaded")}
                   </div>
                 )}
-                {w.info.diarization === false && <span className="pill warn">{t("admin.diarizationOff")}</span>}
+                {/* Only when loading actually failed; nothing is known before a GPU session has run. */}
+                {w.info.diarization === "unavailable" && (
+                  <div className="worker-warn" title={w.info.diarizationError ?? undefined}>
+                    <span className="pill warn">{t("admin.diarizationOff")}</span>
+                    <span className="faint">{t(diarizationReason(w.info.diarizationError))}</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>
+          {hiddenWorkers > 0 && <p className="faint system-help">{t("admin.staleWorkersHidden", { n: hiddenWorkers })}</p>}
+          </>
         )}
       </section>
 
@@ -343,7 +351,9 @@ function System() {
             <span className="dot" />
             {data.codex.loggedIn ? t("admin.codexReady") : data.codex.available ? t("admin.codexNotLoggedIn") : t("admin.codexMissing")}
           </span>
-          <p className="faint mono system-detail">{data.codex.version} {data.codex.detail && `· ${data.codex.detail}`}</p>
+          <p className="faint mono system-detail">
+            {data.codex.version} {data.codex.detail && `· ${/logged in using chatgpt/i.test(data.codex.detail) ? t("admin.codexViaChatgpt") : data.codex.detail}`}
+          </p>
           {!data.codex.loggedIn && <p className="muted system-help">{t("admin.codexHelp")}</p>}
         </section>
         <section className="card system-card">
@@ -397,4 +407,30 @@ export function AdminPage() {
       </div>
     </div>
   );
+}
+
+/** GPU memory in use. While this worker holds no models, all of it belongs to other programs. */
+function VramBar({ info }: { info: WorkerInfo["info"] }) {
+  const { t } = useI18n();
+  const total = info.vramTotalGb ?? 0;
+  const used = total - (info.vramFreeGb ?? 0);
+  const others = !info.modelsLoaded;
+  return (
+    <div className={`worker-vram ${others ? "others" : ""}`}>
+      <div className="progress">
+        <span style={{ width: `${total ? (used / total) * 100 : 0}%` }} />
+      </div>
+      <span className="mono faint">
+        {used.toFixed(1)} / {total} GB
+        {others && used >= 0.5 && <> · {t("admin.vramOthers")}</>}
+      </span>
+    </div>
+  );
+}
+
+function diarizationReason(error: string | null | undefined): TKey {
+  const e = (error ?? "").toLowerCase();
+  if (e.includes("not installed")) return "admin.diarizationMissingPackage";
+  if (/token|401|403|gated|accept|unauthori[sz]ed|forbidden/.test(e)) return "admin.diarizationNeedsToken";
+  return "admin.diarizationFailed";
 }

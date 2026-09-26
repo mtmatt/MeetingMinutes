@@ -260,6 +260,8 @@ deploy/    Caddyfile, nginx.conf, systemd user units
 
 ## Operations
 
+- **Updating**: `git pull`, then restart `scripts/start.sh` and `scripts/worker.sh` (or the systemd services). `start.sh` reinstalls JavaScript dependencies when `bun.lock` changed and rebuilds the web interface when its sources changed, so browsers get the new UI after a reload. If `worker/uv.lock` changed, run `scripts/install.sh` once (repeat `--vllm` if you use it).
+- **Speaker diarization status**: the admin page shows a warning on a worker only after loading the diarization model actually failed, with the reason. A Hugging Face token saved with `huggingface-cli login` works as well as `HF_TOKEN`.
 - **Backups**: copy `data/`. SQLite runs in WAL mode; use `sqlite3 data/meetingminutes.sqlite ".backup backup.sqlite"` for a consistent snapshot while the server is running.
 - **Stuck jobs**: if a worker dies mid-job, the backend notices the missing heartbeat within 3 minutes and requeues the job (up to 3 attempts).
 - **Admin CLI**: `bun run admin list-users | reset-password <user> | create-admin <user> | setup-token | worker-token`.
