@@ -1004,3 +1004,63 @@
   flex: none;
   animation: pop-in 180ms var(--ease-out);
 }
+
+/* Transcript without (separated) speakers: why, and a way to redo it. */
+.diarize-notice {
+  align-items: flex-start;
+  margin: 0 0 18px;
+}
+.diarize-notice-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.diarize-notice-main strong {
+  color: var(--ink);
+}
+.diarize-notice-main p {
+  margin: 0;
+  color: var(--ink-2);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+.diarize-notice-detail summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: var(--step--2);
+}
+.diarize-notice-detail code {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--step--2);
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diarize-notice > .btn {
+  flex: none;
+  align-self: center;
+}
+.resplit {
+  display: grid;
+  gap: 14px;
+}
+.resplit p {
+  margin: 0;
+  line-height: 1.6;
+}
+.resplit-warn {
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+@media (max-width: 700px) {
+  .diarize-notice {
+    flex-wrap: wrap;
+  }
+  .diarize-notice > .btn {
+    margin-left: 30px;
+  }
+}

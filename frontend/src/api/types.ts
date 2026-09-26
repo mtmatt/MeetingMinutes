@@ -59,6 +59,8 @@ export interface MeetingSummary {
   /** Present on search results: where the query occurs in the transcript. */
   match?: { text: string; start: number } | null;
   latestSummary: { id: string; status: SummaryStatus; createdAt: number } | null;
+  /** Whether speaker diarization ran in the latest transcription; null for transcripts made before this was recorded. */
+  diarization: { status: "ok" | "off" | "unavailable" | "failed"; reason?: string | null; speakers?: number } | null;
   createdAt: number;
   updatedAt: number;
   transcribedAt: number | null;

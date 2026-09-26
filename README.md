@@ -263,7 +263,14 @@ deploy/    Caddyfile, nginx.conf, systemd user units
 ## Operations
 
 - **Updating**: `git pull`, then restart `scripts/start.sh` and `scripts/worker.sh` (or the systemd services). `start.sh` reinstalls JavaScript dependencies when `bun.lock` changed and rebuilds the web interface when its sources changed, so browsers get the new UI after a reload. If `worker/uv.lock` changed, run `scripts/install.sh` once (repeat `--vllm` if you use it).
-- **Speaker diarization status**: the admin page shows a warning on a worker only after loading the diarization model actually failed, with the reason. A Hugging Face token saved with `huggingface-cli login` works as well as `HF_TOKEN`.
+- **Speaker diarization status**: the admin page shows a warning on a worker only after loading the diarization model actually failed, with the reason. Each meeting also records whether diarization ran; a transcript without speakers says why and offers **Separate speakers again**.
+- **Everyone appears as one speaker**: usually pyannote is not running. To enable it:
+  1. With a Hugging Face account, accept the conditions of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1).
+  2. Create a *read* token, and put it in `.env` as `HF_TOKEN=hf_…`. A token saved with `huggingface-cli login` as the worker's user also works.
+  3. Restart `scripts/worker.sh`, then run `scripts/worker.sh check`: it must print `Diarization: ready`.
+  4. On affected meetings, choose **Separate speakers again** (the meeting's ⋯ menu).
+
+  If pyannote runs but still merges people, give the number of speakers: automatic detection can merge similar voices into one, while a given count (or range) splits into exactly that many.
 - **Backups**: copy `data/`. SQLite runs in WAL mode; use `sqlite3 data/meetingminutes.sqlite ".backup backup.sqlite"` for a consistent snapshot while the server is running.
 - **Stuck jobs**: if a worker dies mid-job, the backend notices the missing heartbeat within 3 minutes and requeues the job (up to 3 attempts).
 - **Admin CLI**: `bun run admin list-users | reset-password <user> | create-admin <user> | setup-token | worker-token`.

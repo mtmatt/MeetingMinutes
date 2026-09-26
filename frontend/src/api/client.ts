@@ -101,8 +101,8 @@ export const api = {
   updateMeeting: (id: string, b: { title?: string; occurredAt?: number | null }) =>
     patch<{ meeting: MeetingSummary }>(`/meetings/${id}`, b),
   deleteMeeting: (id: string) => del<{ ok: true }>(`/meetings/${id}`),
-  retranscribe: (id: string, options?: TranscribeOptions) =>
-    post<{ meeting: MeetingSummary }>(`/meetings/${id}/retranscribe`, options ? { options } : {}),
+  retranscribe: (id: string, options?: TranscribeOptions, resetSpeakerNames = false) =>
+    post<{ meeting: MeetingSummary }>(`/meetings/${id}/retranscribe`, { ...(options ? { options } : {}), resetSpeakerNames }),
   renameSpeaker: (id: string, key: string, name: string) =>
     patch<{ ok: true }>(`/meetings/${id}/speakers/${encodeURIComponent(key)}`, { name }),
   addSpeaker: (id: string, name: string) =>

@@ -73,3 +73,11 @@ export function classifyUploadError(err: unknown, fileSize: number, limit: numbe
   }
   return { kind: "rejected", message: apiErrorMessage(err, t) };
 }
+
+/** Why the speaker diarization model could not be used, in words an admin can act on. */
+export function diarizationReason(error: string | null | undefined): TKey {
+  const e = (error ?? "").toLowerCase();
+  if (e.includes("not installed")) return "admin.diarizationMissingPackage";
+  if (/token|401|403|gated|accept|unauthori[sz]ed|forbidden/.test(e)) return "admin.diarizationNeedsToken";
+  return "admin.diarizationFailed";
+}

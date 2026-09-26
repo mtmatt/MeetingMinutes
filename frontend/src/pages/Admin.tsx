@@ -6,8 +6,9 @@ import type { AdminUser, Role, WorkerInfo } from "../api/types";
 import { Menu } from "../components/Menu";
 import { Modal, useConfirm } from "../components/Modal";
 import { useToast } from "../components/Toast";
-import { useI18n, type TKey } from "../i18n";
+import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
+import { diarizationReason } from "../lib/errors";
 import { bytes, initials, relative, until } from "../lib/format";
 
 function CopyLink({ url }: { url: string }) {
@@ -426,11 +427,4 @@ function VramBar({ info }: { info: WorkerInfo["info"] }) {
       </span>
     </div>
   );
-}
-
-function diarizationReason(error: string | null | undefined): TKey {
-  const e = (error ?? "").toLowerCase();
-  if (e.includes("not installed")) return "admin.diarizationMissingPackage";
-  if (/token|401|403|gated|accept|unauthori[sz]ed|forbidden/.test(e)) return "admin.diarizationNeedsToken";
-  return "admin.diarizationFailed";
 }

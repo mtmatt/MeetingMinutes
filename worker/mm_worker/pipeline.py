@@ -97,7 +97,9 @@ def run_job(
     transcriber: TranscriberLike,
     diarizer: Optional[DiarizerLike],
     max_segment_sec: float = 30.0,
+    diarizer_unavailable: Optional[str] = None,
 ) -> dict:
+    """Transcribe one job. ``diarizer_unavailable`` is why there is no diarizer, if there is none."""
     opts = job.options
     out_dir = Path(job.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -120,6 +122,13 @@ def run_job(
     energy = segmenter.frame_energy(wav, sr)
 
     turns = None
+    # Recorded with the result, so a transcript without speakers says why.
+    if not opts.get("diarize", True):
+        diarization: dict = {"status": "off"}
+    elif diarizer is None:
+        diarization = {"status": "unavailable", "reason": (diarizer_unavailable or "The speaker diarization model is not loaded.")[:500]}
+    else:
+        diarization = {"status": "ok"}
     if opts.get("diarize", True) and diarizer is not None:
         progress("diarizing", 0.0, force=True)
         try:
@@ -137,6 +146,7 @@ def run_job(
         except Exception as e:  # Fall back to plain transcription rather than failing the job.
             log.warning("diarization failed, continuing without speakers: %s", e)
             turns = None
+            diarization = {"status": "failed", "reason": f"{type(e).__name__}: {e}"[:500]}
 
     if turns:
         plan = segmenter.plan_from_turns(turns, duration, energy=energy, max_len=max_segment_sec)
@@ -181,4 +191,5 @@ def run_job(
         "hasPeaks": (out_dir / "peaks.json").exists(),
         "speakers": speakers,
         "segments": segments,
+        "diarization": {**diarization, "speakers": len(speakers)} if diarization["status"] == "ok" else diarization,
     }

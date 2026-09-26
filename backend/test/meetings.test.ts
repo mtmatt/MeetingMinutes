@@ -109,7 +109,10 @@ describe("meeting lifecycle", () => {
 
     writeFileSync(join(job.outDir, "playback.m4a"), new Uint8Array(4096).map((_, i) => i % 256));
     writeFileSync(join(job.outDir, "peaks.json"), JSON.stringify({ version: 1, peaks: [0.1, 0.5] }));
-    const done = await worker.call(`/jobs/${job.jobId}/complete`, { workerId: "gpu0", result: RESULT });
+    const done = await worker.call(`/jobs/${job.jobId}/complete`, {
+      workerId: "gpu0",
+      result: { ...RESULT, diarization: { status: "ok", speakers: 2 } },
+    });
     expect(done.status).toBe(200);
 
     const detail = (await (await c.get(`/api/meetings/${id}`)).json()) as any;
@@ -117,6 +120,7 @@ describe("meeting lifecycle", () => {
     expect(detail.meeting.segments).toHaveLength(3);
     expect(detail.meeting.speakers.map((s: any) => s.name)).toEqual(["Speaker 1", "Speaker 2"]);
     expect(detail.meeting.media.hasPlayback).toBe(true);
+    expect(detail.meeting.diarization).toEqual({ status: "ok", speakers: 2 });
 
     const summary = await waitFor(async () => {
       const d = (await (await c.get(`/api/meetings/${id}`)).json()) as any;
@@ -176,6 +180,20 @@ describe("meeting lifecycle", () => {
     await worker.call(`/jobs/${job2.jobId}/complete`, { workerId: "gpu0", result: RESULT });
     const after = (await (await c.get(`/api/meetings/${id}`)).json()) as any;
     expect(after.meeting.speakers[0].name).toBe("王小明");
+
+    // Re-separating speakers (with a head count) resets names: labels may now mean other people.
+    const again = await c.post(`/api/meetings/${id}/retranscribe`, {
+      options: { language: "auto", diarize: true, numSpeakers: 3, minSpeakers: null, maxSpeakers: null, vocabulary: "", script: "zh-TW" },
+      resetSpeakerNames: true,
+    });
+    expect(again.status).toBe(200);
+    const job3 = await claimFor(id);
+    expect(job3.options.numSpeakers).toBe(3);
+    await worker.call(`/jobs/${job3.jobId}/complete`, { workerId: "gpu0", result: RESULT });
+    const relabeled = (await (await c.get(`/api/meetings/${id}`)).json()) as any;
+    expect(relabeled.meeting.speakers.map((s: any) => s.name)).toEqual(["Speaker 1", "Speaker 2"]);
+    // Transcripts completed by older workers carry no diarization outcome.
+    expect(relabeled.meeting.diarization).toBeNull();
   });
 
   test("users cannot see each other's meetings", async () => {

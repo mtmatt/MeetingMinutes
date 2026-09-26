@@ -22,6 +22,7 @@ import { Menu } from "../components/Menu";
 import { useConfirm } from "../components/Modal";
 import { PlayerBar } from "../components/Player";
 import { MeetingStatus } from "../components/Status";
+import { DiarizationNotice, ResplitDialog } from "../components/Diarization";
 import { SummaryExportItems, SummaryPanel, useSummaryInfo, useSummarySelection } from "../components/SummaryPanel";
 import { useToast } from "../components/Toast";
 import { Transcript } from "../components/Transcript";
@@ -191,6 +192,7 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
   const qc = useQueryClient();
   const [videoMode, setVideoMode] = useState(false);
   const [tab, setTab] = useState<"transcript" | "summary">("transcript");
+  const [resplit, setResplit] = useState(false);
   const summarySelection = useSummarySelection(meeting.summaries);
   const summaryInfo = useSummaryInfo(meeting);
   const exportable = summarySelection.current?.status === "done" ? summarySelection.current : null;
@@ -356,6 +358,17 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
                       <RefreshCw /> {t("meeting.retranscribe")}
                     </button>
                   )}
+                  {ready && (
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        close();
+                        setResplit(true);
+                      }}
+                    >
+                      <Users /> {t("diarize.resplit")}
+                    </button>
+                  )}
                   <button
                     className="menu-item danger"
                     onClick={() => {
@@ -386,6 +399,7 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
 
       {ready && (
         <>
+          <DiarizationNotice meeting={meeting} />
           <div className="meeting-tabs tabs" role="tablist">
             <button role="tab" aria-selected={tab === "transcript"} onClick={() => setTab("transcript")}>
               {t("meeting.transcript")}
@@ -407,6 +421,7 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
           <PlayerBar meeting={meeting} videoMode={videoMode} />
         </>
       )}
+      {resplit && <ResplitDialog meeting={meeting} onClose={() => setResplit(false)} />}
       {!ready && meeting.summaries.length > 0 && <SummaryPanel meeting={meeting} selection={summarySelection} />}
     </div>
   );

@@ -7,6 +7,7 @@ import { DataFlowNote, SummaryComposer, defaultOutputLanguage, normalizeRequest,
 import { useI18n, type TFn } from "../i18n";
 import { bytes, clock, fromLocalInput, monthDay, time, toLocalInput } from "../lib/format";
 import { Recorder, revealSource, sourceAlert, sourceScope } from "../components/Recorder";
+import { Stepper } from "../components/Stepper";
 import { useRecording, type RecordedFile, type RecordingController } from "../lib/useRecording";
 import { useConfirm } from "../components/Modal";
 import { deleteRecording } from "../lib/recordingStore";
@@ -46,19 +47,6 @@ function Step({ n, title, children }: { n: string; title: string; children: Reac
   );
 }
 
-function Stepper({ value, onChange, min = 1, max = 20 }: { value: number; onChange: (n: number) => void; min?: number; max?: number }) {
-  return (
-    <div className="stepper">
-      <button type="button" className="icon-btn sm" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label="-">
-        <Minus />
-      </button>
-      <span className="mono">{value}</span>
-      <button type="button" className="icon-btn sm" onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} aria-label="+">
-        <Plus />
-      </button>
-    </div>
-  );
-}
 
 export function UploadPage() {
   const { t, tMaybe, locale } = useI18n();

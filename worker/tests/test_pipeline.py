@@ -43,6 +43,7 @@ def test_full_pipeline_with_fakes(two_speaker_wav, tmp_path):
     # Third segment was punctuation only and is dropped.
     assert [s["text"] for s in result["segments"]] == ["我們開始開會吧", "這個 release 要延後"]
     assert result["speakers"] == ["SPK_7", "SPK_2"]
+    assert result["diarization"] == {"status": "ok", "speakers": 2}
     assert result["language"] == "Chinese,English"
     assert result["hasPlayback"] and result["hasPeaks"] and not result["hasVideo"]
     assert (tmp_path / "playback.m4a").exists()
@@ -64,6 +65,20 @@ def test_pipeline_without_diarization(two_speaker_wav, tmp_path):
     assert result["speakers"] == []
     assert all(s["speaker"] is None for s in result["segments"])
     assert result["segments"][0]["text"] == "我们开始开会吧"
+    assert result["diarization"] == {"status": "off"}
+
+
+def test_missing_diarizer_is_reported_with_its_reason(two_speaker_wav, tmp_path):
+    result = run_job(
+        JobSpec(str(two_speaker_wav), str(tmp_path), {}),
+        lambda s, p: True,
+        FakeTranscriber(),
+        None,
+        diarizer_unavailable="Could not load pyannote/speaker-diarization-community-1: 401 Unauthorized",
+    )
+    assert result["speakers"] == [] and result["segments"]
+    assert result["diarization"]["status"] == "unavailable"
+    assert "401" in result["diarization"]["reason"]
 
 
 def test_diarization_failure_falls_back(two_speaker_wav, tmp_path):
@@ -73,6 +88,7 @@ def test_diarization_failure_falls_back(two_speaker_wav, tmp_path):
 
     result = run_job(JobSpec(str(two_speaker_wav), str(tmp_path), {}), lambda s, p: True, FakeTranscriber(), Broken())
     assert result["speakers"] == [] and result["segments"]
+    assert result["diarization"] == {"status": "failed", "reason": "RuntimeError: no HF token"}
 
 
 def test_cancellation_stops_the_job(two_speaker_wav, tmp_path):

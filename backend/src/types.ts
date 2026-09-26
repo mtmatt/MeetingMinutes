@@ -71,6 +71,8 @@ export interface MeetingRow {
   created_at: number;
   updated_at: number;
   transcribed_at: number | null;
+  /** JSON DiarizationOutcome of the latest transcription; null before this was recorded. */
+  diarization: string | null;
 }
 
 export interface SpeakerRow {

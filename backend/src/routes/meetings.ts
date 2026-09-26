@@ -257,10 +257,13 @@ meetingRoutes.delete("/:id", async (c) => {
 meetingRoutes.post("/:id/retranscribe", async (c) => {
   const m = owned(c, c.req.param("id"));
   if (m.status === "uploading") httpError(409, "The upload has not finished.", "not_ready");
-  const input = await body(c, z.object({ options: optionsSchema.optional() }));
+  const input = await body(c, z.object({ options: optionsSchema.optional(), resetSpeakerNames: z.boolean().default(false) }));
   if (input.options) {
     db.query("UPDATE meetings SET options = $o WHERE id = $id").run({ id: m.id, o: JSON.stringify(input.options) });
   }
+  // Re-separating speakers relabels them: SPEAKER_00 may then be someone else,
+  // so names given to the old labels must not carry over.
+  if (input.resetSpeakerNames) db.query("DELETE FROM speakers WHERE meeting_id = $m").run({ m: m.id });
   enqueueTranscription(m);
   return c.json({ meeting: meetingSummary(getOwnedMeeting(m.id, c.get("user").id)!) });
 });

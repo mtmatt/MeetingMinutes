@@ -65,6 +65,13 @@ const resultSchema = z.object({
       }),
     )
     .max(200000),
+  diarization: z
+    .object({
+      status: z.enum(["ok", "off", "unavailable", "failed"]),
+      reason: z.string().max(1000).nullable().optional(),
+      speakers: z.number().int().nonnegative().optional(),
+    })
+    .optional(),
 });
 
 internalRoutes.post("/jobs/:id/complete", async (c) => {

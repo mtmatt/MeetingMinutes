@@ -146,4 +146,6 @@ export const migrations: string[] = [
     last_seen_at INTEGER NOT NULL
   );
   `,
+  // Whether speaker diarization ran for the latest transcription, and why not.
+  `ALTER TABLE meetings ADD COLUMN diarization TEXT;`,
 ];

@@ -140,6 +140,7 @@ export function meetingSummary(m: MeetingRow) {
     language: m.language,
     options,
     speakerCount,
+    diarization: parseJson<DiarizationOutcome | null>(m.diarization, null),
     preview: preview ? preview.slice(0, 220) : null,
     summaryExcerpt: latestDone?.content ? summaryExcerpt(latestDone.content) : null,
     latestSummary: latest ? { id: latest.id, status: latest.status, createdAt: latest.created_at } : null,
@@ -274,6 +275,18 @@ export interface TranscriptResult {
   hasPeaks: boolean;
   speakers: string[];
   segments: { start: number; end: number; speaker: string | null; text: string }[];
+  diarization?: DiarizationOutcome;
+}
+
+/**
+ * What happened to speaker diarization in a transcription:
+ * ok (ran), off (not requested), unavailable (model could not be loaded),
+ * failed (ran into an error; the transcript has no speakers).
+ */
+export interface DiarizationOutcome {
+  status: "ok" | "off" | "unavailable" | "failed";
+  reason?: string | null;
+  speakers?: number;
 }
 
 export function completeJob(jobId: string, workerId: string, result: TranscriptResult): boolean {
@@ -313,7 +326,7 @@ export function completeJob(jobId: string, workerId: string, result: TranscriptR
     });
     db.query(
       `UPDATE meetings SET status = 'ready', stage = NULL, progress = 1, error = NULL, duration_sec = $d, language = $lang,
-         has_video = $hv, has_playback = $hp, has_peaks = $hk, transcribed_at = $t, updated_at = $t WHERE id = $id`,
+         has_video = $hv, has_playback = $hp, has_peaks = $hk, diarization = $dz, transcribed_at = $t, updated_at = $t WHERE id = $id`,
     ).run({
       id: m,
       d: result.durationSec,
@@ -321,6 +334,7 @@ export function completeJob(jobId: string, workerId: string, result: TranscriptR
       hv: result.hasVideo ? 1 : 0,
       hp: result.hasPlayback && existsSync(join(meetingDir(m), PLAYBACK_FILE)) ? 1 : 0,
       hk: result.hasPeaks && existsSync(join(meetingDir(m), PEAKS_FILE)) ? 1 : 0,
+      dz: result.diarization ? JSON.stringify(result.diarization) : null,
       t,
     });
     meeting = getMeeting(m);

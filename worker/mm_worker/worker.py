@@ -66,7 +66,9 @@ def build_models(cfg: WorkerConfig):
 
         log.info("using fake models (ASR_BACKEND=fake)")
         if os.environ.get("MM_FAKE_NO_DIARIZATION") == "1":
-            return FakeTranscriber(0).load(), None, {"state": "unavailable", "reason": "Fake diarization disabled."}
+            # Same message as a real missing token / unaccepted model terms.
+            reason = "Could not load pyannote/speaker-diarization-community-1: 401 Client Error: Unauthorized. Set HF_TOKEN and accept the model's conditions on Hugging Face."
+            return FakeTranscriber(0).load(), None, {"state": "unavailable", "reason": reason}
         return FakeTranscriber(float(os.environ.get("MM_FAKE_LOAD_SEC", "0"))).load(), FakeDiarizer().load(), {"state": "ready"}
 
     from .asr import Transcriber
@@ -156,7 +158,7 @@ class _JobRunner:
         except Exception as e:
             log.error("could not report failure: %s", e)
 
-    def process(self, job: dict, transcriber, diarizer):
+    def process(self, job: dict, transcriber, diarizer, diarizer_unavailable: Optional[str] = None):
         job_id = job["jobId"]
         log.info("job %s: meeting %s (%s), attempt %s", job_id, job["meetingId"], job.get("title"), job.get("attempt"))
         started = time.monotonic()
@@ -167,6 +169,7 @@ class _JobRunner:
                 transcriber=transcriber,
                 diarizer=diarizer,
                 max_segment_sec=self.cfg.max_segment_sec,
+                diarizer_unavailable=diarizer_unavailable,
             )
             accepted = self.client.complete(job_id, result)
             log.info(
@@ -221,7 +224,7 @@ def gpu_session(cfg: WorkerConfig, first_job: dict, events) -> None:
     while job and not stop.is_set():
         runner.begin(job)
         events.put(("job", job["jobId"]))
-        runner.process(job, transcriber, diarizer)
+        runner.process(job, transcriber, diarizer, diarization.get("reason"))
         runner.end()
         events.put(("done", job["jobId"]))
         job = None
