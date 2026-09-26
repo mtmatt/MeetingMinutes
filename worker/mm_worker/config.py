@@ -73,8 +73,13 @@ def load_config() -> WorkerConfig:
             "No worker token. Start the backend once (it creates data/worker.token) or set WORKER_TOKEN."
         )
 
-    port = os.environ.get("PORT", "8787")
-    server_url = os.environ.get("MM_SERVER_URL", f"http://127.0.0.1:{port}").rstrip("/")
+    # With built-in HTTPS (TLS_CERT_FILE) the backend also serves the worker API
+    # over plain HTTP on a loopback-only port, so no certificate is needed here.
+    if os.environ.get("TLS_CERT_FILE", "").strip():
+        default_url = f"http://127.0.0.1:{os.environ.get('INTERNAL_PORT', '').strip() or '8788'}"
+    else:
+        default_url = f"http://127.0.0.1:{os.environ.get('PORT', '').strip() or '8787'}"
+    server_url = os.environ.get("MM_SERVER_URL", "").strip().rstrip("/") or default_url
     gpu = os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")[0] or "0"
     host = socket.gethostname()
     worker_id = os.environ.get("MM_WORKER_ID") or f"{host}-gpu{gpu}"

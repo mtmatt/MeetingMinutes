@@ -108,14 +108,61 @@ To keep both processes running as systemd user services, see `deploy/systemd/`. 
 
 ### Exposing it on a public IP
 
-Keep `HOST=127.0.0.1` and put a TLS-terminating reverse proxy in front: `deploy/Caddyfile` (automatic HTTPS) or `deploy/nginx.conf`. Then set:
+People need HTTPS: it protects passwords on the way in, and browsers only allow recording on HTTPS pages. There are two ways to get it.
+
+#### Option A: serve HTTPS directly on a port (no reverse proxy)
+
+The web server can serve HTTPS itself on any unprivileged port, so this needs no sudo.
+
+1. Create a certificate for the server's address:
+
+   ```bash
+   scripts/make-cert.sh 203.0.113.10          # the public IP; add host names if you have them
+   ```
+
+   This creates `data/tls/ca.crt` (a private CA for your team, created once) and `data/tls/server.crt` / `server.key`, then prints the lines for `.env`.
+
+2. Put them in `.env`:
+
+   ```
+   HOST=0.0.0.0
+   PORT=8443
+   TLS_CERT_FILE=data/tls/server.crt
+   TLS_KEY_FILE=data/tls/server.key
+   PUBLIC_URL=https://203.0.113.10:8443
+   ```
+
+3. Restart `scripts/start.sh` and `scripts/worker.sh`. People open `https://203.0.113.10:8443`. Plain `http://` on that port does not work.
+
+GPU workers on the same machine connect to a separate plain-HTTP port, `INTERNAL_PORT` (default 8788). It listens on 127.0.0.1 only, serves nothing but the token-protected worker API, and workers pick it up automatically when `TLS_CERT_FILE` is set. A worker on another machine needs `MM_SERVER_URL` pointed at a reachable address, for example through an SSH tunnel.
+
+**Certificate warning.** Browsers do not know your team CA, so they show a warning. There are two ways to handle it:
+
+- **Trust the CA on each computer (recommended).** Import `data/tls/ca.crt` once:
+  - Windows: double-click it, then *Install Certificate → Current User → Place all certificates in: Trusted Root Certification Authorities*. This needs no admin rights and covers Chrome and Edge.
+  - macOS: open it in Keychain Access, then set *Trust → Always Trust*.
+  - Chrome on Linux: *Settings → Privacy and security → Security → Manage certificates → Authorities → Import*.
+  - Firefox (all systems): *Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import*.
+
+  Afterwards there is no warning, and re-issuing the server certificate (for example after an IP change) needs nothing new on clients.
+- **Accept the warning.** Each person clicks through the warning once, after checking that the SHA-256 fingerprint shown by the browser matches the one `make-cert.sh` printed. Recording works either way.
+
+**Publicly trusted certificate instead.** If the server has a domain name, a public certificate avoids the warning altogether. [acme.sh](https://github.com/acmesh-official/acme.sh) can issue one without root, using a DNS challenge (`--dns`), so no port 80 is needed. Point `TLS_CERT_FILE` / `TLS_KEY_FILE` at its output and restart the server after each renewal (acme.sh `--reloadcmd`). Let's Encrypt also issues certificates for bare IP addresses, but they last only about six days and must be validated on port 80 or 443, which normally needs privileges.
+
+If the machine runs a firewall, the chosen port (8443 above) has to be open.
+
+#### Option B: behind a reverse proxy
+
+Keep `HOST=127.0.0.1` and put a TLS-terminating proxy in front: `deploy/Caddyfile` (automatic HTTPS) or `deploy/nginx.conf`. Then set:
 
 ```
 PUBLIC_URL=https://minutes.example.com
 TRUST_PROXY=true
 ```
 
-This turns on `Secure`, `__Host-` session cookies and HSTS, and makes rate limiting use the real client IP. Binding ports 80/443 normally needs privileges; if you cannot get them, run Caddy on a high port or ask for a port redirect.
+The proxy must accept request bodies larger than `UPLOAD_CHUNK_MB` (32 MB by default).
+
+With either option, HTTPS turns on `Secure`, `__Host-` session cookies and HSTS. The server prints a warning at startup if it would serve plain HTTP on a network address.
 
 ## Recording meetings in the browser
 
@@ -151,6 +198,8 @@ All settings are environment variables. Put them in `.env` at the repository roo
 | `ADMIN_CONTACT` | – | Contact shown on the sign-in page for people without an account or who forgot their password (an email becomes a mailto link). |
 | `TRUST_PROXY` | `false` | Trust `X-Forwarded-*` headers from your proxy. |
 | `DATA_DIR` | `data` | SQLite database, media, and tokens. Back this directory up. |
+| `TLS_CERT_FILE` / `TLS_KEY_FILE` | empty | Serve HTTPS directly (see "Option A"). |
+| `INTERNAL_PORT` | `8788` | Loopback-only worker API port, used when `TLS_CERT_FILE` is set. |
 | `MAX_UPLOAD_MB` / `UPLOAD_CHUNK_MB` | `4096` / `32` | Largest accepted file, and the size of each upload request. The upload page shows `MAX_UPLOAD_MB` and rejects larger files before sending. A reverse proxy must allow request bodies larger than `UPLOAD_CHUNK_MB` (for example nginx `client_max_body_size 64m`); otherwise users see "the server refused the upload (HTTP 413)". |
 | `HF_TOKEN` | – | Enables speaker diarization. |
 | `ASR_MODEL` / `ASR_BACKEND` | `Qwen/Qwen3-ASR-1.7B` / `transformers` | Recognition model and engine (`vllm` for speed). |

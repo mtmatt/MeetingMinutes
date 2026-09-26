@@ -67,6 +67,23 @@ mkdirSync(dataDir, { recursive: true });
 
 const publicUrl = str("PUBLIC_URL", "").replace(/\/+$/, "");
 
+/**
+ * Built-in HTTPS for running without a reverse proxy. Both files or neither;
+ * relative paths are resolved from the repository root.
+ */
+function tlsFiles(): { cert: string; key: string } | null {
+  const cert = str("TLS_CERT_FILE", "");
+  const key = str("TLS_KEY_FILE", "");
+  if (!cert && !key) return null;
+  if (!cert || !key) throw new Error("Set both TLS_CERT_FILE and TLS_KEY_FILE, or neither.");
+  const files = { cert: absPath(cert), key: absPath(key) };
+  for (const f of [files.cert, files.key]) {
+    if (!existsSync(f)) throw new Error(`TLS file not found: ${f} (create one with scripts/make-cert.sh)`);
+  }
+  return files;
+}
+const tls = tlsFiles();
+
 function resolveCodexBin(): string {
   const explicit = process.env.CODEX_BIN;
   if (explicit) return explicit;
@@ -85,11 +102,18 @@ export const config = {
   dbPath: join(dataDir, "meetingminutes.sqlite"),
   /** Public base URL, e.g. https://minutes.example.com. Used for invite links and cookie security. */
   publicUrl,
+  /** Serve HTTPS directly (no reverse proxy). */
+  tls,
+  /**
+   * With built-in HTTPS, GPU workers on this machine connect over plain HTTP to
+   * this loopback-only port, which serves nothing but the worker API.
+   */
+  internalPort: int("INTERNAL_PORT", 8788),
   /** Trust X-Forwarded-For / X-Forwarded-Proto (set when behind Caddy/nginx). */
   trustProxy: bool("TRUST_PROXY", false),
   /** Shown on the sign-in page to people without an account or who forgot their password. */
   adminContact: str("ADMIN_CONTACT", "").trim(),
-  cookieSecure: bool("COOKIE_SECURE", publicUrl.startsWith("https://")),
+  cookieSecure: bool("COOKIE_SECURE", tls !== null || publicUrl.startsWith("https://")),
   sessionTtlDays: int("SESSION_TTL_DAYS", 30),
   maxUploadBytes: int("MAX_UPLOAD_MB", 4096) * 1024 * 1024,
   uploadChunkBytes: int("UPLOAD_CHUNK_MB", 32) * 1024 * 1024,
