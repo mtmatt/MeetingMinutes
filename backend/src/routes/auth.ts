@@ -24,7 +24,7 @@ import {
   verifyPassword,
 } from "../auth/service";
 import { checkSetupToken, clearSetupToken } from "../auth/setup";
-import { findInvite } from "../auth/invites";
+import { consumeInvite, findInvite } from "../auth/invites";
 import { httpError } from "../lib/util";
 import type { AppEnv, SessionRow } from "../types";
 import { body } from "./validate";
@@ -140,10 +140,7 @@ authRoutes.post("/invites/:token/accept", async (c) => {
   }
   let userId: string;
   const markUsed = (uid: string) => {
-    const used = db
-      .query("UPDATE invites SET used_at = $t, used_by = $u WHERE id = $id AND used_at IS NULL")
-      .run({ id: invite.id, u: uid, t: now() });
-    if (used.changes === 0) httpError(410, "This link has already been used.", "invalid_invite");
+    if (!consumeInvite(invite.id, uid)) httpError(410, "This link has already been used.", "invalid_invite");
   };
   if (invite.kind === "reset") {
     const input = await body(c, z.object({ password: z.string() }));

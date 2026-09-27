@@ -1235,7 +1235,7 @@
 }
 .invite-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) auto 160px auto;
+  grid-template-columns: minmax(0, 1.3fr) auto 104px 160px auto;
   gap: 16px;
   align-items: end;
 }
@@ -1254,17 +1254,30 @@
 }
 .invite-list li {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr) 110px 180px 80px;
+  grid-template-columns: 110px minmax(0, 1fr) 80px 110px 150px 80px;
   gap: 16px;
   align-items: center;
   padding: 12px 4px;
   border-bottom: 1px solid var(--rule);
   font-size: var(--step--1);
 }
-.invite-note {
+.invite-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.invite-note,
+.invite-joined {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.invite-list .pill {
+  justify-self: start;
+}
+.invite-uses,
+.mono-nums {
+  font-variant-numeric: tabular-nums lining-nums;
 }
 
 .system {
@@ -1375,7 +1388,17 @@
     grid-template-columns: 1fr;
   }
   .invite-list li {
-    grid-template-columns: 1fr auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 14px;
+  }
+  .invite-list .invite-main {
+    order: -1;
+    flex: 1 0 100%;
+  }
+  .invite-list li > :last-child {
+    margin-left: auto;
   }
 }
 

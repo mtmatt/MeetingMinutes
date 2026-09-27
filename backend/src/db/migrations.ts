@@ -148,4 +148,19 @@ export const migrations: string[] = [
   `,
   // Whether speaker diarization ran for the latest transcription, and why not.
   `ALTER TABLE meetings ADD COLUMN diarization TEXT;`,
+  // Invitation links usable a set number of times. used_at now marks the use
+  // that exhausted the link (or its only use); invite_uses records every one.
+  `
+  ALTER TABLE invites ADD COLUMN max_uses INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE invites ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE invites ADD COLUMN revoked_at INTEGER;
+  CREATE TABLE invite_uses (
+    invite_id TEXT NOT NULL REFERENCES invites(id) ON DELETE CASCADE,
+    user_id   TEXT REFERENCES users(id) ON DELETE SET NULL,
+    used_at   INTEGER NOT NULL
+  );
+  CREATE INDEX invite_uses_invite ON invite_uses(invite_id, used_at);
+  UPDATE invites SET use_count = 1 WHERE used_at IS NOT NULL;
+  INSERT INTO invite_uses (invite_id, user_id, used_at) SELECT id, used_by, used_at FROM invites WHERE used_at IS NOT NULL;
+  `,
 ];

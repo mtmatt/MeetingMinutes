@@ -39,7 +39,7 @@ A self-hosted meeting-minutes service. Upload a recording (audio or video). It i
 - **Templates**: six built-ins (minutes, action items, executive brief, detailed notes, decision log, lecture notes) plus your own.
 - **Accounts**:
   - first-run admin setup protected by a one-time token;
-  - invitation links;
+  - invitation links, each for a set number of people (1 to 100, until it expires), with a record of who joined through each; an invitation for an administrator is always single-use;
   - password reset links;
   - roles, disabling users, and a per-user session list with remote sign-out.
 - **Admin system page**: GPU workers (model state, VRAM), queue, Codex login status, and disk usage.
@@ -234,7 +234,7 @@ The admin page shows whether Codex is signed in, and whether summaries are pause
 - **Passwords**: argon2id (Bun's native implementation), 10 characters minimum.
 - **Sessions**: random 256-bit tokens; only their SHA-256 hash is stored. Cookies are `HttpOnly` and `SameSite=Lax`, and `Secure` with the `__Host-` prefix when served over HTTPS. Sessions slide over 30 days, and changing your password signs out your other devices.
 - **CSRF**: every state-changing API call must carry a custom `X-MM-Client` header, which cross-site forms cannot send and cross-origin scripts cannot send without a CORS preflight that is never granted. A foreign `Origin` header is also rejected.
-- **Brute force**: failed sign-ins are limited per IP (20 per 15 minutes) and per username (8 per 15 minutes). Setup and invite tokens are rate-limited too, and unknown usernames take the same time to fail as wrong passwords.
+- **Brute force**: failed sign-ins are limited per IP (20 per 15 minutes) and per username (8 per 15 minutes). Setup and invite tokens are rate-limited too, and unknown usernames take the same time to fail as wrong passwords. An invitation link admits at most the number of people it was created for, even when they sign up at the same moment, and one for an administrator admits only one.
 - **Bootstrap**: the first admin needs the setup token from the server log or data directory, so a fresh public instance cannot be claimed by a stranger.
 - **Isolation**: every meeting, media file, export, and summary query is scoped to its owner; someone else's meeting or summary is answered with 404, not 403, so IDs cannot be probed. The live-update stream closes when its session is signed out or the account is disabled.
 - **Uploaded files**: stored under random IDs, served with a media type derived from the checked file extension (never the type the browser declared), `X-Content-Type-Options: nosniff`, and the site CSP, so an uploaded HTML or SVG file cannot run as a page. ffmpeg reads them with `-protocol_whitelist file`, so a crafted playlist cannot fetch URLs or other files, and decoding stops at `MAX_AUDIO_HOURS`.

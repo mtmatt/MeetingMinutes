@@ -133,8 +133,14 @@ export interface Invite {
   note: string | null;
   createdAt: number;
   expiresAt: number;
+  maxUses: number;
+  useCount: number;
+  status: "active" | "used_up" | "revoked" | "expired";
+  /** Usernames of the people who joined through it, oldest first. */
+  usedBy: string[];
+  /** When it was used up. */
   usedAt: number | null;
-  usedBy: string | null;
+  revokedAt: number | null;
 }
 
 export interface WorkerInfo {

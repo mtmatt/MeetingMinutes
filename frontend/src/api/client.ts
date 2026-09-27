@@ -130,7 +130,7 @@ export const api = {
   adminDeleteUser: (id: string) => del<{ ok: true }>(`/admin/users/${id}`),
   adminResetLink: (id: string) => post<{ url: string; expiresAt: number }>(`/admin/users/${id}/reset-link`),
   adminInvites: () => get<{ invites: Invite[] }>("/admin/invites"),
-  adminCreateInvite: (b: { role: string; note: string | null; ttlHours: number }) =>
+  adminCreateInvite: (b: { role: string; note: string | null; ttlHours: number; maxUses: number }) =>
     post<{ url: string; invite: Invite }>("/admin/invites", b),
   adminDeleteInvite: (id: string) => del<{ ok: true }>(`/admin/invites/${id}`),
   adminSystem: () => get<SystemInfo>("/admin/system"),
