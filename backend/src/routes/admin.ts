@@ -3,7 +3,7 @@ import { statfsSync } from "node:fs";
 import { z } from "zod";
 import { config } from "../config";
 import { requireAdmin, requireUser } from "../auth/middleware";
-import { createInvite, type InviteRow } from "../auth/invites";
+import { MAX_INVITE_USES, createInvite, inviteStatus, type InviteRow } from "../auth/invites";
 import { deleteUserSessions, findUserById, publicUser } from "../auth/service";
 import { db, now } from "../db";
 import { httpError, parseJson } from "../lib/util";
@@ -91,25 +91,45 @@ adminRoutes.post("/users/:id/reset-link", (c) => {
   return c.json({ url: linkFor(c, token), expiresAt: invite.expires_at });
 });
 
+function publicInvite(i: InviteRow, usedBy: string[], t = now()) {
+  return {
+    id: i.id,
+    role: i.role,
+    note: i.note,
+    createdAt: i.created_at,
+    expiresAt: i.expires_at,
+    maxUses: i.max_uses,
+    useCount: i.use_count,
+    status: inviteStatus(i, t),
+    /** Usernames of everyone who joined through it, oldest first (deleted accounts left out). */
+    usedBy,
+    usedAt: i.used_at,
+    revokedAt: i.revoked_at,
+  };
+}
+
+// Open invitations, and closed ones that someone used (a record of who joined how).
 adminRoutes.get("/invites", (c) => {
+  const t = now();
   const rows = db
-    .query<InviteRow & { used_by_name: string | null }, { t: number }>(
-      `SELECT i.*, u.username AS used_by_name FROM invites i LEFT JOIN users u ON u.id = i.used_by
-       WHERE i.kind = 'invite' AND (i.used_at IS NOT NULL OR i.expires_at > $t)
-       ORDER BY i.created_at DESC LIMIT 100`,
+    .query<InviteRow, { t: number }>(
+      `SELECT * FROM invites WHERE kind = 'invite' AND (use_count > 0 OR (revoked_at IS NULL AND expires_at > $t))
+       ORDER BY created_at DESC LIMIT 100`,
     )
-    .all({ t: now() });
-  return c.json({
-    invites: rows.map((i) => ({
-      id: i.id,
-      role: i.role,
-      note: i.note,
-      createdAt: i.created_at,
-      expiresAt: i.expires_at,
-      usedAt: i.used_at,
-      usedBy: i.used_by_name,
-    })),
-  });
+    .all({ t });
+  const uses = db
+    .query<{ invite_id: string; username: string }, { ids: string }>(
+      `SELECT iu.invite_id, u.username FROM invite_uses iu JOIN users u ON u.id = iu.user_id
+       WHERE iu.invite_id IN (SELECT value FROM json_each($ids)) ORDER BY iu.used_at`,
+    )
+    .all({ ids: JSON.stringify(rows.map((i) => i.id)) });
+  const byInvite = new Map<string, string[]>();
+  for (const u of uses) {
+    const names = byInvite.get(u.invite_id);
+    if (names) names.push(u.username);
+    else byInvite.set(u.invite_id, [u.username]);
+  }
+  return c.json({ invites: rows.map((i) => publicInvite(i, byInvite.get(i.id) ?? [], t)) });
 });
 
 adminRoutes.post("/invites", async (c) => {
@@ -119,14 +139,31 @@ adminRoutes.post("/invites", async (c) => {
       role: z.enum(["admin", "member"]).default("member"),
       note: z.string().trim().max(200).nullable().default(null),
       ttlHours: z.number().int().min(1).max(24 * 30).default(72),
+      maxUses: z.number().int().min(1).max(MAX_INVITE_USES).default(1),
     }),
   );
-  const { token, invite } = createInvite({ kind: "invite", role: input.role, note: input.note, createdBy: c.get("user").id, ttlHours: input.ttlHours });
-  return c.json({ url: linkFor(c, token), invite: { id: invite.id, role: invite.role, note: invite.note, expiresAt: invite.expires_at } }, 201);
+  // One leaked link must never produce several administrators.
+  if (input.role === "admin" && input.maxUses !== 1) httpError(422, "An invitation for an administrator can be used only once.", "invalid_input");
+  const { token, invite } = createInvite({
+    kind: "invite",
+    role: input.role,
+    note: input.note,
+    createdBy: c.get("user").id,
+    ttlHours: input.ttlHours,
+    maxUses: input.maxUses,
+  });
+  return c.json({ url: linkFor(c, token), invite: publicInvite(invite, []) }, 201);
 });
 
+// Revoke: an unused link disappears; a partly used one stops working but stays
+// listed, so the record of who joined through it is kept.
 adminRoutes.delete("/invites/:id", (c) => {
-  db.query("DELETE FROM invites WHERE id = $id AND used_at IS NULL").run({ id: c.req.param("id") });
+  const id = c.req.param("id");
+  const t = now();
+  db.transaction(() => {
+    db.query("DELETE FROM invites WHERE id = $id AND kind = 'invite' AND use_count = 0").run({ id });
+    db.query("UPDATE invites SET revoked_at = $t WHERE id = $id AND kind = 'invite' AND revoked_at IS NULL AND use_count < max_uses").run({ id, t });
+  })();
   return c.json({ ok: true });
 });
 

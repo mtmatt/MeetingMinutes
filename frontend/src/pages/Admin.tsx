@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cpu, HardDrive, KeyRound, Link2, MoreHorizontal, Plus, ShieldCheck, Sparkles, Trash2, UserCheck, UserMinus, UserX } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api/client";
-import type { AdminUser, Role, WorkerInfo } from "../api/types";
+import type { AdminUser, Invite, Role, WorkerInfo } from "../api/types";
 import { Menu } from "../components/Menu";
 import { Modal, useConfirm } from "../components/Modal";
 import { useToast } from "../components/Toast";
@@ -180,22 +180,88 @@ function Users() {
   );
 }
 
-function Invites() {
+/** Same bound as the server (MAX_INVITE_USES in backend/src/auth/invites.ts). */
+const MAX_INVITE_USES = 100;
+
+function clampUses(value: string): number {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, MAX_INVITE_USES) : 1;
+}
+
+const INVITE_PILL: Record<Invite["status"], string> = { active: "info", used_up: "ok", revoked: "neutral", expired: "neutral" };
+
+function InviteRow({ invite: i, onRevoke }: { invite: Invite; onRevoke: () => void }) {
   const { t, locale } = useI18n();
+  const status =
+    i.status === "active"
+      ? t(i.useCount > 0 ? "admin.inUse" : "admin.pending")
+      : i.status === "used_up"
+        ? t(i.maxUses === 1 ? "admin.usedOnce" : "admin.usedUp")
+        : t(i.status === "revoked" ? "admin.revoked" : "admin.expired");
+  const when =
+    i.status === "active"
+      ? t("admin.expires", { when: until(i.expiresAt, locale) })
+      : i.status === "used_up"
+        ? t(i.maxUses === 1 ? "admin.usedOnceWhen" : "admin.usedUpWhen", { when: relative(i.usedAt ?? i.expiresAt, t, locale) })
+        : i.status === "revoked"
+          ? t("admin.revokedWhen", { when: relative(i.revokedAt ?? i.expiresAt, t, locale) })
+          : t("admin.expiredWhen", { when: relative(i.expiresAt, t, locale) });
+  // Everyone who joined, shortened for long lists (the full list is in the tooltip).
+  const SHOWN = 4;
+  const sep = locale === "zh-TW" ? "、" : ", ";
+  const names = i.usedBy.slice(0, SHOWN).join(sep);
+  const joined =
+    i.usedBy.length === 0
+      ? null
+      : i.usedBy.length > SHOWN
+        ? t("admin.joinedMore", { names, n: i.usedBy.length })
+        : t("admin.joined", { names });
+  return (
+    <li className={i.status === "active" ? "" : "invite-closed"}>
+      <span className={`pill ${INVITE_PILL[i.status]}`}>{status}</span>
+      <div className="invite-main">
+        <span className="invite-note">{i.note || <span className="faint">—</span>}</span>
+        {joined && (
+          <span className="invite-joined faint" title={i.usedBy.join(sep)}>
+            {joined}
+          </span>
+        )}
+      </div>
+      <span className="faint">{i.role === "admin" ? t("admin.admin") : t("admin.member")}</span>
+      <span className="faint mono-nums">{t("admin.usesCount", { used: i.useCount, max: i.maxUses })}</span>
+      <span className="faint">{when}</span>
+      {i.status === "active" ? (
+        <button className="btn btn-sm btn-ghost" onClick={onRevoke}>
+          {t("admin.revoke")}
+        </button>
+      ) : (
+        <span />
+      )}
+    </li>
+  );
+}
+
+function Invites() {
+  const { t } = useI18n();
   const toast = useToast();
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin", "invites"], queryFn: api.adminInvites });
   const [role, setRole] = useState<Role>("member");
   const [note, setNote] = useState("");
   const [ttl, setTtl] = useState(72);
-  const [created, setCreated] = useState<string | null>(null);
+  // Typed as text so the field can be cleared while editing; a blank or
+  // out-of-range value is corrected when leaving the field and when creating.
+  const [uses, setUses] = useState("1");
+  const [created, setCreated] = useState<{ url: string; maxUses: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const maxUses = role === "admin" ? 1 : clampUses(uses);
 
   const create = async () => {
     setBusy(true);
     try {
-      const { url } = await api.adminCreateInvite({ role, note: note.trim() || null, ttlHours: ttl });
-      setCreated(url);
+      const { url, invite } = await api.adminCreateInvite({ role, note: note.trim() || null, ttlHours: ttl, maxUses });
+      setUses(String(maxUses));
+      setCreated({ url, maxUses: invite.maxUses });
       setNote("");
       await qc.invalidateQueries({ queryKey: ["admin", "invites"] });
     } catch (e) {
@@ -231,6 +297,23 @@ function Invites() {
             </div>
           </div>
           <div className="field">
+            <label htmlFor="inv-uses">{t("admin.inviteUses")}</label>
+            <input
+              id="inv-uses"
+              className="input invite-uses"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={MAX_INVITE_USES}
+              step={1}
+              value={role === "admin" ? "1" : uses}
+              disabled={role === "admin"}
+              aria-describedby={role === "admin" ? "inv-uses-hint" : undefined}
+              onChange={(e) => setUses(e.target.value)}
+              onBlur={() => setUses(String(clampUses(uses)))}
+            />
+          </div>
+          <div className="field">
             <label htmlFor="inv-ttl">{t("admin.inviteExpires")}</label>
             <select id="inv-ttl" className="select" value={ttl} onChange={(e) => setTtl(Number(e.target.value))}>
               <option value={24}>{t("admin.hours", { n: 24 })}</option>
@@ -243,11 +326,18 @@ function Invites() {
             <Link2 /> {t("common.create")}
           </button>
         </div>
+        {role === "admin" && (
+          <p id="inv-uses-hint" className="field-hint">
+            {t("admin.inviteUsesAdminHint")}
+          </p>
+        )}
         {created && (
           <div className="invite-created">
             <div className="field-label">{t("admin.inviteCreated")}</div>
-            <CopyLink url={created} />
-            <span className="field-hint">{t("admin.inviteCreatedBody")}</span>
+            <CopyLink url={created.url} />
+            <span className="field-hint">
+              {created.maxUses > 1 ? t("admin.inviteCreatedBodyMany", { n: created.maxUses }) : t("admin.inviteCreatedBody")}
+            </span>
           </div>
         )}
       </div>
@@ -255,17 +345,7 @@ function Invites() {
       <ul className="invite-list">
         {data?.invites.length === 0 && <li className="faint">{t("admin.noInvites")}</li>}
         {data?.invites.map((i) => (
-          <li key={i.id}>
-            <span className={`pill ${i.usedAt ? "ok" : "info"}`}>{i.usedAt ? t("admin.used", { name: i.usedBy ?? "?" }) : t("admin.pending")}</span>
-            <span className="invite-note">{i.note || <span className="faint">—</span>}</span>
-            <span className="faint">{i.role === "admin" ? t("admin.admin") : t("admin.member")}</span>
-            <span className="faint">{i.usedAt ? relative(i.usedAt, t, locale) : t("admin.expires", { when: until(i.expiresAt, locale) })}</span>
-            {!i.usedAt && (
-              <button className="btn btn-sm btn-ghost" onClick={() => revoke(i.id)}>
-                {t("admin.revoke")}
-              </button>
-            )}
-          </li>
+          <InviteRow key={i.id} invite={i} onRevoke={() => revoke(i.id)} />
         ))}
       </ul>
     </div>

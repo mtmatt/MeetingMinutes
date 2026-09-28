@@ -157,3 +157,100 @@ describe("worker auth", () => {
     expect([200, 204]).toContain((await worker.call("/jobs/claim", { workerId: "w" })).status);
   });
 });
+
+const password = "invited password 1";
+
+async function newInvite(admin: Client, body: Record<string, unknown>) {
+  const res = await admin.post("/api/admin/invites", body);
+  const json = (await res.json()) as any;
+  return { status: res.status, json, token: json.url?.split("/invite/")[1] as string };
+}
+
+function joinWith(token: string, username: string) {
+  return new Client().post(`/api/auth/invites/${token}/accept`, { username, displayName: username, password });
+}
+
+async function listed(admin: Client, id: string) {
+  const { invites } = (await (await admin.get("/api/admin/invites")).json()) as any;
+  return invites.find((i: any) => i.id === id);
+}
+
+describe("invitation links with a number of uses", () => {
+  test("a link for three people admits exactly three, and records who joined", async () => {
+    const admin = await adminClient();
+    const inv = await newInvite(admin, { role: "member", maxUses: 3, note: "team" });
+    expect(inv.status).toBe(201);
+    expect(inv.json.invite).toMatchObject({ maxUses: 3, useCount: 0, status: "active" });
+
+    for (const name of ["multi-a", "multi-b"]) expect((await joinWith(inv.token, name)).status).toBe(200);
+    expect(await listed(admin, inv.json.invite.id)).toMatchObject({ useCount: 2, status: "active", usedBy: ["multi-a", "multi-b"], usedAt: null });
+
+    expect((await joinWith(inv.token, "multi-c")).status).toBe(200);
+    expect((await joinWith(inv.token, "multi-d")).status).toBe(404);
+    expect((await new Client().get(`/api/auth/invites/${inv.token}`)).status).toBe(404);
+    const done = await listed(admin, inv.json.invite.id);
+    expect(done).toMatchObject({ useCount: 3, status: "used_up", usedBy: ["multi-a", "multi-b", "multi-c"] });
+    expect(done.usedAt).toBeNumber();
+  });
+
+  test("simultaneous sign-ups never exceed the limit", async () => {
+    const admin = await adminClient();
+    const inv = await newInvite(admin, { maxUses: 2 });
+    const results = await Promise.all(["race-1", "race-2", "race-3", "race-4", "race-5"].map((n) => joinWith(inv.token, n)));
+    const ok = results.filter((r) => r.status === 200).length;
+    expect(ok).toBe(2);
+    expect(results.every((r) => r.status === 200 || r.status === 404 || r.status === 410)).toBe(true);
+    expect(await listed(admin, inv.json.invite.id)).toMatchObject({ useCount: 2, status: "used_up" });
+  });
+
+  test("a failed sign-up does not use up a place", async () => {
+    const admin = await adminClient();
+    const inv = await newInvite(admin, { maxUses: 1 });
+    expect((await joinWith(inv.token, "not valid!")).status).toBe(422);
+    expect((await new Client().post(`/api/auth/invites/${inv.token}/accept`, { username: "weakpw", displayName: "W", password: "short" })).status).toBe(422);
+    expect((await joinWith(inv.token, "valid-after-fail")).status).toBe(200);
+  });
+
+  test("the default is one use, and the number of uses is bounded", async () => {
+    const admin = await adminClient();
+    expect((await newInvite(admin, {})).json.invite).toMatchObject({ maxUses: 1 });
+    expect((await newInvite(admin, { maxUses: 0 })).status).toBe(422);
+    expect((await newInvite(admin, { maxUses: 101 })).status).toBe(422);
+    expect((await newInvite(admin, { maxUses: 2.5 })).status).toBe(422);
+    expect((await newInvite(admin, { maxUses: 100 })).status).toBe(201);
+  });
+
+  test("an invitation for an administrator is always single-use", async () => {
+    const admin = await adminClient();
+    const many = await newInvite(admin, { role: "admin", maxUses: 3 });
+    expect(many.status).toBe(422);
+    const one = await newInvite(admin, { role: "admin" });
+    expect(one.json.invite).toMatchObject({ role: "admin", maxUses: 1 });
+  });
+
+  test("revoking: an unused link disappears; a partly used one stops but keeps its record", async () => {
+    const admin = await adminClient();
+    const unused = await newInvite(admin, { maxUses: 5 });
+    expect((await admin.del(`/api/admin/invites/${unused.json.invite.id}`)).status).toBe(200);
+    expect(await listed(admin, unused.json.invite.id)).toBeUndefined();
+    expect((await joinWith(unused.token, "after-delete")).status).toBe(404);
+
+    const partly = await newInvite(admin, { maxUses: 5 });
+    expect((await joinWith(partly.token, "before-revoke")).status).toBe(200);
+    expect((await admin.del(`/api/admin/invites/${partly.json.invite.id}`)).status).toBe(200);
+    expect((await joinWith(partly.token, "after-revoke")).status).toBe(404);
+    const record = await listed(admin, partly.json.invite.id);
+    expect(record).toMatchObject({ status: "revoked", useCount: 1, maxUses: 5, usedBy: ["before-revoke"] });
+    expect(record.revokedAt).toBeNumber();
+  });
+
+  test("members cannot create or revoke invitations", async () => {
+    const admin = await adminClient();
+    const inv = await newInvite(admin, { maxUses: 2 });
+    const member = new Client();
+    await member.post(`/api/auth/invites/${inv.token}/accept`, { username: "plain-member", displayName: "P", password });
+    expect((await member.post("/api/admin/invites", { maxUses: 50 })).status).toBe(403);
+    expect((await member.del(`/api/admin/invites/${inv.json.invite.id}`)).status).toBe(403);
+    expect((await joinWith(inv.token, "still-works")).status).toBe(200);
+  });
+});
