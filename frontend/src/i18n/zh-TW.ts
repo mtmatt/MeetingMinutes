@@ -311,6 +311,8 @@ export const zhTW: Dict = {
     cancel: "停止",
     copyMarkdown: "複製 Markdown",
     editMarkdown: "編輯",
+    updateSpeakerNames: "更新發言者名稱",
+    speakerNamesUpdated: "已更新摘要中的發言者名稱",
     deleteVersion: "刪除此版本",
     deleteTitle: "確定刪除這個版本的摘要？",
     promptUsed: "使用的提示",

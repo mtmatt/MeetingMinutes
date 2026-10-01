@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, ChevronDown, Copy, Download, FileText, MoreHorizontal, Pencil, RefreshCw, ScrollText, Sparkles, Square, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Copy, Download, FileText, MoreHorizontal, Pencil, RefreshCw, ScrollText, Sparkles, Square, Trash2, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -346,6 +346,16 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
     setTimeout(() => setCopied(false), 1500);
   };
 
+  const syncSpeakers = async (s: Summary) => {
+    try {
+      await api.postprocessSummary(meeting.id, s.id);
+      await invalidate();
+      toast.show(t("summary.speakerNamesUpdated"));
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+
   let body: ReactNode;
   if (meeting.status !== "ready") {
     body = (
@@ -491,6 +501,17 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
                         }}
                       >
                         <Pencil /> {t("summary.editMarkdown")}
+                      </button>
+                    )}
+                    {current.status === "done" && meeting.speakers.length > 0 && (
+                      <button
+                        className="menu-item"
+                        onClick={() => {
+                          close();
+                          void syncSpeakers(current);
+                        }}
+                      >
+                        <Users /> {t("summary.updateSpeakerNames")}
                       </button>
                     )}
                     <button

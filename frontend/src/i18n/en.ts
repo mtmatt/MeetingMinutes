@@ -309,6 +309,8 @@ export const en = {
     cancel: "Stop",
     copyMarkdown: "Copy Markdown",
     editMarkdown: "Edit",
+    updateSpeakerNames: "Update speaker names",
+    speakerNamesUpdated: "Speaker names updated in summary",
     deleteVersion: "Delete version",
     deleteTitle: "Delete this summary version?",
     promptUsed: "Prompt used",

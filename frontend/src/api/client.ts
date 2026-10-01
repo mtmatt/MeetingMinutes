@@ -115,6 +115,10 @@ export const api = {
   updateSummary: (id: string, sid: string, content: string) =>
     patch<{ ok: true }>(`/meetings/${id}/summaries/${sid}`, { content }),
   deleteSummary: (id: string, sid: string) => del<{ ok: true }>(`/meetings/${id}/summaries/${sid}`),
+  postprocessSummary: (id: string, sid?: string, b?: { oldName?: string; newName?: string }) =>
+    sid
+      ? post<{ summary: Summary }>(`/meetings/${id}/summaries/${encodeURIComponent(sid)}/postprocess`, b ?? {})
+      : post<{ ok: true; updatedCount: number }>(`/meetings/${id}/summaries/postprocess`, b ?? {}),
 
   // templates
   templates: () => get<{ templates: Template[] }>("/templates"),
