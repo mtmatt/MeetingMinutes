@@ -163,4 +163,13 @@ export const migrations: string[] = [
   UPDATE invites SET use_count = 1 WHERE used_at IS NOT NULL;
   INSERT INTO invite_uses (invite_id, user_id, used_at) SELECT id, used_by, used_at FROM invites WHERE used_at IS NOT NULL;
   `,
+  // The speaker names each summary was written with (JSON: speaker key → name),
+  // so renaming a speaker can update exactly that name. Existing summaries are
+  // assumed to use the current names.
+  `
+  ALTER TABLE summaries ADD COLUMN speaker_names TEXT;
+  UPDATE summaries SET speaker_names = (
+    SELECT COALESCE(json_group_object(key, name), '{}') FROM speakers WHERE speakers.meeting_id = summaries.meeting_id
+  ) WHERE content IS NOT NULL;
+  `,
 ];

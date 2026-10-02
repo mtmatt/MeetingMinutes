@@ -108,6 +108,8 @@ export interface SummaryRow {
   error: string | null;
   model: string | null;
   usage: string | null;
+  /** JSON: speaker key → the name this summary uses; null until written. */
+  speaker_names: string | null;
   created_at: number;
   started_at: number | null;
   finished_at: number | null;

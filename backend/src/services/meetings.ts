@@ -323,6 +323,9 @@ export function completeJob(jobId: string, workerId: string, result: TranscriptR
     );
     db.query("DELETE FROM segments WHERE meeting_id = $m").run({ m });
     db.query("DELETE FROM speakers WHERE meeting_id = $m").run({ m });
+    // Existing summaries describe the previous transcript, whose speaker keys
+    // may now be other people: renaming a speaker no longer edits them.
+    db.query("UPDATE summaries SET speaker_names = '{}' WHERE meeting_id = $m AND content IS NOT NULL").run({ m });
     const insSpeaker = db.query("INSERT INTO speakers (meeting_id, key, name, color) VALUES ($m, $key, $name, $color)");
     result.speakers.forEach((key, i) => {
       insSpeaker.run({ m, key, name: previousNames.get(key) ?? `Speaker ${i + 1}`, color: i % SPEAKER_COLORS });

@@ -25,16 +25,8 @@ import {
   originalPath,
   touchMeeting,
 } from "../services/meetings";
-import {
-  cancelSummary,
-  enqueueSummary,
-  postProcessSummarySpeakers,
-  renderTranscript,
-  replaceSpeakerName,
-  summaryPublic,
-  syncAllSummariesSpeakers,
-  syncSpeakerNamesInContent,
-} from "../services/summarizer";
+import { currentSpeakerNames, parseNameMap, reconcileSpeakerNames } from "../services/speakerNames";
+import { cancelSummary, enqueueSummary, renderTranscript, summaryPublic } from "../services/summarizer";
 import { getTemplateFor } from "../services/templates";
 import type { AppEnv, MeetingRow, SegmentRow, SpeakerRow, SummaryRow, TranscribeOptions } from "../types";
 import { body } from "./validate";
@@ -359,18 +351,36 @@ meetingRoutes.patch("/:id/speakers/:key", async (c) => {
     .get({ m: m.id, key });
   if (!speaker) httpError(404, "Speaker not found.", "not_found");
 
-  const oldName = speaker.name;
-  const newName = input.name;
-
-  db.query("UPDATE speakers SET name = $name WHERE meeting_id = $m AND key = $key")
-    .run({ m: m.id, key, name: newName });
-
-  if (oldName !== newName) {
-    postProcessSummarySpeakers(m.id, oldName, newName, m.owner_id);
-  }
-
+  // Rename, and update the name in finished summaries where that is safe.
+  // Summaries still being written catch up when they finish.
+  const outcome = { updated: 0, skipped: 0 };
+  const changed: string[] = [];
+  db.transaction(() => {
+    db.query("UPDATE speakers SET name = $name WHERE meeting_id = $m AND key = $key").run({ m: m.id, key, name: input.name });
+    if (speaker.name === input.name) return;
+    const current = currentSpeakerNames(m.id);
+    const done = db
+      .query<SummaryRow, { m: string }>("SELECT * FROM summaries WHERE meeting_id = $m AND status = 'done' AND content IS NOT NULL")
+      .all({ m: m.id });
+    for (const s of done) {
+      const used = parseNameMap(s.speaker_names);
+      if (!used || !(key in used)) continue;
+      const r = reconcileSpeakerNames(s.content!, used, current);
+      if (r.skipped.some((x) => x.key === key)) outcome.skipped++;
+      if (r.content !== s.content || JSON.stringify(r.names) !== s.speaker_names) {
+        db.query("UPDATE summaries SET content = $content, speaker_names = $names WHERE id = $id").run({
+          id: s.id,
+          content: r.content,
+          names: JSON.stringify(r.names),
+        });
+        if (r.names[key] === input.name) outcome.updated++;
+        changed.push(s.id);
+      }
+    }
+  })();
+  for (const id of changed) publish(m.owner_id, { type: "summary.updated", meetingId: m.id, summaryId: id });
   touchMeeting(m);
-  return c.json({ ok: true });
+  return c.json({ ok: true, summaries: outcome });
 });
 
 meetingRoutes.patch("/:id/segments/:segId", async (c) => {
@@ -549,62 +559,38 @@ meetingRoutes.patch("/:id/summaries/:sid", async (c) => {
   return c.json({ ok: true });
 });
 
-meetingRoutes.post("/:id/summaries/:sid/postprocess", async (c) => {
+/**
+ * Resolve speaker names a summary could not update on its own (see
+ * SkippedRename): "replace" renames them anyway (never when two speakers
+ * share the name), "keep" leaves the text as written and stops asking.
+ */
+meetingRoutes.post("/:id/summaries/:sid/speaker-names", async (c) => {
   const m = owned(c, c.req.param("id"));
-  const sid = c.req.param("sid");
-  const summary = db
+  const input = await body(c, z.object({ action: z.enum(["replace", "keep"]), keys: z.array(z.string().max(80)).min(1).max(100) }));
+  const s = db
     .query<SummaryRow, { id: string; m: string }>("SELECT * FROM summaries WHERE id = $id AND meeting_id = $m")
-    .get({ id: sid, m: m.id });
-  if (!summary) httpError(404, "Summary not found.", "not_found");
-  if (summary.status !== "done" || !summary.content) {
-    httpError(400, "Only completed summaries can be post-processed.", "invalid_state");
-  }
-
-  const input = await body(
-    c,
-    z.object({
-      oldName: z.string().trim().min(1).max(80).optional(),
-      newName: z.string().trim().min(1).max(80).optional(),
-    }).optional(),
-  ).catch(() => undefined);
-
-  let newContent = summary.content;
-  if (input?.oldName && input?.newName) {
-    newContent = replaceSpeakerName(newContent, input.oldName, input.newName);
+    .get({ id: c.req.param("sid"), m: m.id });
+  if (!s) httpError(404, "Summary not found.", "not_found");
+  const used = parseNameMap(s.speaker_names);
+  if (s.status !== "done" || s.content == null || !used) httpError(409, "This summary has no speaker names to update.", "invalid_input");
+  const current = currentSpeakerNames(m.id);
+  let content = s.content;
+  let names = { ...used };
+  if (input.action === "replace") {
+    const r = reconcileSpeakerNames(content, used, current, input.keys);
+    if (r.skipped.some((x) => input.keys.includes(x.key) && x.reason === "shared")) {
+      httpError(409, "Another speaker has the same name, so it cannot be replaced.", "invalid_input");
+    }
+    content = r.content;
+    names = r.names;
   } else {
-    newContent = syncSpeakerNamesInContent(m.id, newContent);
+    for (const k of input.keys) if (k in used && k in current) names[k] = current[k]!;
   }
-
-  if (newContent !== summary.content) {
-    db.query("UPDATE summaries SET content = $content WHERE id = $id").run({ id: summary.id, content: newContent });
-    publish(m.owner_id, { type: "summary.updated", meetingId: m.id, summaryId: summary.id });
-    touchMeeting(m);
-  }
-
-  const updated = db.query<SummaryRow, { id: string }>("SELECT * FROM summaries WHERE id = $id").get({ id: summary.id })!;
+  db.query("UPDATE summaries SET content = $content, speaker_names = $names WHERE id = $id").run({ id: s.id, content, names: JSON.stringify(names) });
+  publish(m.owner_id, { type: "summary.updated", meetingId: m.id, summaryId: s.id });
+  touchMeeting(m);
+  const updated = db.query<SummaryRow, { id: string }>("SELECT * FROM summaries WHERE id = $id").get({ id: s.id })!;
   return c.json({ summary: summaryPublic(updated) });
-});
-
-meetingRoutes.post("/:id/summaries/postprocess", async (c) => {
-  const m = owned(c, c.req.param("id"));
-  const input = await body(
-    c,
-    z.object({
-      oldName: z.string().trim().min(1).max(80).optional(),
-      newName: z.string().trim().min(1).max(80).optional(),
-    }).optional(),
-  ).catch(() => undefined);
-
-  let updatedCount = 0;
-  if (input?.oldName && input?.newName) {
-    updatedCount = postProcessSummarySpeakers(m.id, input.oldName, input.newName, m.owner_id);
-  } else {
-    updatedCount = syncAllSummariesSpeakers(m.id, m.owner_id);
-  }
-  if (updatedCount > 0) {
-    touchMeeting(m);
-  }
-  return c.json({ ok: true, updatedCount });
 });
 
 meetingRoutes.delete("/:id/summaries/:sid", (c) => {

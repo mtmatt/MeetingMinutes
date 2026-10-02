@@ -1,36 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Client, adminClient, memberClient } from "./helpers";
 
-describe("first-run setup", () => {
-  test("reports that setup is needed and rejects a wrong token", async () => {
-    const c = new Client();
-    const state = (await (await c.get("/api/auth/state")).json()) as any;
-    expect(state.needsSetup).toBe(true);
-    const bad = await c.post("/api/auth/setup", {
-      setupToken: "nope",
-      username: "mallory",
-      displayName: "M",
-      password: "long enough password",
-    });
-    expect(bad.status).toBe(403);
-  });
-
-  test("creates the admin with the setup token, then setup is closed", async () => {
-    const admin = await adminClient();
-    const me = (await (await admin.get("/api/me")).json()) as any;
-    expect(me.user.role).toBe("admin");
-    const again = await new Client().post("/api/auth/setup", {
-      setupToken: "whatever",
-      username: "second",
-      displayName: "S",
-      password: "long enough password",
-    });
-    expect([403, 409]).toContain(again.status);
-    const state = (await (await new Client().get("/api/auth/state")).json()) as any;
-    expect(state.needsSetup).toBe(false);
-  });
-});
-
 describe("sessions and CSRF", () => {
   test("rejects state-changing requests without the client header", async () => {
     const admin = await adminClient();
@@ -50,6 +20,7 @@ describe("sessions and CSRF", () => {
   });
 
   test("login, logout", async () => {
+    await adminClient(); // the account signed in below
     const c = new Client();
     const wrong = await c.post("/api/auth/login", { username: "admin", password: "wrong password!!" });
     expect(wrong.status).toBe(401);

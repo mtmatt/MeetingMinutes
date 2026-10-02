@@ -88,8 +88,9 @@ function SpeakerLegend({ meeting }: { meeting: MeetingDetail }) {
     setEditing(null);
     if (!name || name === sp.name) return;
     try {
-      await api.renameSpeaker(meeting.id, sp.key, name);
+      const { summaries } = await api.renameSpeaker(meeting.id, sp.key, name);
       await qc.invalidateQueries({ queryKey: ["meeting", meeting.id] });
+      if (summaries.skipped > 0) toast.show(t("meeting.namesNotReplaced", { n: summaries.skipped }));
     } catch (e) {
       toast.error(e);
     }

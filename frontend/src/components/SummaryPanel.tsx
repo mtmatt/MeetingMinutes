@@ -167,6 +167,65 @@ function Elapsed({ since }: { since: number }) {
   return <span className="mono">{clock((now - since) / 1000)}</span>;
 }
 
+/**
+ * Speakers renamed after this summary was written whose names it could not
+ * update by itself: a one-character name (replacing it could change unrelated
+ * text) or a name another speaker also has (replacing would merge two people).
+ * The person decides: replace anyway, where that is possible, or keep the text.
+ */
+function StaleNames({ summary, meeting }: { summary: Summary; meeting: MeetingDetail }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const stale = meeting.speakers.flatMap((sp) => {
+    const written = summary.speakerNames?.[sp.key];
+    if (written === undefined || written === sp.name) return [];
+    const shared = meeting.speakers.some((o) => o.key !== sp.key && o.name === sp.name);
+    return [{ key: sp.key, from: written, to: sp.name, shared }];
+  });
+  if (!stale.length) return null;
+
+  const resolve = async (action: "replace" | "keep", keys: string[]) => {
+    setBusy(true);
+    try {
+      await api.resolveSummaryNames(meeting.id, summary.id, action, keys);
+      await qc.invalidateQueries({ queryKey: ["meeting", meeting.id] });
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="callout warn stale-names" role="status">
+      <Users />
+      <div className="stale-names-main">
+        <strong>{t("summary.staleNamesTitle")}</strong>
+        <ul>
+          {stale.map((n) => (
+            <li key={n.key}>
+              <span className="stale-names-pair">{t("summary.staleNamesPair", { from: n.from, to: n.to })}</span>
+              <span className="stale-names-why">{n.shared ? t("summary.staleNamesShared", { to: n.to }) : t("summary.staleNamesShort", { from: n.from })}</span>
+              <span className="stale-names-actions">
+                {!n.shared && (
+                  <button type="button" className="btn btn-sm" disabled={busy} onClick={() => resolve("replace", [n.key])}>
+                    {t("summary.staleNamesReplace")}
+                  </button>
+                )}
+                <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => resolve("keep", [n.key])}>
+                  {t("summary.staleNamesKeep")}
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 function Writing({ summary, onCancel }: { summary: Summary; onCancel: () => void }) {
   const { t } = useI18n();
   const running = summary.status === "running";
@@ -346,16 +405,6 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const syncSpeakers = async (s: Summary) => {
-    try {
-      await api.postprocessSummary(meeting.id, s.id);
-      await invalidate();
-      toast.show(t("summary.speakerNamesUpdated"));
-    } catch (e) {
-      toast.error(e);
-    }
-  };
-
   let body: ReactNode;
   if (meeting.status !== "ready") {
     body = (
@@ -402,6 +451,7 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
   } else {
     body = (
       <>
+        <StaleNames summary={current} meeting={meeting} />
         <Markdown content={current.content ?? ""} meeting={meeting} />
         <div className="summary-foot">
           <button className="summary-prompt-toggle" onClick={() => setShowPrompt((v) => !v)} aria-expanded={showPrompt}>
@@ -501,17 +551,6 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
                         }}
                       >
                         <Pencil /> {t("summary.editMarkdown")}
-                      </button>
-                    )}
-                    {current.status === "done" && meeting.speakers.length > 0 && (
-                      <button
-                        className="menu-item"
-                        onClick={() => {
-                          close();
-                          void syncSpeakers(current);
-                        }}
-                      >
-                        <Users /> {t("summary.updateSpeakerNames")}
                       </button>
                     )}
                     <button

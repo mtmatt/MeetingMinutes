@@ -103,8 +103,9 @@ export const api = {
   deleteMeeting: (id: string) => del<{ ok: true }>(`/meetings/${id}`),
   retranscribe: (id: string, options?: TranscribeOptions, resetSpeakerNames = false) =>
     post<{ meeting: MeetingSummary }>(`/meetings/${id}/retranscribe`, { ...(options ? { options } : {}), resetSpeakerNames }),
+  /** `summaries`: how many finished summaries got the new name, and how many could not be updated safely. */
   renameSpeaker: (id: string, key: string, name: string) =>
-    patch<{ ok: true }>(`/meetings/${id}/speakers/${encodeURIComponent(key)}`, { name }),
+    patch<{ ok: true; summaries: { updated: number; skipped: number } }>(`/meetings/${id}/speakers/${encodeURIComponent(key)}`, { name }),
   addSpeaker: (id: string, name: string) =>
     post<{ speaker: { key: string; name: string; color: number } }>(`/meetings/${id}/speakers`, { name }),
   updateSegment: (id: string, segId: number, b: { text?: string; speaker?: string | null }) =>
@@ -115,10 +116,9 @@ export const api = {
   updateSummary: (id: string, sid: string, content: string) =>
     patch<{ ok: true }>(`/meetings/${id}/summaries/${sid}`, { content }),
   deleteSummary: (id: string, sid: string) => del<{ ok: true }>(`/meetings/${id}/summaries/${sid}`),
-  postprocessSummary: (id: string, sid?: string, b?: { oldName?: string; newName?: string }) =>
-    sid
-      ? post<{ summary: Summary }>(`/meetings/${id}/summaries/${encodeURIComponent(sid)}/postprocess`, b ?? {})
-      : post<{ ok: true; updatedCount: number }>(`/meetings/${id}/summaries/postprocess`, b ?? {}),
+  /** Speaker names a summary could not update by itself: replace them anyway, or keep the text as written. */
+  resolveSummaryNames: (id: string, sid: string, action: "replace" | "keep", keys: string[]) =>
+    post<{ summary: Summary }>(`/meetings/${id}/summaries/${encodeURIComponent(sid)}/speaker-names`, { action, keys }),
 
   // templates
   templates: () => get<{ templates: Template[] }>("/templates"),

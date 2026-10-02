@@ -1,9 +1,10 @@
 import { config } from "../config";
 import { db, now } from "../db";
-import { escapeRegExp, formatClock, newId } from "../lib/util";
+import { formatClock, newId } from "../lib/util";
 import type { MeetingRow, OutputLanguage, SegmentRow, SpeakerRow, SummaryRequest, SummaryRow } from "../types";
 import { CodexError, runCodex } from "./codex";
 import { publish } from "./events";
+import { currentSpeakerNames, parseNameMap, reconcileSpeakerNames, type NameMap } from "./speakerNames";
 import { getTemplateFor } from "./templates";
 
 const LANGUAGE_DIRECTIVES: Record<OutputLanguage, string> = {
@@ -36,10 +37,12 @@ export function renderTranscript(segments: SegmentRow[], speakers: Map<string, s
   return lines.join("\n");
 }
 
-export function buildSummaryPrompt(meeting: MeetingRow, userPrompt: string, outputLanguage: OutputLanguage): string {
-  const speakers = db
-    .query<SpeakerRow, { m: string }>("SELECT * FROM speakers WHERE meeting_id = $m ORDER BY key")
-    .all({ m: meeting.id });
+export function buildSummaryPrompt(
+  meeting: MeetingRow,
+  userPrompt: string,
+  outputLanguage: OutputLanguage,
+  speakers: SpeakerRow[] = db.query<SpeakerRow, { m: string }>("SELECT * FROM speakers WHERE meeting_id = $m ORDER BY key").all({ m: meeting.id }),
+): string {
   const segments = db
     .query<SegmentRow, { m: string }>("SELECT * FROM segments WHERE meeting_id = $m ORDER BY idx")
     .all({ m: meeting.id });
@@ -85,6 +88,7 @@ export function summaryPublic(s: SummaryRow) {
     error: s.error,
     model: s.model,
     usage: s.usage ? JSON.parse(s.usage) : null,
+    speakerNames: parseNameMap(s.speaker_names),
     createdAt: s.created_at,
     startedAt: s.started_at,
     finishedAt: s.finished_at,
@@ -160,31 +164,22 @@ async function execute(summary: SummaryRow, ctrl: AbortController) {
   publish(meeting.owner_id, { type: "summary.updated", meetingId: meeting.id, summaryId: summary.id });
   try {
     if (meeting.status !== "ready") throw new CodexError("The transcript is not ready yet.");
-    const promptSpeakers = db
+    const speakers = db
       .query<SpeakerRow, { m: string }>("SELECT * FROM speakers WHERE meeting_id = $m ORDER BY key")
       .all({ m: meeting.id });
-    const prompt = buildSummaryPrompt(meeting, summary.prompt, summary.output_language);
+    const prompt = buildSummaryPrompt(meeting, summary.prompt, summary.output_language, speakers);
     const result = await runCodex(prompt, { signal: ctrl.signal });
-
-    let finalContent = result.text;
-    const currentSpeakers = db
-      .query<SpeakerRow, { m: string }>("SELECT * FROM speakers WHERE meeting_id = $m ORDER BY key")
-      .all({ m: meeting.id });
-    const currentByKey = new Map(currentSpeakers.map((s) => [s.key, s.name]));
-    for (const ps of promptSpeakers) {
-      const currentName = currentByKey.get(ps.key);
-      if (currentName && currentName !== ps.name) {
-        finalContent = replaceSpeakerName(finalContent, ps.name, currentName);
-      }
-    }
-    finalContent = syncSpeakerNamesInContent(meeting.id, finalContent);
+    // Speakers renamed while Codex was writing: bring the new summary up to date.
+    const written: NameMap = Object.fromEntries(speakers.map((s) => [s.key, s.name]));
+    const { content, names } = reconcileSpeakerNames(result.text, written, currentSpeakerNames(meeting.id));
 
     db.query(
-      `UPDATE summaries SET status = 'done', content = $content, model = $model, usage = $usage, error = NULL, finished_at = $t
+      `UPDATE summaries SET status = 'done', content = $content, speaker_names = $names, model = $model, usage = $usage, error = NULL, finished_at = $t
        WHERE id = $id AND status = 'running'`,
     ).run({
       id: summary.id,
-      content: finalContent,
+      content,
+      names: JSON.stringify(names),
       model: result.model,
       usage: result.usage ? JSON.stringify(result.usage) : null,
       t: now(),
@@ -208,100 +203,3 @@ export function summarizerStats() {
   const queued = db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM summaries WHERE status = 'queued'").get()?.n ?? 0;
   return { running: running.size, queued, concurrency: config.codex.concurrency };
 }
-
-// -------------------------------------------------- post-processing speaker names
-
-/** Replace a speaker name in summary markdown content safely respecting word/language boundaries. */
-export function replaceSpeakerName(content: string, oldName: string, newName: string): string {
-  if (!content || !oldName || !newName || oldName === newName) return content;
-
-  let result = content;
-
-  // 1. Direct oldName replacement with boundaries
-  const prefix = /^[\w]/.test(oldName) ? "(?<![\\w])" : "";
-  const suffix = /[\w]$/.test(oldName) ? "(?![\\w])" : "";
-  const mainRegex = new RegExp(`${prefix}${escapeRegExp(oldName)}${suffix}`, "gu");
-  result = result.replace(mainRegex, newName);
-
-  // 2. If oldName was "Speaker N" (e.g. Speaker 1), also match variations
-  const spkMatch = oldName.match(/^speaker\s*(\d+)$/i);
-  if (spkMatch && spkMatch[1]) {
-    const num = spkMatch[1];
-    // Case-insensitive speaker N
-    const spkRegex = new RegExp(`(?<![\\w])speaker\\s*${num}(?![\\w])`, "giu");
-    result = result.replace(spkRegex, newName);
-
-    // Chinese variations: 發言者 1, 講者 1, 發言人 1, 發言者1, etc.
-    const zhRegex = new RegExp(`(?:發言者|講者|發言人)\\s*${num}(?!\\d)`, "gu");
-    result = result.replace(zhRegex, newName);
-
-    // Raw diarization key SPEAKER_00 if leaked
-    const rawIdx = (parseInt(num, 10) - 1).toString().padStart(2, "0");
-    const rawRegex = new RegExp(`(?<![\\w])SPEAKER_${rawIdx}(?![\\w])`, "gu");
-    result = result.replace(rawRegex, newName);
-  }
-
-  return result;
-}
-
-/** Post-process all summaries for a meeting, replacing an old speaker name with a new one. */
-export function postProcessSummarySpeakers(meetingId: string, oldName: string, newName: string, ownerId: string): number {
-  if (!oldName || !newName || oldName === newName) return 0;
-  const summaries = db
-    .query<SummaryRow, { m: string }>("SELECT * FROM summaries WHERE meeting_id = $m")
-    .all({ m: meetingId });
-
-  let updatedCount = 0;
-  for (const s of summaries) {
-    if (!s.content) continue;
-    const newContent = replaceSpeakerName(s.content, oldName, newName);
-    if (newContent !== s.content) {
-      db.query("UPDATE summaries SET content = $content WHERE id = $id").run({ id: s.id, content: newContent });
-      publish(ownerId, { type: "summary.updated", meetingId, summaryId: s.id });
-      updatedCount++;
-    }
-  }
-  return updatedCount;
-}
-
-/** Sync all known speaker names in summary content based on the meeting's current speakers. */
-export function syncSpeakerNamesInContent(meetingId: string, content: string): string {
-  if (!content) return content;
-  const speakers = db
-    .query<SpeakerRow, { m: string }>("SELECT * FROM speakers WHERE meeting_id = $m ORDER BY key")
-    .all({ m: meetingId });
-
-  let result = content;
-  for (let i = 0; i < speakers.length; i++) {
-    const sp = speakers[i]!;
-    // Default name was `Speaker ${i + 1}` or from key `SPEAKER_XX`
-    const match = sp.key.match(/^SPEAKER_(\d+)$/i);
-    const defaultIdx = match && match[1] ? parseInt(match[1], 10) + 1 : i + 1;
-    const defaultName = `Speaker ${defaultIdx}`;
-
-    if (sp.name !== defaultName) {
-      result = replaceSpeakerName(result, defaultName, sp.name);
-    }
-  }
-  return result;
-}
-
-/** Sync speaker names across all summaries for a meeting. */
-export function syncAllSummariesSpeakers(meetingId: string, ownerId: string): number {
-  const summaries = db
-    .query<SummaryRow, { m: string }>("SELECT * FROM summaries WHERE meeting_id = $m")
-    .all({ m: meetingId });
-
-  let updatedCount = 0;
-  for (const s of summaries) {
-    if (!s.content) continue;
-    const newContent = syncSpeakerNamesInContent(meetingId, s.content);
-    if (newContent !== s.content) {
-      db.query("UPDATE summaries SET content = $content WHERE id = $id").run({ id: s.id, content: newContent });
-      publish(ownerId, { type: "summary.updated", meetingId, summaryId: s.id });
-      updatedCount++;
-    }
-  }
-  return updatedCount;
-}
-

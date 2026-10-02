@@ -51,4 +51,3 @@ export function formatClock(totalSeconds: number): string {
 export function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-
