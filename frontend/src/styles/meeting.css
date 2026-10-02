@@ -662,6 +662,38 @@
   overflow: auto;
 }
 
+.stale-names {
+  margin-bottom: 18px;
+}
+.stale-names-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.stale-names ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.stale-names li {
+  display: grid;
+  gap: 4px;
+}
+.stale-names-pair {
+  font-weight: 600;
+  color: var(--ink);
+}
+.stale-names-why {
+  color: var(--ink-2);
+}
+.stale-names-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
 .summary-foot {
   display: flex;
   justify-content: space-between;

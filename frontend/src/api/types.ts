@@ -93,6 +93,8 @@ export interface Summary {
   error: string | null;
   model: string | null;
   usage: Record<string, number> | null;
+  /** Speaker key → the name this summary uses; null until it is written. */
+  speakerNames: Record<string, string> | null;
   createdAt: number;
   startedAt: number | null;
   finishedAt: number | null;

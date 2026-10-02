@@ -9,7 +9,7 @@ describe("migration of existing invitations", () => {
     const db = new Database(":memory:", { strict: true });
     db.exec("PRAGMA foreign_keys = ON;");
     // Schema as it was before invitation limits.
-    const before = migrations.length - 1;
+    const before = migrations.findIndex((m) => m.includes("CREATE TABLE invite_uses"));
     for (let i = 0; i < before; i++) db.exec(migrations[i]!);
     db.exec(`PRAGMA user_version = ${before}`);
     const t = Date.now();
@@ -25,5 +25,40 @@ describe("migration of existing invitations", () => {
       { id: "used", max_uses: 1, use_count: 1, revoked_at: null },
     ]);
     expect(db.query<any, []>("SELECT invite_id, user_id, used_at FROM invite_uses").all()).toEqual([{ invite_id: "used", user_id: "u1", used_at: t }]);
+  });
+});
+
+describe("migration of existing summaries", () => {
+  test("finished summaries are taken to use the meeting's current speaker names", () => {
+    const db = new Database(":memory:", { strict: true });
+    db.exec("PRAGMA foreign_keys = ON;");
+    const before = migrations.findIndex((m) => m.includes("ADD COLUMN speaker_names"));
+    for (let i = 0; i < before; i++) db.exec(migrations[i]!);
+    db.exec(`PRAGMA user_version = ${before}`);
+    const t = Date.now();
+    db.query("INSERT INTO users (id, username, display_name, password_hash, role, created_at, updated_at) VALUES ('u1', 'old', 'Old', 'x', 'member', $t, $t)").run({ t });
+    for (const id of ["m1", "m2"]) {
+      db.query(
+        `INSERT INTO meetings (id, owner_id, title, status, media_name, media_mime, media_size, media_ext, created_at, updated_at)
+         VALUES ($id, 'u1', 'M', 'ready', 'a.wav', 'audio/wav', 1, 'wav', $t, $t)`,
+      ).run({ id, t });
+    }
+    db.query("INSERT INTO speakers (meeting_id, key, name, color) VALUES ('m1', 'SPEAKER_00', 'Alice', 0), ('m1', 'SPEAKER_01', 'Speaker 1', 1)").run();
+    const summary = (id: string, m: string, status: string, content: string | null) =>
+      db
+        .query("INSERT INTO summaries (id, meeting_id, prompt, output_language, status, content, created_at) VALUES ($id, $m, 'p', 'zh-TW', $s, $c, $t)")
+        .run({ id, m, s: status, c: content, t });
+    summary("done", "m1", "done", "Alice and Speaker 1");
+    summary("queued", "m1", "queued", null);
+    summary("nospeakers", "m2", "done", "text");
+
+    migrate(db);
+
+    const names = Object.fromEntries(
+      db.query<{ id: string; speaker_names: string | null }, []>("SELECT id, speaker_names FROM summaries").all().map((r) => [r.id, r.speaker_names]),
+    );
+    expect(JSON.parse(names.done!)).toEqual({ SPEAKER_00: "Alice", SPEAKER_01: "Speaker 1" });
+    expect(names.queued).toBeNull();
+    expect(JSON.parse(names.nospeakers!)).toEqual({});
   });
 });

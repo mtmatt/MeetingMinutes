@@ -48,7 +48,13 @@ if (args[0] === "exec") {
     writeFileSync(out, "LEAKED FILE CONTENTS");
     process.exit(0);
   }
-  const text = prompt.includes("LEAK_PLEASE") ? "Here is the token: test-worker-token" : `# Fake minutes\n\nPrompt length ${prompt.length}.`;
+  // ECHO_SPEAKERS_PLEASE: write the transcript lines back, as a summary that names each speaker.
+  const echo = prompt.includes("ECHO_SPEAKERS_PLEASE") ? (prompt.split("<transcript>\n")[1] ?? "").split("\n</transcript>")[0]! : null;
+  const text = prompt.includes("LEAK_PLEASE")
+    ? "Here is the token: test-worker-token"
+    : echo != null
+      ? `# Minutes\n\n${echo}`
+      : `# Fake minutes\n\nPrompt length ${prompt.length}.`;
   writeFileSync(out, text);
   console.log(JSON.stringify({ type: "item.completed", item: { id: "i0", type: "agent_message", text } }));
   console.log(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 100, output_tokens: 20 } }));

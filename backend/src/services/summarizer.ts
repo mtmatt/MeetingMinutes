@@ -4,6 +4,7 @@ import { formatClock, newId } from "../lib/util";
 import type { MeetingRow, OutputLanguage, SegmentRow, SpeakerRow, SummaryRequest, SummaryRow } from "../types";
 import { CodexError, runCodex } from "./codex";
 import { publish } from "./events";
+import { currentSpeakerNames, parseNameMap, reconcileSpeakerNames, type NameMap } from "./speakerNames";
 import { getTemplateFor } from "./templates";
 
 const LANGUAGE_DIRECTIVES: Record<OutputLanguage, string> = {
@@ -36,10 +37,12 @@ export function renderTranscript(segments: SegmentRow[], speakers: Map<string, s
   return lines.join("\n");
 }
 
-export function buildSummaryPrompt(meeting: MeetingRow, userPrompt: string, outputLanguage: OutputLanguage): string {
-  const speakers = db
-    .query<SpeakerRow, { m: string }>("SELECT * FROM speakers WHERE meeting_id = $m ORDER BY key")
-    .all({ m: meeting.id });
+export function buildSummaryPrompt(
+  meeting: MeetingRow,
+  userPrompt: string,
+  outputLanguage: OutputLanguage,
+  speakers: SpeakerRow[] = db.query<SpeakerRow, { m: string }>("SELECT * FROM speakers WHERE meeting_id = $m ORDER BY key").all({ m: meeting.id }),
+): string {
   const segments = db
     .query<SegmentRow, { m: string }>("SELECT * FROM segments WHERE meeting_id = $m ORDER BY idx")
     .all({ m: meeting.id });
@@ -85,6 +88,7 @@ export function summaryPublic(s: SummaryRow) {
     error: s.error,
     model: s.model,
     usage: s.usage ? JSON.parse(s.usage) : null,
+    speakerNames: parseNameMap(s.speaker_names),
     createdAt: s.created_at,
     startedAt: s.started_at,
     finishedAt: s.finished_at,
@@ -160,14 +164,22 @@ async function execute(summary: SummaryRow, ctrl: AbortController) {
   publish(meeting.owner_id, { type: "summary.updated", meetingId: meeting.id, summaryId: summary.id });
   try {
     if (meeting.status !== "ready") throw new CodexError("The transcript is not ready yet.");
-    const prompt = buildSummaryPrompt(meeting, summary.prompt, summary.output_language);
+    const speakers = db
+      .query<SpeakerRow, { m: string }>("SELECT * FROM speakers WHERE meeting_id = $m ORDER BY key")
+      .all({ m: meeting.id });
+    const prompt = buildSummaryPrompt(meeting, summary.prompt, summary.output_language, speakers);
     const result = await runCodex(prompt, { signal: ctrl.signal });
+    // Speakers renamed while Codex was writing: bring the new summary up to date.
+    const written: NameMap = Object.fromEntries(speakers.map((s) => [s.key, s.name]));
+    const { content, names } = reconcileSpeakerNames(result.text, written, currentSpeakerNames(meeting.id));
+
     db.query(
-      `UPDATE summaries SET status = 'done', content = $content, model = $model, usage = $usage, error = NULL, finished_at = $t
+      `UPDATE summaries SET status = 'done', content = $content, speaker_names = $names, model = $model, usage = $usage, error = NULL, finished_at = $t
        WHERE id = $id AND status = 'running'`,
     ).run({
       id: summary.id,
-      content: result.text,
+      content,
+      names: JSON.stringify(names),
       model: result.model,
       usage: result.usage ? JSON.stringify(result.usage) : null,
       t: now(),
