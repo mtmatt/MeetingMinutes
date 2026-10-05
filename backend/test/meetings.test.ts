@@ -53,6 +53,24 @@ const RESULT = {
   ],
 };
 
+/**
+ * A transcribed meeting (RESULT) owned by `c`, optionally with a finished
+ * summary. Tests that read meetings create their own, so they pass in any order.
+ */
+async function transcribedMeeting(c: Client, summary?: { prompt: string }) {
+  const id = await createAndUpload(c, new Uint8Array(1024), summary ? { summary: { ...summary, outputLanguage: "zh-TW" } } : {});
+  const job = await claimFor(id);
+  expect(job).not.toBeNull();
+  expect((await worker.call(`/jobs/${job.jobId}/complete`, { workerId: "gpu0", result: RESULT })).status).toBe(200);
+  if (summary) {
+    await waitFor(async () => {
+      const d = (await (await c.get(`/api/meetings/${id}`)).json()) as any;
+      return d.meeting.summaries[0]?.status === "done";
+    });
+  }
+  return id;
+}
+
 describe("meeting lifecycle", () => {
   test("rejects unsupported file types and oversize files", async () => {
     const c = await adminClient();
@@ -264,9 +282,10 @@ describe("meeting lifecycle", () => {
   });
 
   test("search matches transcript text", async () => {
-    const c = await adminClient();
+    const c = await memberClient("search-owner");
+    const id = await transcribedMeeting(c);
     const list = (await (await c.get(`/api/meetings?q=${encodeURIComponent("補齊測試")}`)).json()) as any;
-    expect(list.meetings.length).toBeGreaterThan(0);
+    expect(list.meetings.map((m: any) => m.id)).toEqual([id]);
     const none = (await (await c.get(`/api/meetings?q=${encodeURIComponent("%")}`)).json()) as any;
     expect(none.meetings).toHaveLength(0);
   });
@@ -288,17 +307,20 @@ describe("templates", () => {
 
 describe("list previews", () => {
   test("search results include the matching transcript context", async () => {
-    const c = await adminClient();
+    const c = await memberClient("preview-search");
+    const id = await transcribedMeeting(c);
     const list = (await (await c.get(`/api/meetings?q=${encodeURIComponent("release")}`)).json()) as any;
-    const hit = list.meetings.find((m: any) => m.match);
+    const hit = list.meetings.find((m: any) => m.id === id);
     expect(hit.match.text.toLowerCase()).toContain("release");
     expect(typeof hit.match.start).toBe("number");
   });
 
   test("summarized meetings expose a summary excerpt", async () => {
-    const c = await adminClient();
+    const c = await memberClient("preview-excerpt");
+    const id = await transcribedMeeting(c, { prompt: "Write minutes." });
     const list = (await (await c.get("/api/meetings")).json()) as any;
-    const withSummary = list.meetings.find((m: any) => m.latestSummary?.status === "done");
+    const withSummary = list.meetings.find((m: any) => m.id === id);
+    expect(withSummary.latestSummary?.status).toBe("done");
     expect(withSummary.summaryExcerpt).toContain("Prompt length");
   });
 });
