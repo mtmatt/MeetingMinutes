@@ -333,6 +333,103 @@
   width: 130px;
   padding: 2px 0;
 }
+/* Voice recognition beside a speaker's name: a chip to confirm or correct a
+   name recognition gave or suggests, or a quiet mark for a remembered voice. */
+.legend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.legend-voice-count svg {
+  width: 12px;
+  height: 12px;
+}
+.voice-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 140px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--step--2);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast),
+    border-color var(--dur-fast);
+}
+.voice-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.voice-chip svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+/* Named by recognition, waiting to be confirmed. */
+.voice-chip.is-auto {
+  border: 1px solid transparent;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.voice-chip.is-auto:hover {
+  border-color: var(--accent);
+}
+/* Only a suggestion: quieter, and dashed like something not yet decided. */
+.voice-chip.is-suggested {
+  border: 1px dashed var(--rule-strong);
+  background: transparent;
+  color: var(--ink-2);
+}
+.voice-chip.is-suggested:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.voice-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  flex: none;
+}
+.voice-mark svg {
+  width: 13px;
+  height: 13px;
+}
+.voice-mark:hover {
+  background: var(--surface-2);
+}
+.voice-mark.is-on {
+  color: var(--ok);
+}
+.voice-mark.is-pending {
+  color: var(--ink-3);
+}
+.voice-mark.is-off {
+  color: var(--ink-3);
+  opacity: 0.55;
+}
+.voice-mark.is-off svg {
+  /* struck through: this voice is deliberately not remembered */
+  background: linear-gradient(to top right, transparent calc(50% - 0.75px), currentColor calc(50% - 0.75px) calc(50% + 0.75px), transparent calc(50% + 0.75px));
+}
+.voice-menu-label {
+  max-width: 280px;
+  font-size: var(--step--2);
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
 .legend-share {
   margin-left: auto;
   font-size: var(--step--2);

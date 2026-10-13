@@ -32,6 +32,7 @@ A self-hosted meeting-minutes service. Upload a recording (audio or video). It i
   - a transcript that highlights and follows playback;
   - click any line or any `[hh:mm:ss]` in a summary to jump there;
   - rename speakers, reassign paragraphs, edit text;
+  - speakers you have named before are **recognised by voice** in new recordings (and, on request, in older ones);
   - talk-time per speaker;
   - search inside the transcript;
   - optional video pane.
@@ -64,6 +65,24 @@ Speaker diarization uses **pyannote `speaker-diarization-community-1`**. It impr
 On a 4090, both models together use roughly 6–8 GB. Each GPU runs its own worker, so two GPUs process two meetings in parallel. `ASR_BACKEND=vllm` (install with `--vllm`) gives higher throughput on long recordings.
 
 Sources: [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR), [Qwen3-ASR technical report](https://arxiv.org/abs/2601.21337), [pyannote community-1 benchmarks](https://github.com/pyannote/pyannote-audio).
+
+### Recognising speakers by voice
+
+Naming speakers is the slowest part of tidying a transcript, so it only has to be done once per person:
+
+1. **Name a speaker** in any transcript (click the name above the transcript). Their voice is remembered under that name: the toast says so and offers *Undo*.
+2. **In later recordings**, each speaker who still has a default name ("Speaker 2") is compared with the voices you have named:
+   - a close match is named for you and marked **by voice** (依聲紋), with a menu to confirm it or to say it is someone else, which puts the previous name back;
+   - a weaker resemblance is only **suggested** ("王小明?"), and the name changes only if you accept;
+   - each person is given to at most one speaker per meeting, never under a name already used in that meeting, and two similar voices that are nearly tied are only suggested.
+   Recognition runs before the automatic summary, so the summary is written with the recognised names; finished summaries are updated the same way as for a manual rename.
+3. **Past recordings**: **Voices → Find voices in past recordings** remembers everyone you have already named in earlier transcripts and recognises the people still called "Speaker N" there. Recordings transcribed before this feature first get voice fingerprints from a background job (the meeting stays readable; nothing is transcribed again).
+
+Only names you give or confirm become part of a voice: a guess you have not confirmed never changes what a person sounds like, so one wrong match cannot snowball. The **Voices** page lists each person with the recordings their voice was learned from. There you can remove a recording that was someone else, rename or merge people (for one person named two ways), forget a person, or turn recognition off. A person whose recordings sound like different people (for example a name like "Guest" used for several people) is flagged, because recognition with that name is unreliable.
+
+How it works: the voice fingerprint is a speaker embedding from the model that the pyannote diarization pipeline already uses to tell speakers apart, so there is no extra model to download. For each speaker the worker embeds up to 48 windows of their speech (1–10 s each, longest first) and keeps the length-weighted mean direction. A new speaker's score against a person is the cosine similarity to the closest of that person's 20 most recent recordings, or to their average voice. The thresholds are `VOICE_MATCH_THRESHOLD` (default 0.6) and `VOICE_SUGGEST_THRESHOLD` (0.45). Speakers with less than `VOICE_MIN_SPEECH_SEC` (5 s) of speech are neither remembered nor compared. Fingerprints from a different embedding model are never compared, so changing `DIARIZATION_MODEL` starts the voices afresh.
+
+Privacy: voices are per account and never compared across accounts. A voice fingerprint is a few hundred numbers derived from the recording, and it cannot be played back. It is kept with the person's profile even if the recording it came from is deleted, until you remove it or forget the person.
 
 ### GPU policy: models are loaded only when there is work
 
@@ -204,7 +223,8 @@ All settings are environment variables. Put them in `.env` at the repository roo
 | `INTERNAL_PORT` | `8788` | Loopback-only worker API port, used when `TLS_CERT_FILE` is set. |
 | `MAX_UPLOAD_MB` / `UPLOAD_CHUNK_MB` | `4096` / `32` | Largest accepted file, and the size of each upload request. The upload page shows `MAX_UPLOAD_MB` and rejects larger files before sending. A reverse proxy must allow request bodies larger than `UPLOAD_CHUNK_MB` (for example nginx `client_max_body_size 64m`); otherwise users see "the server refused the upload (HTTP 413)". |
 | `MAX_AUDIO_HOURS` | `8` | Longest recording a worker decodes. Longer (or crafted) files fail with a clear message instead of exhausting memory. |
-| `HF_TOKEN` | – | Enables speaker diarization. |
+| `HF_TOKEN` | – | Enables speaker diarization (and with it, recognising speakers by voice). |
+| `VOICE_MATCH_THRESHOLD` / `VOICE_SUGGEST_THRESHOLD` | `0.6` / `0.45` | Voice similarity at which a speaker is named after a known voice, or only suggested. |
 | `ASR_MODEL` / `ASR_BACKEND` | `Qwen/Qwen3-ASR-1.7B` / `transformers` | Recognition model and engine (`vllm` for speed). |
 | `WORKER_GPUS` | all | GPUs to run workers on, e.g. `0,1`. |
 | `MODEL_KEEPALIVE_SEC` | `0` | Seconds a GPU session waits for more work before releasing the GPU. |
@@ -265,7 +285,7 @@ Tests:
 ```bash
 bun run test                    # backend: auth, CSRF, uploads, worker protocol, Codex runner (fake codex)
 bun run typecheck               # backend + frontend
-cd worker && uv run pytest      # segmentation, text normalisation, ffmpeg, pipeline, GPU-session lifecycle
+cd worker && uv run pytest      # segmentation, text normalisation, ffmpeg, pipeline, voice fingerprints, GPU-session lifecycle
 ```
 
 Project layout:
@@ -273,7 +293,7 @@ Project layout:
 ```
 backend/   Bun + Hono API, SQLite schema/migrations, Codex runner, job queue, SSE
 frontend/  React app: pages/, components/, i18n/ (en, zh-TW), styles/ (design tokens)
-worker/    mm_worker: supervisor, GPU session, audio (ffmpeg), segmenter, ASR, diarization
+worker/    mm_worker: supervisor, GPU session, audio (ffmpeg), segmenter, ASR, diarization, voice fingerprints
 scripts/   install.sh, start.sh, worker.sh, codex-login.sh
 deploy/    Caddyfile, nginx.conf, systemd user units
 ```
@@ -290,6 +310,7 @@ deploy/    Caddyfile, nginx.conf, systemd user units
 
   If pyannote runs but still merges people, give the number of speakers: automatic detection can merge similar voices into one, while a given count (or range) splits into exactly that many.
 - **Backups**: copy `data/`. SQLite runs in WAL mode; use `sqlite3 data/meetingminutes.sqlite ".backup backup.sqlite"` for a consistent snapshot while the server is running.
+- **Workers after an update**: a worker from before voice recognition still runs transcriptions; it is never given the background voice-fingerprint jobs, which wait until an updated worker claims them. Restart `scripts/worker.sh` after `git pull` to process them.
 - **Stuck jobs**: if a worker dies mid-job, the backend notices the missing heartbeat within 3 minutes and requeues the job (up to 3 attempts).
 - **Summaries paused**: if the admin page says summaries are paused, the installed Codex could not prove that its tools are off (usually after a Codex upgrade renamed a feature). Check `backend/node_modules/.bin/codex features list`, and update this project or pin the previous Codex version.
 - **Admin CLI**: `bun run admin list-users | reset-password <user> | create-admin <user> | setup-token | worker-token`.

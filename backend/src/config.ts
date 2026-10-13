@@ -48,6 +48,14 @@ function bool(name: string, fallback: boolean): boolean {
   return ["1", "true", "yes", "on"].includes(v.toLowerCase());
 }
 
+function num(name: string, fallback: number, min: number, max: number): number {
+  const v = process.env[name];
+  if (v === undefined || v === "") return fallback;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < min || n > max) throw new Error(`Environment variable ${name} must be a number from ${min} to ${max}, got "${v}"`);
+  return n;
+}
+
 function absPath(p: string): string {
   return isAbsolute(p) ? p : resolve(REPO_ROOT, p);
 }
@@ -129,6 +137,17 @@ export const config = {
   workerToken: loadOrCreateSecret(join(dataDir, "worker.token"), process.env.WORKER_TOKEN),
   jobStaleSeconds: int("JOB_STALE_SEC", 180),
   jobMaxAttempts: int("JOB_MAX_ATTEMPTS", 3),
+  /**
+   * Speaker recognition by voice (cosine similarity of voice fingerprints, -1..1).
+   * At or above `match`, a speaker is named after the voice profile; from
+   * `suggest` up to `match`, the profile is only offered to the user.
+   */
+  voice: {
+    match: num("VOICE_MATCH_THRESHOLD", 0.6, -1, 1),
+    suggest: num("VOICE_SUGGEST_THRESHOLD", 0.45, -1, 1),
+    /** Seconds of speech a speaker needs for a usable fingerprint. */
+    minSpeechSec: num("VOICE_MIN_SPEECH_SEC", 5, 0, 600),
+  },
   frontendDist: absPath(str("FRONTEND_DIST", "frontend/dist")),
   codex: {
     bin: resolveCodexBin(),

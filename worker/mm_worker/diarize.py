@@ -23,6 +23,8 @@ class Diarizer:
         self.device = device
         self.hf_token = hf_token
         self._pipeline = None
+        # Voice fingerprints are only comparable when made by the same model.
+        self.voice_model = model
 
     def load(self):
         if self._pipeline is not None:
@@ -87,3 +89,32 @@ class Diarizer:
         for segment, _, speaker in annotation.itertracks(yield_label=True):
             turns.append((float(segment.start), float(segment.end), str(speaker)))
         return turns
+
+    def embed(self, clips: List[np.ndarray], sr: int, batch_size: int = 32) -> np.ndarray:
+        """One speaker embedding per mono clip, with the pipeline's own embedding model.
+
+        Clips of different lengths share a batch: each is zero-padded to the
+        longest, and a weight mask keeps the padding out of the statistics
+        pooling. Rows are NaN for clips the model cannot embed.
+        """
+        import torch
+
+        model = getattr(self.load(), "_embedding", None)
+        if model is None:
+            raise DiarizationUnavailable(f"{self.model} has no speaker embedding model.")
+        if getattr(model, "sample_rate", sr) != sr:
+            raise ValueError(f"The speaker embedding model expects {model.sample_rate} Hz audio, not {sr} Hz.")
+        out: List[np.ndarray] = []
+        frames_per_sec = 100
+        for i in range(0, len(clips), batch_size):
+            batch = clips[i : i + batch_size]
+            longest = max(len(c) for c in batch)
+            waveforms = np.zeros((len(batch), 1, longest), dtype=np.float32)
+            num_frames = max(1, int(np.ceil(longest / sr * frames_per_sec)))
+            masks = np.zeros((len(batch), num_frames), dtype=np.float32)
+            for j, c in enumerate(batch):
+                waveforms[j, 0, : len(c)] = c
+                masks[j, : max(1, int(round(len(c) / longest * num_frames)))] = 1.0
+            out.append(model(torch.from_numpy(waveforms), masks=torch.from_numpy(masks)))
+        dimension = out[0].shape[1] if out else 0
+        return np.vstack(out) if out else np.zeros((0, dimension), dtype=np.float32)

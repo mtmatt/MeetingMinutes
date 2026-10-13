@@ -62,3 +62,44 @@ describe("migration of existing summaries", () => {
     expect(JSON.parse(names.nospeakers!)).toEqual({});
   });
 });
+
+describe("migration to voice profiles", () => {
+  test("existing users, speakers and jobs carry on unchanged", () => {
+    const db = new Database(":memory:", { strict: true });
+    db.exec("PRAGMA foreign_keys = ON;");
+    const before = migrations.findIndex((m) => m.includes("CREATE TABLE voice_profiles"));
+    for (let i = 0; i < before; i++) db.exec(migrations[i]!);
+    db.exec(`PRAGMA user_version = ${before}`);
+    const t = Date.now();
+    db.query("INSERT INTO users (id, username, display_name, password_hash, role, created_at, updated_at) VALUES ('u1', 'old', 'Old', 'x', 'member', $t, $t)").run({ t });
+    db.query(
+      `INSERT INTO meetings (id, owner_id, title, status, media_name, media_mime, media_size, media_ext, created_at, updated_at)
+       VALUES ('m1', 'u1', 'M', 'ready', 'a.wav', 'audio/wav', 1, 'wav', $t, $t)`,
+    ).run({ t });
+    db.query("INSERT INTO speakers (meeting_id, key, name, color) VALUES ('m1', 'SPEAKER_00', 'Alice', 0)").run();
+    db.query("INSERT INTO jobs (id, meeting_id, status, created_at) VALUES ('j1', 'm1', 'done', $t)").run({ t });
+
+    migrate(db);
+
+    expect(db.query<any, []>("SELECT voice_recognition FROM users").get()).toEqual({ voice_recognition: 1 });
+    expect(db.query<any, []>("SELECT name, voice, profile_id, voice_status FROM speakers").get()).toEqual({
+      name: "Alice",
+      voice: null,
+      profile_id: null,
+      voice_status: null,
+    });
+    expect(db.query<any, []>("SELECT kind, learn FROM jobs").get()).toEqual({ kind: "transcribe", learn: 0 });
+    // Deleting a meeting keeps the voice samples it gave, no longer tied to it.
+    db.query("INSERT INTO voice_profiles (id, owner_id, name, created_at, updated_at) VALUES ('p1', 'u1', 'Alice', $t, $t)").run({ t });
+    db.query(
+      "INSERT INTO voice_samples (profile_id, meeting_id, speaker_key, model, embedding, speech_sec, created_at) VALUES ('p1', 'm1', 'SPEAKER_00', 'x', x'00', 30, $t)",
+    ).run({ t });
+    db.query("UPDATE speakers SET profile_id = 'p1', voice_status = 'confirmed'").run();
+    db.query("DELETE FROM meetings WHERE id = 'm1'").run();
+    expect(db.query<any, []>("SELECT profile_id, meeting_id FROM voice_samples").all()).toEqual([{ profile_id: "p1", meeting_id: null }]);
+    // Profile names are unique per person, regardless of case.
+    expect(() =>
+      db.query("INSERT INTO voice_profiles (id, owner_id, name, created_at, updated_at) VALUES ('p2', 'u1', 'alice', $t, $t)").run({ t }),
+    ).toThrow();
+  });
+});

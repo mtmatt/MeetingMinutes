@@ -11,6 +11,7 @@ import { NotFoundPage } from "./pages/NotFound";
 import { SettingsPage } from "./pages/Settings";
 import { TemplatesPage } from "./pages/Templates";
 import { UploadPage } from "./pages/Upload";
+import { VoicesPage } from "./pages/Voices";
 
 function Splash() {
   return (
@@ -61,6 +62,7 @@ export const router = createBrowserRouter([
       { path: "/new", element: <UploadPage /> },
       { path: "/m/:id", element: <MeetingPage /> },
       { path: "/templates", element: <TemplatesPage /> },
+      { path: "/voices", element: <VoicesPage /> },
       { path: "/settings", element: <SettingsPage /> },
       { element: <AdminOnly />, children: [{ path: "/admin", element: <AdminPage /> }] },
     ],

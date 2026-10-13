@@ -721,6 +721,18 @@
 .toast .grow {
   flex: 1;
 }
+/* The toast is dark on light pages and light on dark ones: the button follows its text colour. */
+.toast .toast-action,
+.toast .toast-action:hover:not(:disabled) {
+  --btn-fg: currentColor;
+  --btn-border: color-mix(in srgb, currentColor 40%, transparent);
+  height: 28px;
+  padding: 0 12px;
+  font-weight: 650;
+}
+.toast .toast-action:hover:not(:disabled) {
+  --btn-bg: color-mix(in srgb, currentColor 14%, transparent);
+}
 
 /* ----------------------------------------------------------------- tabs */
 

@@ -11,6 +11,8 @@ import type {
   Template,
   TranscribeOptions,
   User,
+  VoiceOutcome,
+  VoicesState,
 } from "./types";
 
 export class ApiError extends Error {
@@ -103,9 +105,18 @@ export const api = {
   deleteMeeting: (id: string) => del<{ ok: true }>(`/meetings/${id}`),
   retranscribe: (id: string, options?: TranscribeOptions, resetSpeakerNames = false) =>
     post<{ meeting: MeetingSummary }>(`/meetings/${id}/retranscribe`, { ...(options ? { options } : {}), resetSpeakerNames }),
-  /** `summaries`: how many finished summaries got the new name, and how many could not be updated safely. */
+  /**
+   * `summaries`: how many finished summaries got the new name, and how many could not be updated safely.
+   * `voice`: whether the speaker's voice is now remembered under the name (null when the name did not change).
+   */
   renameSpeaker: (id: string, key: string, name: string) =>
-    patch<{ ok: true; summaries: { updated: number; skipped: number } }>(`/meetings/${id}/speakers/${encodeURIComponent(key)}`, { name }),
+    patch<{ ok: true; summaries: { updated: number; skipped: number }; voice: VoiceOutcome | null }>(
+      `/meetings/${id}/speakers/${encodeURIComponent(key)}`,
+      { name },
+    ),
+  /** Answer voice recognition about a speaker. */
+  speakerVoice: (id: string, key: string, action: "confirm" | "reject" | "forget" | "remember") =>
+    post<{ ok: true; voice: VoiceOutcome }>(`/meetings/${id}/speakers/${encodeURIComponent(key)}/voice`, { action }),
   addSpeaker: (id: string, name: string) =>
     post<{ speaker: { key: string; name: string; color: number } }>(`/meetings/${id}/speakers`, { name }),
   updateSegment: (id: string, segId: number, b: { text?: string; speaker?: string | null }) =>
@@ -126,6 +137,15 @@ export const api = {
   updateTemplate: (id: string, b: { name?: string; description?: string; body?: string }) =>
     patch<{ template: Template }>(`/templates/${id}`, b),
   deleteTemplate: (id: string) => del<{ ok: true }>(`/templates/${id}`),
+
+  // voices
+  voices: () => get<VoicesState>("/voices"),
+  voiceSettings: (enabled: boolean) => patch<VoicesState>("/voices/settings", { enabled }),
+  scanVoices: () => post<VoicesState & { outcome: { queued: number; remembered: number; recognised: number } }>("/voices/scan"),
+  renameVoice: (id: string, name: string) => patch<VoicesState>(`/voices/${encodeURIComponent(id)}`, { name }),
+  mergeVoice: (id: string, into: string) => post<VoicesState>(`/voices/${encodeURIComponent(id)}/merge`, { into }),
+  deleteVoice: (id: string) => del<VoicesState>(`/voices/${encodeURIComponent(id)}`),
+  deleteVoiceSample: (id: string, sampleId: number) => del<VoicesState>(`/voices/${encodeURIComponent(id)}/samples/${sampleId}`),
 
   // admin
   adminUsers: () => get<{ users: AdminUser[] }>("/admin/users"),

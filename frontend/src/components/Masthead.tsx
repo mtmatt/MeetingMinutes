@@ -1,4 +1,4 @@
-import { ChevronDown, FileText, Languages, Library, LogOut, Mic, Monitor, Moon, Plus, Settings, Shield, Sun, Upload } from "lucide-react";
+import { AudioLines, ChevronDown, FileText, Languages, Library, LogOut, Mic, Monitor, Moon, Plus, Settings, Shield, Sun, Upload } from "lucide-react";
 import { NavLink, useNavigate } from "react-router";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
@@ -49,6 +49,7 @@ export function Masthead() {
             {t("nav.library")}
           </NavLink>
           <NavLink to="/templates">{t("nav.templates")}</NavLink>
+          <NavLink to="/voices">{t("nav.voices")}</NavLink>
           {user?.role === "admin" && <NavLink to="/admin">{t("nav.admin")}</NavLink>}
         </nav>
         {context && (
@@ -112,6 +113,9 @@ export function Masthead() {
                   </NavLink>
                   <NavLink className="menu-item" to="/templates" onClick={close}>
                     <FileText /> {t("nav.templates")}
+                  </NavLink>
+                  <NavLink className="menu-item" to="/voices" onClick={close}>
+                    <AudioLines /> {t("nav.voices")}
                   </NavLink>
                   <div className="menu-sep" />
                 </div>

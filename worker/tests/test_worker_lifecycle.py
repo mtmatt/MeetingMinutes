@@ -96,3 +96,71 @@ def test_gpu_session_loads_on_demand_drains_queue_and_exits(two_speaker_wav, tmp
     assert sup.info()["diarization"] == "ready" and sup.info()["diarizationError"] is None
     complete = next(b for p, b in backend.events if p == "/jobs/j0/complete")
     assert complete["result"]["segments"] and complete["result"]["speakers"] == ["SPEAKER_00", "SPEAKER_01"]
+
+
+def test_voiceprint_and_transcription_jobs_share_a_session(two_speaker_wav, tmp_path):
+    import time
+
+    jobs = [
+        {"jobId": "v0", "kind": "voiceprint", "meetingId": "m0", "attempt": 1, "mediaPath": str(two_speaker_wav),
+         "outDir": str(tmp_path / "m0"), "options": {"speakers": {"SPEAKER_00": [[0, 3]], "SPEAKER_01": [[4, 8]]}}, "title": "old"},
+        {"jobId": "t1", "meetingId": "m1", "attempt": 1, "mediaPath": str(two_speaker_wav), "outDir": str(tmp_path / "m1"),
+         "options": {"diarize": True}, "title": "new"},
+    ]
+    backend = FakeBackend(jobs)
+    sup = Supervisor(cfg(backend.url))
+    t = threading.Thread(target=sup.run, daemon=True)
+    t.start()
+    deadline = time.time() + 45
+    while time.time() < deadline:
+        paths = backend.paths()
+        if "/jobs/v0/complete" in paths and "/jobs/t1/complete" in paths and sup.child is None:
+            break
+        time.sleep(0.1)
+    sup.stop.set()
+    t.join(timeout=5)
+
+    # The worker says which kinds of job it can run, so older workers are never handed a voiceprint.
+    claims = [b for p, b in backend.events if p == "/jobs/claim"]
+    assert claims and all(b["kinds"] == ["transcribe", "voiceprint"] for b in claims)
+    voiceprint = next(b for p, b in backend.events if p == "/jobs/v0/complete")["result"]
+    assert set(voiceprint) == {"voiceModel", "voices"} and set(voiceprint["voices"]) == {"SPEAKER_00", "SPEAKER_01"}
+    # The transcription that followed in the same session loaded the ASR model on demand.
+    transcript = next(b for p, b in backend.events if p == "/jobs/t1/complete")["result"]
+    assert transcript["segments"] and transcript["voiceModel"] == "fake" and set(transcript["voices"]) == set(transcript["speakers"])
+    assert len([b for p, b in backend.events if p.endswith("/progress") and b["stage"] == "loading"]) == 1
+
+
+def test_asr_model_failing_to_load_mid_session_is_retryable(two_speaker_wav, tmp_path, monkeypatch):
+    """A session that began with a voiceprint loads the ASR model later; if that fails, the transcription is retried, not failed."""
+    from mm_worker import worker as worker_mod
+
+    calls = {"n": 0}
+
+    def broken_transcriber(cfg):
+        calls["n"] += 1
+        raise OSError("weights file is corrupt")
+
+    monkeypatch.setattr(worker_mod, "load_transcriber", broken_transcriber)
+    # Leave pytest's own Ctrl-C handling alone.
+    monkeypatch.setattr(worker_mod.signal, "signal", lambda *a: None)
+    jobs = [
+        {"jobId": "v0", "kind": "voiceprint", "meetingId": "m0", "attempt": 1, "mediaPath": str(two_speaker_wav),
+         "outDir": str(tmp_path / "m0"), "options": {"speakers": {"SPEAKER_00": [[0, 3]]}}, "title": "old"},
+        {"jobId": "t1", "meetingId": "m1", "attempt": 1, "mediaPath": str(two_speaker_wav), "outDir": str(tmp_path / "m1"),
+         "options": {"diarize": True}, "title": "new"},
+    ]
+    backend = FakeBackend(jobs[1:])
+
+    class Events:
+        def put(self, item):
+            pass
+
+    # In this process (and on the main thread, for its signal handlers) so the monkeypatch applies.
+    worker_mod.gpu_session(cfg(backend.url), jobs[0], Events())
+    paths = backend.paths()
+    assert "/jobs/v0/complete" in paths
+    fail = next(b for p, b in backend.events if p == "/jobs/t1/fail")
+    assert fail["retryable"] is True and fail["error"].startswith("Could not load models: OSError")
+    # The session gave up instead of trying (and failing) again for further jobs.
+    assert calls["n"] == 1

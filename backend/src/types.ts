@@ -11,6 +11,8 @@ export interface UserRow {
   created_at: number;
   updated_at: number;
   last_login_at: number | null;
+  /** Recognise speakers by voice and remember the voices this user names. */
+  voice_recognition: number;
 }
 
 export interface SessionRow {
@@ -75,11 +77,41 @@ export interface MeetingRow {
   diarization: string | null;
 }
 
+export type VoiceStatus = "confirmed" | "auto" | "suggested" | "rejected" | "ignored";
+
 export interface SpeakerRow {
   meeting_id: string;
   key: string;
   name: string;
   color: number;
+  /** Voice fingerprint: unit-length Float32 speaker embedding. */
+  voice: Uint8Array | null;
+  voice_model: string | null;
+  speech_sec: number | null;
+  profile_id: string | null;
+  voice_status: VoiceStatus | null;
+  voice_score: number | null;
+  /** The name before recognition renamed this speaker; restored if the user rejects it. */
+  name_before: string | null;
+}
+
+export interface VoiceProfileRow {
+  id: string;
+  owner_id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface VoiceSampleRow {
+  id: number;
+  profile_id: string;
+  meeting_id: string | null;
+  speaker_key: string | null;
+  model: string;
+  embedding: Uint8Array;
+  speech_sec: number;
+  created_at: number;
 }
 
 export interface SegmentRow {
@@ -127,9 +159,14 @@ export interface TemplateRow {
   updated_at: number;
 }
 
+export type JobKind = "transcribe" | "voiceprint";
+
 export interface JobRow {
   id: string;
   meeting_id: string;
+  kind: JobKind;
+  /** voiceprint jobs: also remember the speakers named before voice profiles existed. */
+  learn: number;
   status: "queued" | "running" | "done" | "failed" | "canceled";
   worker_id: string | null;
   attempts: number;

@@ -26,6 +26,8 @@ export function useLiveUpdates(enabled: boolean) {
       const data = JSON.parse(e.data) as { meetingId: string };
       invalidate(["meeting", data.meetingId]);
       invalidate(["meetings"]);
+      // Speaker names and voice fingerprints feed the voice profiles.
+      invalidate(["voices"]);
     };
     es.addEventListener("meeting.updated", onMeeting);
     es.addEventListener("summary.updated", onMeeting);
