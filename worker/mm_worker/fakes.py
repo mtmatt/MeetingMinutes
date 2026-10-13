@@ -32,6 +32,8 @@ class FakeTranscriber:
 
 
 class FakeDiarizer:
+    voice_model = "fake"
+
     def load(self):
         return self
 
@@ -41,3 +43,19 @@ class FakeDiarizer:
         if progress:
             progress(1.0)
         return [(s.start, s.end, f"SPEAKER_0{i % 2}") for i, s in enumerate(plan)]
+
+    def embed(self, clips: Sequence[np.ndarray], sr: int) -> np.ndarray:
+        # A crude "voice": the clip's spectral envelope in 16 bands. The same
+        # recording, or the same test tone, gives the same fingerprint, however
+        # the clip is cut: the window and the floor keep spectral leakage into
+        # near-empty bands (which depends on the cut) from dominating.
+        edges = np.geomspace(80, min(4000, sr / 2), 17)
+        out = []
+        for c in clips:
+            x = np.asarray(c, dtype=np.float64)
+            spectrum = np.abs(np.fft.rfft(x * np.hanning(len(x)))) ** 2
+            freqs = np.fft.rfftfreq(len(x), 1 / sr)
+            bands = np.asarray([spectrum[(freqs >= lo) & (freqs < hi)].sum() for lo, hi in zip(edges[:-1], edges[1:])])
+            v = np.log(np.maximum(bands / (bands.sum() + 1e-12), 1e-3))
+            out.append(v - v.mean())
+        return np.asarray(out, dtype=np.float32).reshape(len(out), 16)

@@ -420,6 +420,12 @@ function System() {
           <dl className="kv">
             <dt>{t("admin.transcriptionJobs")}</dt>
             <dd className="mono">{t("admin.runningQueued", { running: data.jobs.running, queued: data.jobs.queued })}</dd>
+            {data.jobs.voiceprints && (
+              <>
+                <dt>{t("admin.voiceprintJobs")}</dt>
+                <dd className="mono">{t("admin.runningQueued", { running: data.jobs.voiceprints.running, queued: data.jobs.voiceprints.queued })}</dd>
+              </>
+            )}
             <dt>{t("admin.summaryJobs")}</dt>
             <dd className="mono">{t("admin.runningQueued", { running: data.summaries.running, queued: data.summaries.queued })}</dd>
           </dl>

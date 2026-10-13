@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { requireWorker } from "../auth/middleware";
 import { db, now } from "../db";
-import { claimJob, completeJob, failJob, reportProgress } from "../services/meetings";
+import { claimJob, completeJob, completeVoiceprintJob, failJob, reportProgress } from "../services/meetings";
+import type { JobKind } from "../types";
 import { body } from "./validate";
 
 /** API used by GPU workers. Authenticated with the shared WORKER_TOKEN. */
@@ -34,9 +35,11 @@ internalRoutes.post("/worker/heartbeat", async (c) => {
 });
 
 internalRoutes.post("/jobs/claim", async (c) => {
-  const input = await body(c, z.object({ workerId }));
+  // Workers list the job kinds they can run; older ones send nothing and get transcriptions.
+  const input = await body(c, z.object({ workerId, kinds: z.array(z.string().max(32)).max(16).optional() }));
   seen(input.workerId);
-  const job = claimJob(input.workerId);
+  const kinds = (input.kinds ?? ["transcribe"]).filter((k): k is "transcribe" | "voiceprint" => k === "transcribe" || k === "voiceprint");
+  const job = claimJob(input.workerId, kinds);
   if (!job) return c.body(null, 204);
   return c.json({ job });
 });
@@ -47,6 +50,19 @@ internalRoutes.post("/jobs/:id/progress", async (c) => {
   const ok = reportProgress(c.req.param("id"), input.workerId, input.stage, input.progress);
   return c.json({ continue: ok });
 });
+
+/** One voice fingerprint per speaker: a speaker embedding (any length up to 4096) and how much they spoke. */
+const voicesSchema = z
+  .record(
+    z.string().max(64),
+    z.object({
+      embedding: z.array(z.number().finite()).min(8).max(4096),
+      speechSec: z.number().nonnegative(),
+    }),
+  )
+  .refine((v) => Object.keys(v).length <= 64, "Too many speakers.");
+
+const voiceModel = z.string().min(1).max(200);
 
 const resultSchema = z.object({
   durationSec: z.number().nonnegative(),
@@ -72,12 +88,25 @@ const resultSchema = z.object({
       speakers: z.number().int().nonnegative().optional(),
     })
     .optional(),
+  voiceModel: voiceModel.optional(),
+  voices: voicesSchema.optional(),
 });
 
+const voiceprintSchema = z.object({ voiceModel, voices: voicesSchema });
+
 internalRoutes.post("/jobs/:id/complete", async (c) => {
+  const id = c.req.param("id");
+  // The result is validated as what the job is, so a malformed result gets the real error (422).
+  const job = db.query<{ kind: JobKind }, { id: string }>("SELECT kind FROM jobs WHERE id = $id").get({ id });
+  if (job?.kind === "voiceprint") {
+    const input = await body(c, z.object({ workerId, result: voiceprintSchema }));
+    seen(input.workerId);
+    const ok = completeVoiceprintJob(id, input.workerId, input.result);
+    return c.json({ accepted: ok }, ok ? 200 : 409);
+  }
   const input = await body(c, z.object({ workerId, result: resultSchema }));
   seen(input.workerId);
-  const ok = completeJob(c.req.param("id"), input.workerId, input.result);
+  const ok = completeJob(id, input.workerId, input.result);
   return c.json({ accepted: ok }, ok ? 200 : 409);
 });
 

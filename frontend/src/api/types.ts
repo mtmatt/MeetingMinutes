@@ -66,10 +66,73 @@ export interface MeetingSummary {
   transcribedAt: number | null;
 }
 
+/**
+ * Voice recognition state of a meeting's speaker.
+ * confirmed: named by the user; their voice is remembered under that name.
+ * auto: named by recognition; the user has not confirmed it yet.
+ * suggested: sounds like `profile`, name unchanged.
+ * rejected: the user said a guess was wrong; not guessed again.
+ * ignored: the user asked not to remember this voice.
+ */
+export type VoiceStatus = "confirmed" | "auto" | "suggested" | "rejected" | "ignored";
+
+export interface SpeakerVoice {
+  status: VoiceStatus | null;
+  /** Still a default label ("Speaker 2"), which is never remembered as a voice. */
+  defaultName: boolean;
+  profile: { id: string; name: string } | null;
+  /** Similarity to the profile's voice, for recognised and suggested speakers. */
+  score: number | null;
+  /** Whether the speaker has a usable voice fingerprint. */
+  fingerprint: boolean;
+  speechSec: number | null;
+}
+
 export interface Speaker {
   key: string;
   name: string;
   color: number;
+  voice: SpeakerVoice | null;
+}
+
+/** What happened to a speaker's voice after naming or answering about it. */
+export interface VoiceOutcome {
+  remembered: "remembered" | "short" | "pending" | "off";
+  profile: { id: string; name: string } | null;
+}
+
+export interface VoiceSample {
+  id: number;
+  meetingId: string | null;
+  meetingTitle: string | null;
+  speakerKey: string | null;
+  speakerName: string | null;
+  speechSec: number;
+  createdAt: number;
+}
+
+export interface VoiceProfile {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  speechSec: number;
+  /** False when its samples sound like different people. */
+  consistent: boolean;
+  /** Speakers named after it by recognition and not yet confirmed, and speakers it is suggested for. */
+  recognised: number;
+  suggested: number;
+  /** Where recognition named a speaker after this person, waiting to be confirmed. */
+  awaiting: { meetingId: string; meetingTitle: string; speakerKey: string; score: number | null }[];
+  samples: VoiceSample[];
+}
+
+export interface VoicesState {
+  enabled: boolean;
+  minSpeechSec: number;
+  profiles: VoiceProfile[];
+  /** Recordings waiting for (or getting) voice fingerprints; failed: whose last attempt failed, with the latest error. */
+  scan: { queued: number; running: number; failed: number; error: string | null };
 }
 
 export interface Segment {
@@ -102,6 +165,8 @@ export interface Summary {
 
 export interface MeetingDetail extends MeetingSummary {
   autoSummary: SummaryRequest | null;
+  /** Whether the owner has voice recognition on. */
+  voiceRecognition: boolean;
   speakers: Speaker[];
   segments: Segment[];
   summaries: Summary[];
@@ -169,7 +234,8 @@ export interface WorkerInfo {
 
 export interface SystemInfo {
   workers: WorkerInfo[];
-  jobs: { queued: number; running: number };
+  /** Transcriptions; voiceprints are the background voice fingerprint jobs. */
+  jobs: { queued: number; running: number; voiceprints?: { queued: number; running: number } };
   summaries: { running: number; queued: number; concurrency: number };
   /** isolationError: summaries are paused because Codex tools cannot be verified as disabled. */
   codex: { available: boolean; loggedIn: boolean; version: string | null; detail: string; isolationError?: string | null };

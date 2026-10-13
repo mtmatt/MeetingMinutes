@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { escapeRegExp, parseJson } from "../lib/util";
-import type { SpeakerRow } from "../types";
+import type { SpeakerRow, SummaryRow } from "../types";
 
 /** Speaker key → the name a summary uses for that speaker. */
 export type NameMap = Record<string, string>;
@@ -94,4 +94,49 @@ export function reconcileSpeakerNames(content: string, used: NameMap, current: N
   text = text.replace(SLOT, (_, i: string) => slots[Number(i)]!.to);
   for (const [key, to] of renamed) names[key] = to;
   return { content: text, names, skipped };
+}
+
+export interface RenameOutcome {
+  /** Finished summaries that now use the new name. */
+  updated: number;
+  /** Finished summaries where the name could not be replaced safely (see SkippedRename). */
+  skipped: number;
+  /** Summaries whose content or names changed, to announce to the browser. */
+  changed: string[];
+}
+
+/**
+ * Rename a meeting's speaker, and update the name in its finished summaries
+ * where that is safe. Summaries still being written catch up when they finish.
+ */
+export function renameSpeaker(meetingId: string, key: string, name: string): RenameOutcome {
+  const outcome: RenameOutcome = { updated: 0, skipped: 0, changed: [] };
+  db.transaction(() => {
+    const before = db
+      .query<{ name: string }, { m: string; key: string }>("SELECT name FROM speakers WHERE meeting_id = $m AND key = $key")
+      .get({ m: meetingId, key });
+    if (!before) return;
+    db.query("UPDATE speakers SET name = $name WHERE meeting_id = $m AND key = $key").run({ m: meetingId, key, name });
+    if (before.name === name) return;
+    const current = currentSpeakerNames(meetingId);
+    const done = db
+      .query<SummaryRow, { m: string }>("SELECT * FROM summaries WHERE meeting_id = $m AND status = 'done' AND content IS NOT NULL")
+      .all({ m: meetingId });
+    for (const s of done) {
+      const used = parseNameMap(s.speaker_names);
+      if (!used || !(key in used)) continue;
+      const r = reconcileSpeakerNames(s.content!, used, current);
+      if (r.skipped.some((x) => x.key === key)) outcome.skipped++;
+      if (r.content !== s.content || JSON.stringify(r.names) !== s.speaker_names) {
+        db.query("UPDATE summaries SET content = $content, speaker_names = $names WHERE id = $id").run({
+          id: s.id,
+          content: r.content,
+          names: JSON.stringify(r.names),
+        });
+        if (r.names[key] === name) outcome.updated++;
+        outcome.changed.push(s.id);
+      }
+    }
+  })();
+  return outcome;
 }

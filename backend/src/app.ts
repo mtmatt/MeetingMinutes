@@ -11,6 +11,7 @@ import { eventRoutes } from "./routes/events";
 import { internalRoutes } from "./routes/internal";
 import { meetingRoutes } from "./routes/meetings";
 import { templateRoutes } from "./routes/templates";
+import { voiceRoutes } from "./routes/voices";
 import type { AppEnv } from "./types";
 
 export function createApp() {
@@ -72,6 +73,7 @@ export function createApp() {
   api.route("/me", meRoutes);
   api.route("/meetings", meetingRoutes);
   api.route("/templates", templateRoutes);
+  api.route("/voices", voiceRoutes);
   api.route("/admin", adminRoutes);
   api.route("/events", eventRoutes);
   api.all("*", (c) => c.json({ error: "Not found.", code: "not_found" }, 404));

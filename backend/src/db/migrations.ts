@@ -172,4 +172,53 @@ export const migrations: string[] = [
     SELECT COALESCE(json_group_object(key, name), '{}') FROM speakers WHERE speakers.meeting_id = summaries.meeting_id
   ) WHERE content IS NOT NULL;
   `,
+  // Voice profiles: people a user has named, remembered by their voice, so they
+  // are recognised in later recordings. A sample is one meeting speaker's voice
+  // fingerprint (a unit-length Float32 speaker embedding); it outlives the
+  // meeting it came from (meeting_id then becomes NULL) until the profile or
+  // the sample is deleted. speaker_key is cleared when that meeting's speakers
+  // are separated again.
+  //
+  // speakers.voice_status: confirmed (the user named them: their voice is a
+  // sample of profile_id), auto (named by recognition, not yet confirmed;
+  // name_before is restored if rejected), suggested (a possible match shown to
+  // the user, name unchanged), rejected (the user said a guess was wrong: not
+  // guessed again, but remembered once the user names them), ignored (the
+  // user asked not to remember this voice: never recognised or remembered).
+  //
+  // jobs.kind: transcribe, or voiceprint (fingerprints of an older meeting's
+  // speakers; learn: also remember the speakers named before profiles existed).
+  `
+  ALTER TABLE users ADD COLUMN voice_recognition INTEGER NOT NULL DEFAULT 1;
+  CREATE TABLE voice_profiles (
+    id         TEXT PRIMARY KEY,
+    owner_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL COLLATE NOCASE,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX voice_profiles_name ON voice_profiles(owner_id, name);
+  CREATE TABLE voice_samples (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id  TEXT NOT NULL REFERENCES voice_profiles(id) ON DELETE CASCADE,
+    meeting_id  TEXT REFERENCES meetings(id) ON DELETE SET NULL,
+    speaker_key TEXT,
+    model       TEXT NOT NULL,
+    embedding   BLOB NOT NULL,
+    speech_sec  REAL NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX voice_samples_speaker ON voice_samples(meeting_id, speaker_key);
+  CREATE INDEX voice_samples_profile ON voice_samples(profile_id);
+  ALTER TABLE speakers ADD COLUMN voice BLOB;
+  ALTER TABLE speakers ADD COLUMN voice_model TEXT;
+  ALTER TABLE speakers ADD COLUMN speech_sec REAL;
+  ALTER TABLE speakers ADD COLUMN profile_id TEXT REFERENCES voice_profiles(id) ON DELETE SET NULL;
+  ALTER TABLE speakers ADD COLUMN voice_status TEXT CHECK (voice_status IN ('confirmed', 'auto', 'suggested', 'rejected', 'ignored'));
+  ALTER TABLE speakers ADD COLUMN voice_score REAL;
+  ALTER TABLE speakers ADD COLUMN name_before TEXT;
+  CREATE INDEX speakers_profile ON speakers(profile_id) WHERE profile_id IS NOT NULL;
+  ALTER TABLE jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'transcribe' CHECK (kind IN ('transcribe', 'voiceprint'));
+  ALTER TABLE jobs ADD COLUMN learn INTEGER NOT NULL DEFAULT 0;
+  `,
 ];

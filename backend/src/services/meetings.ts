@@ -4,9 +4,19 @@ import { join } from "node:path";
 import { config } from "../config";
 import { db, now } from "../db";
 import { newId, parseJson } from "../lib/util";
-import type { JobRow, MeetingRow, SegmentRow, SpeakerRow, SummaryRequest, SummaryRow, TranscribeOptions } from "../types";
+import type { JobKind, JobRow, MeetingRow, SegmentRow, SpeakerRow, SummaryRequest, SummaryRow, TranscribeOptions } from "../types";
 import { publish } from "./events";
 import { enqueueSummary, summaryPublic } from "./summarizer";
+import {
+  announceSummaryChanges,
+  completeVoiceprint,
+  identifySpeakers,
+  recognitionEnabled,
+  speakerVoices,
+  storeTranscriptVoices,
+  voiceprintSpans,
+  type Voice,
+} from "./voices";
 
 export const SPEAKER_COLORS = 10;
 
@@ -177,10 +187,12 @@ export function meetingDetail(m: MeetingRow) {
   const summaries = db
     .query<SummaryRow, { m: string }>("SELECT * FROM summaries WHERE meeting_id = $m ORDER BY created_at DESC")
     .all({ m: m.id });
+  const voices = speakerVoices(m.id);
   return {
     ...meetingSummary(m),
     autoSummary: parseJson<SummaryRequest | null>(m.auto_summary, null),
-    speakers: speakers.map((s) => ({ key: s.key, name: s.name, color: s.color })),
+    voiceRecognition: recognitionEnabled(m.owner_id),
+    speakers: speakers.map((s) => ({ key: s.key, name: s.name, color: s.color, voice: voices.get(s.key) ?? null })),
     segments: segments.map((s) => ({
       id: s.id,
       start: s.start_sec,
@@ -225,39 +237,52 @@ export function enqueueTranscription(m: MeetingRow) {
 
 export interface ClaimedJob {
   jobId: string;
+  kind: JobKind;
   meetingId: string;
   attempt: number;
   mediaPath: string;
   outDir: string;
-  options: TranscribeOptions;
+  /** Transcription options, or for a voiceprint `{ speakers: { key: [[start, end], …] } }`. */
+  options: TranscribeOptions | { speakers: Record<string, [number, number][]> };
   title: string;
 }
 
-export function claimJob(workerId: string): ClaimedJob | null {
+/**
+ * The next job for a worker that can run `kinds` (workers from before
+ * voiceprints did not say, and run transcriptions only). Transcriptions go
+ * first: people wait for those, while voiceprints work in the background.
+ */
+export function claimJob(workerId: string, kinds: JobKind[] = ["transcribe"]): ClaimedJob | null {
   return db.transaction((): ClaimedJob | null => {
     const job = db
-      .query<JobRow, []>("SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at ASC LIMIT 1")
-      .get();
+      .query<JobRow, { t: number; v: number }>(
+        `SELECT * FROM jobs WHERE status = 'queued' AND ((kind = 'transcribe' AND $t) OR (kind = 'voiceprint' AND $v))
+         ORDER BY kind = 'voiceprint', created_at ASC LIMIT 1`,
+      )
+      .get({ t: kinds.includes("transcribe") ? 1 : 0, v: kinds.includes("voiceprint") ? 1 : 0 });
     if (!job) return null;
     const t = now();
     db.query(
       "UPDATE jobs SET status = 'running', worker_id = $w, attempts = attempts + 1, claimed_at = $t, heartbeat_at = $t WHERE id = $id",
     ).run({ id: job.id, w: workerId, t });
     const m = getMeeting(job.meeting_id)!;
+    const base = {
+      jobId: job.id,
+      kind: job.kind,
+      meetingId: m.id,
+      attempt: job.attempts + 1,
+      mediaPath: originalPath(m),
+      outDir: meetingDir(m.id),
+      title: m.title,
+    };
+    // A voiceprint leaves the meeting as it is: it stays ready and readable.
+    if (job.kind === "voiceprint") return { ...base, options: { speakers: voiceprintSpans(m.id) } };
     db.query("UPDATE meetings SET status = 'processing', stage = 'starting', progress = 0, updated_at = $t WHERE id = $id").run({
       id: m.id,
       t,
     });
     touchMeeting(m);
-    return {
-      jobId: job.id,
-      meetingId: m.id,
-      attempt: job.attempts + 1,
-      mediaPath: originalPath(m),
-      outDir: meetingDir(m.id),
-      options: { ...DEFAULT_OPTIONS, ...parseJson<Partial<TranscribeOptions>>(m.options, {}) },
-      title: m.title,
-    };
+    return { ...base, options: { ...DEFAULT_OPTIONS, ...parseJson<Partial<TranscribeOptions>>(m.options, {}) } };
   })();
 }
 
@@ -273,6 +298,7 @@ export function reportProgress(jobId: string, workerId: string, stage: string, p
   if (!job) return false;
   const t = now();
   db.query("UPDATE jobs SET heartbeat_at = $t WHERE id = $id").run({ id: jobId, t });
+  if (job.kind === "voiceprint") return true;
   db.query("UPDATE meetings SET stage = $stage, progress = $p, updated_at = $t WHERE id = $id").run({
     id: job.meeting_id,
     stage: stage.slice(0, 64),
@@ -293,6 +319,31 @@ export interface TranscriptResult {
   speakers: string[];
   segments: { start: number; end: number; speaker: string | null; text: string }[];
   diarization?: DiarizationOutcome;
+  /** Embedding model of `voices`; fingerprints of different models are never compared. */
+  voiceModel?: string;
+  /** Speaker key → voice fingerprint. */
+  voices?: Record<string, Voice>;
+}
+
+export interface VoiceprintResult {
+  voiceModel: string;
+  voices: Record<string, Voice>;
+}
+
+export function completeVoiceprintJob(jobId: string, workerId: string, result: VoiceprintResult): boolean {
+  const job = getRunningJob(jobId, workerId);
+  if (!job || job.kind !== "voiceprint") return false;
+  const t = now();
+  // One transaction: if storing fails, the job is still running and can be failed and retried.
+  const done = db.transaction(() => {
+    db.query("UPDATE jobs SET status = 'done', finished_at = $t, heartbeat_at = $t WHERE id = $id").run({ id: jobId, t });
+    return completeVoiceprint(job, result.voiceModel, result.voices);
+  })();
+  if (done) {
+    announceSummaryChanges(done.m, done.changed);
+    touchMeeting(done.m);
+  }
+  return true;
 }
 
 /**
@@ -308,19 +359,15 @@ export interface DiarizationOutcome {
 
 export function completeJob(jobId: string, workerId: string, result: TranscriptResult): boolean {
   const job = getRunningJob(jobId, workerId);
-  if (!job) return false;
+  if (!job || job.kind !== "transcribe") return false;
   const t = now();
   let meeting: MeetingRow | null = null;
   db.transaction(() => {
     db.query("UPDATE jobs SET status = 'done', finished_at = $t, heartbeat_at = $t WHERE id = $id").run({ id: jobId, t });
     const m = job.meeting_id;
     // Keep user-assigned speaker names across re-transcriptions where keys match.
-    const previousNames = new Map(
-      db
-        .query<SpeakerRow, { m: string }>("SELECT * FROM speakers WHERE meeting_id = $m")
-        .all({ m })
-        .map((s) => [s.key, s.name]),
-    );
+    const previous = db.query<SpeakerRow, { m: string }>("SELECT * FROM speakers WHERE meeting_id = $m").all({ m });
+    const previousNames = new Map(previous.map((s) => [s.key, s.name]));
     db.query("DELETE FROM segments WHERE meeting_id = $m").run({ m });
     db.query("DELETE FROM speakers WHERE meeting_id = $m").run({ m });
     // Existing summaries describe the previous transcript, whose speaker keys
@@ -344,6 +391,7 @@ export function completeJob(jobId: string, workerId: string, result: TranscriptR
         text: seg.text,
       });
     });
+    storeTranscriptVoices(getMeeting(m)!, previous, result.voiceModel, result.voices);
     db.query(
       `UPDATE meetings SET status = 'ready', stage = NULL, progress = 1, error = NULL, duration_sec = $d, language = $lang,
          has_video = $hv, has_playback = $hp, has_peaks = $hk, diarization = $dz, transcribed_at = $t, updated_at = $t WHERE id = $id`,
@@ -361,6 +409,8 @@ export function completeJob(jobId: string, workerId: string, result: TranscriptR
   })();
   const m = meeting as MeetingRow | null;
   if (m) {
+    // Name the people whose voices are known before anything (a summary) uses the names.
+    announceSummaryChanges(m, db.transaction(() => identifySpeakers(m))());
     touchMeeting(m);
     const auto = parseJson<SummaryRequest | null>(m.auto_summary, null);
     // Auto-summarise only once: the first successful transcription.
@@ -380,6 +430,12 @@ export function failJob(jobId: string, workerId: string, error: string, retryabl
 function finishFailedJob(job: JobRow, error: string, retryable: boolean) {
   const t = now();
   const retry = retryable && job.attempts < config.jobMaxAttempts;
+  if (job.kind === "voiceprint") {
+    // The meeting itself is unaffected; "find voices" shows what could not be done.
+    if (retry) db.query("UPDATE jobs SET status = 'queued', worker_id = NULL, error = $e WHERE id = $id").run({ id: job.id, e: error });
+    else db.query("UPDATE jobs SET status = 'failed', error = $e, finished_at = $t WHERE id = $id").run({ id: job.id, e: error, t });
+    return;
+  }
   if (retry) {
     db.query("UPDATE jobs SET status = 'queued', worker_id = NULL, error = $e WHERE id = $id").run({ id: job.id, e: error });
     db.query("UPDATE meetings SET status = 'queued', stage = 'retrying', progress = 0, updated_at = $t WHERE id = $id").run({
@@ -412,8 +468,14 @@ export function reapStaleJobs() {
 
 export function queueStats() {
   const rows = db
-    .query<{ status: string; n: number }, []>("SELECT status, COUNT(*) AS n FROM jobs WHERE status IN ('queued','running') GROUP BY status")
+    .query<{ kind: JobKind; status: string; n: number }, []>(
+      "SELECT kind, status, COUNT(*) AS n FROM jobs WHERE status IN ('queued','running') GROUP BY kind, status",
+    )
     .all();
-  const by = Object.fromEntries(rows.map((r) => [r.status, r.n]));
-  return { queued: by.queued ?? 0, running: by.running ?? 0 };
+  const count = (kind: JobKind, status: string) => rows.find((r) => r.kind === kind && r.status === status)?.n ?? 0;
+  return {
+    queued: count("transcribe", "queued"),
+    running: count("transcribe", "running"),
+    voiceprints: { queued: count("voiceprint", "queued"), running: count("voiceprint", "running") },
+  };
 }

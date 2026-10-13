@@ -1207,6 +1207,155 @@
   }
 }
 
+/* =============================================================== voices */
+
+.voices-how {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.voices-how ol {
+  margin: 0;
+  padding-left: 1.3em;
+  display: grid;
+  gap: 4px;
+}
+.voices-scan {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.voices-scan-error {
+  display: block;
+  margin-top: 6px;
+  font-size: var(--step--2);
+  overflow-wrap: anywhere;
+}
+.voices-empty {
+  padding: 24px 0;
+  justify-items: start;
+  text-align: left;
+}
+.voices-empty > svg {
+  width: 22px;
+  height: 22px;
+  color: var(--ink-3);
+}
+.voice-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  max-width: 640px;
+}
+.voice-person {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+.voice-person-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 10px 14px;
+}
+.voice-person-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.voice-person-main:disabled {
+  cursor: default;
+}
+.voice-person-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-weight: 600;
+}
+.voice-person-warn {
+  width: 15px;
+  height: 15px;
+  color: var(--warn);
+}
+.voice-person-facts {
+  font-size: var(--step--2);
+}
+.voice-person-toggle svg {
+  transition: transform var(--dur) var(--ease-out);
+}
+.voice-person-toggle.open svg {
+  transform: rotate(180deg);
+}
+.voice-person-callout {
+  margin: 0 14px 12px;
+}
+.voice-samples {
+  list-style: none;
+  margin: 0;
+  padding: 4px 10px 10px 14px;
+  border-top: 1px solid var(--rule);
+  display: grid;
+}
+.voice-samples li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  font-size: var(--step--1);
+}
+.voice-samples li + li {
+  border-top: 1px dashed var(--rule);
+}
+.voice-sample-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--ink-3);
+}
+.voice-sample-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.voice-sample-main a {
+  color: var(--ink);
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.voice-sample-meta {
+  font-size: var(--step--2);
+  white-space: nowrap;
+}
+@media (max-width: 560px) {
+  .voice-samples li {
+    flex-wrap: wrap;
+    padding: 6px 0;
+  }
+  .voice-sample-meta {
+    order: 3;
+    width: 100%;
+    padding-left: 24px;
+  }
+}
+
 /* =============================================================== admin */
 
 .admin-tabs {

@@ -1,7 +1,11 @@
-"""End-to-end processing of one transcription job.
+"""End-to-end processing of one job.
 
-decode -> playback rendition + waveform peaks -> diarization -> segment
-planning -> batched ASR -> text normalisation -> result.
+Transcription: decode -> playback rendition + waveform peaks -> diarization
+-> voice fingerprints -> segment planning -> batched ASR -> text
+normalisation -> result.
+
+Voiceprint (a meeting transcribed earlier): decode -> voice fingerprints of
+the speakers in its stored transcript.
 
 Model objects are injected so the orchestration can be tested with fakes.
 """
@@ -16,7 +20,7 @@ from typing import Callable, List, Optional, Protocol, Sequence, Tuple
 
 import numpy as np
 
-from . import audio, segmenter, textnorm
+from . import audio, segmenter, textnorm, voices
 
 log = logging.getLogger("mm_worker.pipeline")
 
@@ -29,13 +33,23 @@ STAGES = {
     "finalizing": (0.98, 1.00),
 }
 
+VOICEPRINT_STAGES = {
+    "decoding": (0.00, 0.50),
+    "voiceprint": (0.50, 1.00),
+}
+
 
 class Canceled(Exception):
     pass
 
 
 class DiarizerLike(Protocol):
+    # Identifies the embedding model: fingerprints from different models are not comparable.
+    voice_model: str
+
     def run(self, wav, sr, num_speakers=None, min_speakers=None, max_speakers=None, progress=None) -> List[Tuple[float, float, str]]: ...
+
+    def embed(self, clips: List[np.ndarray], sr: int) -> np.ndarray: ...
 
 
 class TranscriberLike(Protocol):
@@ -56,13 +70,14 @@ Reporter = Callable[[str, float], bool]
 class Progress:
     """Maps stage-local progress to overall progress and throttles reports."""
 
-    def __init__(self, report: Reporter, min_interval: float = 2.0):
+    def __init__(self, report: Reporter, min_interval: float = 2.0, stages: Optional[dict] = None):
         self.report = report
         self.min_interval = min_interval
+        self.stages = stages or STAGES
         self._last = 0.0
 
     def __call__(self, stage: str, frac: float, force: bool = False) -> None:
-        lo, hi = STAGES[stage]
+        lo, hi = self.stages[stage]
         now = time.monotonic()
         if not force and now - self._last < self.min_interval:
             return
@@ -91,6 +106,34 @@ def _dominant_language(langs: List[str], weights: List[float]) -> Optional[str]:
     return top
 
 
+def _decode(media_path: str, progress: Progress, max_audio_sec: Optional[float]) -> Tuple[np.ndarray, "audio.MediaInfo"]:
+    progress("decoding", 0.0, force=True)
+    info = audio.probe(media_path)
+    if not info.has_audio:
+        raise audio.MediaError("The file has no audio track.")
+    if max_audio_sec and info.duration and info.duration > max_audio_sec:
+        raise audio.MediaError(f"The recording is longer than the {max_audio_sec / 3600:g}-hour limit (MAX_AUDIO_HOURS).")
+    wav = audio.decode_pcm(media_path, progress=lambda f: progress("decoding", f), duration=info.duration, max_seconds=max_audio_sec)
+    if len(wav) / audio.SAMPLE_RATE < 0.5:
+        raise audio.MediaError("The recording is shorter than half a second.")
+    return wav, info
+
+
+def _fingerprints(diarizer: DiarizerLike, wav: np.ndarray, sr: int, spans: dict, progress=None, strict: bool = False) -> dict:
+    """{"voiceModel": ..., "voices": {speaker: ...}}. Unless ``strict``, a failure leaves voices empty."""
+    try:
+        found = voices.fingerprints(wav, sr, spans, lambda clips: diarizer.embed(clips, sr), progress=progress)
+    except Canceled:
+        raise
+    except Exception as e:
+        if strict:
+            raise
+        # A transcript without fingerprints is still a transcript.
+        log.warning("voice fingerprints failed, continuing without them: %s", e)
+        found = {}
+    return {"voiceModel": str(getattr(diarizer, "voice_model", "") or "unknown"), "voices": found}
+
+
 def run_job(
     job: JobSpec,
     report: Reporter,
@@ -105,20 +148,9 @@ def run_job(
     out_dir = Path(job.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     progress = Progress(report)
-    progress("decoding", 0.0, force=True)
-
-    info = audio.probe(job.media_path)
-    if not info.has_audio:
-        raise audio.MediaError("The file has no audio track.")
-    if max_audio_sec and info.duration and info.duration > max_audio_sec:
-        raise audio.MediaError(f"The recording is longer than the {max_audio_sec / 3600:g}-hour limit (MAX_AUDIO_HOURS).")
-    wav = audio.decode_pcm(
-        job.media_path, progress=lambda f: progress("decoding", f), duration=info.duration, max_seconds=max_audio_sec
-    )
+    wav, info = _decode(job.media_path, progress, max_audio_sec)
     sr = audio.SAMPLE_RATE
     duration = len(wav) / sr
-    if duration < 0.5:
-        raise audio.MediaError("The recording is shorter than half a second.")
     log.info("decoded %.1fs of audio (video=%s)", duration, info.has_video)
 
     progress("preparing", 0.0, force=True)
@@ -127,6 +159,7 @@ def run_job(
     energy = segmenter.frame_energy(wav, sr)
 
     turns = None
+    voiceprints: dict = {}
     # Recorded with the result, so a transcript without speakers says why.
     if not opts.get("diarize", True):
         diarization: dict = {"status": "off"}
@@ -146,6 +179,8 @@ def run_job(
                 progress=lambda f: progress("diarizing", f),
             )
             log.info("diarization: %d turns, %d speakers", len(turns), len({t[2] for t in turns}))
+            if turns:
+                voiceprints = _fingerprints(diarizer, wav, sr, voices.spans_by_speaker(turns))
         except Canceled:
             raise
         except Exception as e:  # Fall back to plain transcription rather than failing the job.
@@ -188,7 +223,7 @@ def run_job(
         if s["speaker"] and s["speaker"] not in speakers:
             speakers.append(s["speaker"])
 
-    return {
+    out = {
         "durationSec": round(duration, 3),
         "language": _dominant_language(langs, weights),
         "hasVideo": info.has_video,
@@ -198,3 +233,40 @@ def run_job(
         "segments": segments,
         "diarization": {**diarization, "speakers": len(speakers)} if diarization["status"] == "ok" else diarization,
     }
+    if voiceprints:
+        out["voiceModel"] = voiceprints["voiceModel"]
+        out["voices"] = {k: v for k, v in voiceprints["voices"].items() if k in speakers}
+    return out
+
+
+def run_voiceprint(
+    job: JobSpec,
+    report: Reporter,
+    diarizer: Optional[DiarizerLike],
+    diarizer_unavailable: Optional[str] = None,
+    max_audio_sec: Optional[float] = None,
+) -> dict:
+    """Voice fingerprints for a meeting transcribed earlier, from the speakers in its transcript.
+
+    ``job.options["speakers"]`` maps each speaker to the [start, end] spans
+    attributed to them in the transcript (including the user's corrections).
+    """
+    if diarizer is None:
+        raise audio.MediaError(
+            "Voice fingerprints need the speaker diarization model, which is not loaded: "
+            + (diarizer_unavailable or "unknown reason")
+        )
+    progress = Progress(report, stages=VOICEPRINT_STAGES)
+    wav, _ = _decode(job.media_path, progress, max_audio_sec)
+    sr = audio.SAMPLE_RATE
+    duration = len(wav) / sr
+    spans: dict = {}
+    for speaker, given in (job.options.get("speakers") or {}).items():
+        clipped = [(max(0.0, float(s)), min(duration, float(e))) for s, e in given]
+        spans[str(speaker)] = [(s, e) for s, e in clipped if e > s]
+    progress("voiceprint", 0.0, force=True)
+    result = _fingerprints(
+        diarizer, wav, sr, {k: v for k, v in spans.items() if v}, progress=lambda f: progress("voiceprint", f), strict=True
+    )
+    log.info("voice fingerprints for %d of %d speakers", len(result["voices"]), len(spans))
+    return result

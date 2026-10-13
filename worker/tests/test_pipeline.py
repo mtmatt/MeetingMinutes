@@ -1,11 +1,20 @@
-from mm_worker.pipeline import Canceled, JobSpec, _dominant_language, run_job
-
+import numpy as np
 import pytest
+
+from mm_worker.pipeline import Canceled, JobSpec, _dominant_language, run_job
 
 
 class FakeDiarizer:
+    voice_model = "test-model"
+
     def __init__(self):
         self.kwargs = None
+        self.embedded = []
+
+    def embed(self, clips, sr):
+        self.embedded.append([len(c) / sr for c in clips])
+        # One direction per clip length, which is enough to tell the fake speakers apart.
+        return np.array([[len(c) / sr, 1.0, 0.0] for c in clips])
 
     def run(self, wav, sr, num_speakers=None, min_speakers=None, max_speakers=None, progress=None):
         self.kwargs = dict(num_speakers=num_speakers, min_speakers=min_speakers, max_speakers=max_speakers)
@@ -44,6 +53,13 @@ def test_full_pipeline_with_fakes(two_speaker_wav, tmp_path):
     assert [s["text"] for s in result["segments"]] == ["我們開始開會吧", "這個 release 要延後"]
     assert result["speakers"] == ["SPK_7", "SPK_2"]
     assert result["diarization"] == {"status": "ok", "speakers": 2}
+    # A voice fingerprint per speaker, from its own (merged) turns.
+    assert result["voiceModel"] == "test-model"
+    assert set(result["voices"]) == {"SPK_7", "SPK_2"}
+    assert result["voices"]["SPK_7"]["speechSec"] == 5.0 and result["voices"]["SPK_2"]["speechSec"] == 4.0
+    assert sorted(map(sorted, diarizer.embedded)) == [[2.0, 3.0], [4.0]]
+    v = np.array(result["voices"]["SPK_2"]["embedding"])
+    assert np.isclose(np.linalg.norm(v), 1.0, atol=1e-5)
     assert result["language"] == "Chinese,English"
     assert result["hasPlayback"] and result["hasPeaks"] and not result["hasVideo"]
     assert (tmp_path / "playback.m4a").exists()
@@ -66,6 +82,7 @@ def test_pipeline_without_diarization(two_speaker_wav, tmp_path):
     assert all(s["speaker"] is None for s in result["segments"])
     assert result["segments"][0]["text"] == "我们开始开会吧"
     assert result["diarization"] == {"status": "off"}
+    assert "voices" not in result
 
 
 def test_missing_diarizer_is_reported_with_its_reason(two_speaker_wav, tmp_path):
@@ -100,3 +117,14 @@ def test_dominant_language():
     assert _dominant_language(["Chinese", "Chinese", "English"], [10, 10, 1]) == "Chinese"
     assert _dominant_language(["Chinese", "English"], [10, 5]) == "Chinese,English"
     assert _dominant_language([], []) is None
+
+
+def test_fingerprint_failure_keeps_the_transcript(two_speaker_wav, tmp_path):
+    class NoEmbeddings(FakeDiarizer):
+        def embed(self, clips, sr):
+            raise RuntimeError("no embedding model")
+
+    result = run_job(JobSpec(str(two_speaker_wav), str(tmp_path), {}), lambda s, p: True, FakeTranscriber(), NoEmbeddings())
+    assert result["speakers"] == ["SPK_7", "SPK_2"]
+    assert result["diarization"]["status"] == "ok"
+    assert result["voices"] == {}

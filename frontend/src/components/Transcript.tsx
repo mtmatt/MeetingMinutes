@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, LocateFixed, Pencil, Search, UserPlus, Users, X } from "lucide-react";
+import { AudioLines, Check, LocateFixed, Pencil, Search, Settings2, UserPlus, Users, X } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router";
 import { api } from "../api/client";
-import type { MeetingDetail, Segment, Speaker } from "../api/types";
+import type { MeetingDetail, Segment, Speaker, VoiceOutcome } from "../api/types";
 import { useI18n } from "../i18n";
 import { clock, speakerVar, wordCount } from "../lib/format";
 import { usePlayer } from "../lib/player";
@@ -62,10 +63,159 @@ function highlight(text: string, q: string): ReactNode {
   return parts;
 }
 
+const percent = (score: number | null | undefined) => `${Math.round(Math.max(0, score ?? 0) * 100)}%`;
+
+/** Run a voice action on a speaker, refresh, and say what happened. */
+function useSpeakerVoice(meeting: MeetingDetail) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const refresh = () =>
+    Promise.all([qc.invalidateQueries({ queryKey: ["meeting", meeting.id] }), qc.invalidateQueries({ queryKey: ["voices"] })]);
+  const run = async (sp: Speaker, action: VoiceAction) => {
+    try {
+      const { voice } = await api.speakerVoice(meeting.id, sp.key, action);
+      await refresh();
+      if (action === "confirm") toast.show(t("meeting.voiceToastConfirmed", { name: voice.profile?.name ?? sp.name }));
+      else if (action === "reject") toast.show(t("meeting.voiceToastRejected"));
+      else if (action === "forget") toast.show(t("meeting.voiceToastForgotten"));
+      else announce(sp, voice);
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+  /** After naming a speaker: whether the voice was remembered, with a way to take it back. */
+  const announce = (sp: Speaker, voice: VoiceOutcome | null) => {
+    if (!voice?.profile) return;
+    const name = voice.profile.name;
+    const undo = { label: t("meeting.voiceUndo"), onClick: () => void run(sp, "forget") };
+    if (voice.remembered === "remembered") toast.show(t("meeting.voiceToastRemembered", { name }), undo);
+    else if (voice.remembered === "pending") toast.show(t("meeting.voiceToastPending", { name }), undo);
+    else if (voice.remembered === "short") toast.show(t("meeting.voiceToastShort", { name }));
+  };
+  return { run, announce, refresh };
+}
+
+/**
+ * What voice recognition knows about a speaker, beside their name: a chip to
+ * confirm or correct a recognised or suggested name, or a quiet mark for a
+ * remembered (or deliberately forgotten) voice. Each opens a short menu.
+ */
+type VoiceAction = "confirm" | "reject" | "forget" | "remember";
+
+function VoiceBadge({ meeting, sp, run }: { meeting: MeetingDetail; sp: Speaker; run: (sp: Speaker, action: VoiceAction) => void }) {
+  const { t } = useI18n();
+  const voice = sp.voice;
+  if (!meeting.voiceRecognition || !voice?.status) return null;
+  const profileName = voice.profile?.name ?? sp.name;
+
+  if ((voice.status === "auto" || voice.status === "suggested") && voice.profile) {
+    const auto = voice.status === "auto";
+    const label = t(auto ? "meeting.voiceAutoLabel" : "meeting.voiceSuggestLabel", { name: profileName, score: percent(voice.score) });
+    return (
+      <Menu
+        align="left"
+        trigger={({ toggle, open }) => (
+          <button
+            className={`voice-chip ${auto ? "is-auto" : "is-suggested"}`}
+            onClick={toggle}
+            aria-expanded={open}
+            aria-haspopup="menu"
+            title={label}
+          >
+            <AudioLines />
+            <span>{auto ? t("meeting.voiceByVoice") : `${profileName}?`}</span>
+          </button>
+        )}
+      >
+        {(close) => (
+          <>
+            <div className="menu-label voice-menu-label">{label}</div>
+            <button
+              className="menu-item"
+              onClick={() => {
+                close();
+                run(sp, "confirm");
+              }}
+            >
+              <Check /> {t("meeting.voiceConfirm", { name: profileName })}
+            </button>
+            <button
+              className="menu-item"
+              onClick={() => {
+                close();
+                run(sp, "reject");
+              }}
+            >
+              <X /> {t("meeting.voiceReject", { name: profileName })}
+            </button>
+          </>
+        )}
+      </Menu>
+    );
+  }
+
+  if (voice.status === "confirmed" || (voice.status === "ignored" && !voice.defaultName)) {
+    const confirmed = voice.status === "confirmed";
+    const pending = confirmed && !voice.fingerprint && voice.speechSec == null;
+    const label = !confirmed
+      ? t("meeting.voiceIgnoredLabel")
+      : voice.fingerprint
+        ? t("meeting.voiceRememberedLabel", { name: profileName })
+        : pending
+          ? t("meeting.voicePendingLabel", { name: profileName })
+          : t("meeting.voiceShortLabel", { name: profileName });
+    const state = !confirmed ? "is-off" : voice.fingerprint ? "is-on" : "is-pending";
+    return (
+      <Menu
+        align="left"
+        trigger={({ toggle, open }) => (
+          <button className={`voice-mark ${state}`} onClick={toggle} aria-expanded={open} aria-haspopup="menu" title={label} aria-label={label}>
+            <AudioLines />
+          </button>
+        )}
+      >
+        {(close) => (
+          <>
+            <div className="menu-label voice-menu-label">{label}</div>
+            {confirmed ? (
+              <button
+                className="menu-item"
+                onClick={() => {
+                  close();
+                  run(sp, "forget");
+                }}
+              >
+                <X /> {t("meeting.voiceForget")}
+              </button>
+            ) : (
+              <button
+                className="menu-item"
+                onClick={() => {
+                  close();
+                  run(sp, "remember");
+                }}
+              >
+                <AudioLines /> {t("meeting.voiceRememberAs", { name: sp.name })}
+              </button>
+            )}
+            <div className="menu-sep" />
+            <Link className="menu-item" to="/voices" onClick={close}>
+              <Settings2 /> {t("meeting.voiceManage")}
+            </Link>
+          </>
+        )}
+      </Menu>
+    );
+  }
+  return null;
+}
+
 function SpeakerLegend({ meeting }: { meeting: MeetingDetail }) {
   const { t } = useI18n();
   const toast = useToast();
   const qc = useQueryClient();
+  const voice = useSpeakerVoice(meeting);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
@@ -82,15 +232,17 @@ function SpeakerLegend({ meeting }: { meeting: MeetingDetail }) {
   }, [meeting.segments]);
 
   const sorted = [...meeting.speakers].sort((a, b) => (talk.totals.get(b.key) ?? 0) - (talk.totals.get(a.key) ?? 0));
+  const byVoice = meeting.voiceRecognition ? meeting.speakers.filter((s) => s.voice?.status === "auto").length : 0;
 
   const save = async (sp: Speaker) => {
     const name = draft.trim();
     setEditing(null);
     if (!name || name === sp.name) return;
     try {
-      const { summaries } = await api.renameSpeaker(meeting.id, sp.key, name);
-      await qc.invalidateQueries({ queryKey: ["meeting", meeting.id] });
+      const { summaries, voice: outcome } = await api.renameSpeaker(meeting.id, sp.key, name);
+      await Promise.all([qc.invalidateQueries({ queryKey: ["meeting", meeting.id] }), qc.invalidateQueries({ queryKey: ["voices"] })]);
       if (summaries.skipped > 0) toast.show(t("meeting.namesNotReplaced", { n: summaries.skipped }));
+      voice.announce(sp, outcome);
     } catch (e) {
       toast.error(e);
     }
@@ -103,6 +255,11 @@ function SpeakerLegend({ meeting }: { meeting: MeetingDetail }) {
         <span className="smallcaps">
           <Users style={{ width: 12, height: 12, display: "inline", verticalAlign: "-1px" }} /> {t("meeting.speakingTime")}
         </span>
+        {byVoice > 0 && (
+          <span className="pill accent legend-voice-count">
+            <AudioLines /> {t("meeting.voiceRecognisedCount", { n: byVoice })}
+          </span>
+        )}
       </div>
       <div className="legend-bar" aria-hidden="true">
         {sorted.map((sp) => (
@@ -141,6 +298,7 @@ function SpeakerLegend({ meeting }: { meeting: MeetingDetail }) {
                   <Pencil />
                 </button>
               )}
+              {editing !== sp.key && <VoiceBadge meeting={meeting} sp={sp} run={(s, a) => void voice.run(s, a)} />}
               <span className="legend-share mono">{Math.round(share * 100)}%</span>
               <span className="legend-time mono faint">{clock(talk.totals.get(sp.key) ?? 0)}</span>
             </li>
@@ -355,6 +513,7 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
     try {
       const { speaker } = await api.addSpeaker(meeting.id, name);
       await reassign(block, speaker.key);
+      await qc.invalidateQueries({ queryKey: ["voices"] });
     } catch (e) {
       toast.error(e);
     }

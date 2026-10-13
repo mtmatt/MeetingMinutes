@@ -28,7 +28,7 @@ from . import __version__
 from .audio import MediaError
 from .client import BackendClient
 from .config import WorkerConfig
-from .pipeline import Canceled, JobSpec, run_job
+from .pipeline import Canceled, JobSpec, run_job, run_voiceprint
 
 log = logging.getLogger("mm_worker")
 
@@ -53,8 +53,23 @@ def gpu_info() -> dict:
         return {"cuda": None, "error": str(e)[:200]}
 
 
-def build_models(cfg: WorkerConfig):
-    """Load the models. Returns (transcriber, diarizer or None, diarization status).
+def load_transcriber(cfg: WorkerConfig):
+    if cfg.asr_backend == "fake":
+        from .fakes import FakeTranscriber
+
+        return FakeTranscriber(float(os.environ.get("MM_FAKE_LOAD_SEC", "0"))).load()
+    from .asr import Transcriber
+
+    transcriber = Transcriber(
+        cfg.asr_model, cfg.device, backend=cfg.asr_backend, batch_size=cfg.asr_batch_size, max_new_tokens=cfg.asr_max_new_tokens
+    )
+    log.info("loading ASR model %s (%s backend)", cfg.asr_model, cfg.asr_backend)
+    transcriber.load()
+    return transcriber
+
+
+def load_diarizer(cfg: WorkerConfig):
+    """Returns (diarizer or None, status).
 
     The status records what actually happened when loading the diarization
     pipeline: {"state": "ready"} or {"state": "unavailable", "reason": ...}.
@@ -62,35 +77,61 @@ def build_models(cfg: WorkerConfig):
     saved by `huggingface-cli login`, not only HF_TOKEN.
     """
     if cfg.asr_backend == "fake":
-        from .fakes import FakeDiarizer, FakeTranscriber
+        from .fakes import FakeDiarizer
 
-        log.info("using fake models (ASR_BACKEND=fake)")
         if os.environ.get("MM_FAKE_NO_DIARIZATION") == "1":
             # Same message as a real missing token / unaccepted model terms.
             reason = "Could not load pyannote/speaker-diarization-community-1: 401 Client Error: Unauthorized. Set HF_TOKEN and accept the model's conditions on Hugging Face."
-            return FakeTranscriber(0).load(), None, {"state": "unavailable", "reason": reason}
-        return FakeTranscriber(float(os.environ.get("MM_FAKE_LOAD_SEC", "0"))).load(), FakeDiarizer().load(), {"state": "ready"}
+            return None, {"state": "unavailable", "reason": reason}
+        return FakeDiarizer().load(), {"state": "ready"}
 
-    from .asr import Transcriber
     from .diarize import DiarizationUnavailable, Diarizer
 
-    transcriber = Transcriber(
-        cfg.asr_model, cfg.device, backend=cfg.asr_backend, batch_size=cfg.asr_batch_size, max_new_tokens=cfg.asr_max_new_tokens
-    )
-    diarizer: Optional[Diarizer] = Diarizer(cfg.diarization_model, cfg.device, cfg.hf_token)
-    t0 = time.monotonic()
-    log.info("loading ASR model %s (%s backend)", cfg.asr_model, cfg.asr_backend)
-    transcriber.load()
-    status = {"state": "ready"}
+    diarizer = Diarizer(cfg.diarization_model, cfg.device, cfg.hf_token)
     try:
         log.info("loading diarization pipeline %s", cfg.diarization_model)
         diarizer.load()
     except DiarizationUnavailable as e:
         log.warning("speaker diarization disabled: %s", e)
-        diarizer = None
-        status = {"state": "unavailable", "reason": str(e)[:300]}
+        return None, {"state": "unavailable", "reason": str(e)[:300]}
+    return diarizer, {"state": "ready"}
+
+
+def build_models(cfg: WorkerConfig):
+    """Load both models. Returns (transcriber, diarizer or None, diarization status)."""
+    if cfg.asr_backend == "fake":
+        log.info("using fake models (ASR_BACKEND=fake)")
+    t0 = time.monotonic()
+    transcriber = load_transcriber(cfg)
+    diarizer, status = load_diarizer(cfg)
     log.info("models ready in %.1fs", time.monotonic() - t0)
     return transcriber, diarizer, status
+
+
+class Models:
+    """The models of one GPU session. The ASR model, the larger one, loads on
+    first use: a session that only makes voice fingerprints never needs it."""
+
+    def __init__(self, cfg: WorkerConfig):
+        self.cfg = cfg
+        self._transcriber = None
+        self.diarizer, self.diarization = load_diarizer(cfg)
+
+    @property
+    def transcriber(self):
+        if self._transcriber is None:
+            t0 = time.monotonic()
+            self._transcriber = load_transcriber(self.cfg)
+            log.info("ASR model ready in %.1fs", time.monotonic() - t0)
+        return self._transcriber
+
+
+def job_kind(job: dict) -> str:
+    return job.get("kind") or "transcribe"
+
+
+class ModelsUnavailable(Exception):
+    """A model could not be loaded in this session; its job was reported as retryable."""
 
 
 def is_retryable(exc: BaseException) -> bool:
@@ -158,27 +199,50 @@ class _JobRunner:
         except Exception as e:
             log.error("could not report failure: %s", e)
 
-    def process(self, job: dict, transcriber, diarizer, diarizer_unavailable: Optional[str] = None):
+    def process(self, job: dict, models: Models):
         job_id = job["jobId"]
-        log.info("job %s: meeting %s (%s), attempt %s", job_id, job["meetingId"], job.get("title"), job.get("attempt"))
+        kind = job_kind(job)
+        log.info("job %s (%s): meeting %s (%s), attempt %s", job_id, kind, job["meetingId"], job.get("title"), job.get("attempt"))
         started = time.monotonic()
+        spec = JobSpec(media_path=job["mediaPath"], out_dir=job["outDir"], options=job.get("options") or {})
+        if kind == "transcribe":
+            # Loaded on first use when the session began with a voiceprint. A failure
+            # here is the session's, not the recording's: retry it elsewhere or later.
+            try:
+                models.transcriber  # noqa: B018
+            except Exception as e:
+                log.error("could not load the ASR model: %s\n%s", e, traceback.format_exc())
+                self.fail(job_id, f"Could not load models: {type(e).__name__}: {e}", True)
+                raise ModelsUnavailable() from e
         try:
-            result = run_job(
-                JobSpec(media_path=job["mediaPath"], out_dir=job["outDir"], options=job.get("options") or {}),
-                report=self.report,
-                transcriber=transcriber,
-                diarizer=diarizer,
-                max_segment_sec=self.cfg.max_segment_sec,
-                diarizer_unavailable=diarizer_unavailable,
-                max_audio_sec=self.cfg.max_audio_sec,
-            )
+            if kind == "voiceprint":
+                result = run_voiceprint(
+                    spec,
+                    report=self.report,
+                    diarizer=models.diarizer,
+                    diarizer_unavailable=models.diarization.get("reason"),
+                    max_audio_sec=self.cfg.max_audio_sec,
+                )
+                summary = f"{len(result['voices'])} voice fingerprints"
+            elif kind == "transcribe":
+                result = run_job(
+                    spec,
+                    report=self.report,
+                    transcriber=models.transcriber,
+                    diarizer=models.diarizer,
+                    max_segment_sec=self.cfg.max_segment_sec,
+                    diarizer_unavailable=models.diarization.get("reason"),
+                    max_audio_sec=self.cfg.max_audio_sec,
+                )
+                summary = f"{len(result['segments'])} segments, {len(result['speakers'])} speakers"
+            else:
+                raise MediaError(f"This worker does not know {kind!r} jobs; update it.")
             accepted = self.client.complete(job_id, result)
             log.info(
-                "job %s: done in %.0fs (%d segments, %d speakers)%s",
+                "job %s: done in %.0fs (%s)%s",
                 job_id,
                 time.monotonic() - started,
-                len(result["segments"]),
-                len(result["speakers"]),
+                summary,
                 "" if accepted else " but the server no longer wanted it",
             )
         except Canceled:
@@ -214,18 +278,29 @@ def gpu_session(cfg: WorkerConfig, first_job: dict, events) -> None:
             log.info("job %s was canceled before models were loaded", job["jobId"])
             events.put(("done", job["jobId"]))
             return
-        transcriber, diarizer, diarization = build_models(cfg)
+        if cfg.asr_backend == "fake":
+            log.info("using fake models (ASR_BACKEND=fake)")
+        t0 = time.monotonic()
+        models = Models(cfg)
+        if job_kind(job) == "transcribe":
+            models.transcriber  # noqa: B018 - load it now, while the job shows "Loading models"
+        log.info("models ready in %.1fs", time.monotonic() - t0)
     except Exception as e:
         log.error("could not load models: %s\n%s", e, traceback.format_exc())
         runner.fail(job["jobId"], f"Could not load models: {type(e).__name__}: {e}", True)
         events.put(("done", job["jobId"]))
         return
-    events.put(("loaded", diarization))
+    events.put(("loaded", models.diarization))
 
     while job and not stop.is_set():
         runner.begin(job)
         events.put(("job", job["jobId"]))
-        runner.process(job, transcriber, diarizer, diarization.get("reason"))
+        try:
+            runner.process(job, models)
+        except ModelsUnavailable:
+            runner.end()
+            events.put(("done", job["jobId"]))
+            break
         runner.end()
         events.put(("done", job["jobId"]))
         job = None

@@ -25,7 +25,8 @@ import {
   originalPath,
   touchMeeting,
 } from "../services/meetings";
-import { currentSpeakerNames, parseNameMap, reconcileSpeakerNames } from "../services/speakerNames";
+import { currentSpeakerNames, parseNameMap, reconcileSpeakerNames, renameSpeaker } from "../services/speakerNames";
+import { enqueueVoiceprint, recognitionEnabled, speakerNamed, speakerVoiceAction } from "../services/voices";
 import { cancelSummary, enqueueSummary, renderTranscript, summaryPublic } from "../services/summarizer";
 import { getTemplateFor } from "../services/templates";
 import type { AppEnv, MeetingRow, SegmentRow, SpeakerRow, SummaryRow, TranscribeOptions } from "../types";
@@ -269,7 +270,13 @@ meetingRoutes.post("/:id/retranscribe", async (c) => {
   }
   // Re-separating speakers relabels them: SPEAKER_00 may then be someone else,
   // so names given to the old labels must not carry over.
-  if (input.resetSpeakerNames) db.query("DELETE FROM speakers WHERE meeting_id = $m").run({ m: m.id });
+  // Their voice samples stay with the voice profiles, no longer tied to a speaker here.
+  if (input.resetSpeakerNames) {
+    db.transaction(() => {
+      db.query("DELETE FROM speakers WHERE meeting_id = $m").run({ m: m.id });
+      db.query("UPDATE voice_samples SET speaker_key = NULL WHERE meeting_id = $m").run({ m: m.id });
+    })();
+  }
   enqueueTranscription(m);
   return c.json({ meeting: meetingSummary(getOwnedMeeting(m.id, c.get("user").id)!) });
 });
@@ -344,7 +351,8 @@ meetingRoutes.get("/:id/peaks", async (c) => {
 
 meetingRoutes.patch("/:id/speakers/:key", async (c) => {
   const m = owned(c, c.req.param("id"));
-  const input = await body(c, z.object({ name: z.string().trim().min(1).max(80) }));
+  // remember: keep this speaker's voice under the name, to recognise them in other recordings.
+  const input = await body(c, z.object({ name: z.string().trim().min(1).max(80), remember: z.boolean().default(true) }));
   const key = c.req.param("key");
   const speaker = db
     .query<SpeakerRow, { m: string; key: string }>("SELECT * FROM speakers WHERE meeting_id = $m AND key = $key")
@@ -352,35 +360,21 @@ meetingRoutes.patch("/:id/speakers/:key", async (c) => {
   if (!speaker) httpError(404, "Speaker not found.", "not_found");
 
   // Rename, and update the name in finished summaries where that is safe.
-  // Summaries still being written catch up when they finish.
-  const outcome = { updated: 0, skipped: 0 };
-  const changed: string[] = [];
-  db.transaction(() => {
-    db.query("UPDATE speakers SET name = $name WHERE meeting_id = $m AND key = $key").run({ m: m.id, key, name: input.name });
-    if (speaker.name === input.name) return;
-    const current = currentSpeakerNames(m.id);
-    const done = db
-      .query<SummaryRow, { m: string }>("SELECT * FROM summaries WHERE meeting_id = $m AND status = 'done' AND content IS NOT NULL")
-      .all({ m: m.id });
-    for (const s of done) {
-      const used = parseNameMap(s.speaker_names);
-      if (!used || !(key in used)) continue;
-      const r = reconcileSpeakerNames(s.content!, used, current);
-      if (r.skipped.some((x) => x.key === key)) outcome.skipped++;
-      if (r.content !== s.content || JSON.stringify(r.names) !== s.speaker_names) {
-        db.query("UPDATE summaries SET content = $content, speaker_names = $names WHERE id = $id").run({
-          id: s.id,
-          content: r.content,
-          names: JSON.stringify(r.names),
-        });
-        if (r.names[key] === input.name) outcome.updated++;
-        changed.push(s.id);
-      }
-    }
-  })();
+  const { updated, skipped, changed } = renameSpeaker(m.id, key, input.name);
   for (const id of changed) publish(m.owner_id, { type: "summary.updated", meetingId: m.id, summaryId: id });
+  const voice = speaker.name === input.name && input.remember ? null : speakerNamed(m, key, input.name, input.remember);
   touchMeeting(m);
-  return c.json({ ok: true, summaries: outcome });
+  return c.json({ ok: true, summaries: { updated, skipped }, voice });
+});
+
+/** Answer voice recognition about a speaker: confirm, reject, forget or remember (see VoiceAction). */
+meetingRoutes.post("/:id/speakers/:key/voice", async (c) => {
+  const m = owned(c, c.req.param("id"));
+  const input = await body(c, z.object({ action: z.enum(["confirm", "reject", "forget", "remember"]) }));
+  const voice = speakerVoiceAction(m, c.req.param("key"), input.action);
+  if (!voice) httpError(404, "Speaker not found.", "not_found");
+  touchMeeting(m);
+  return c.json({ ok: true, voice });
 });
 
 meetingRoutes.patch("/:id/segments/:segId", async (c) => {
@@ -397,11 +391,12 @@ meetingRoutes.patch("/:id/segments/:segId", async (c) => {
     .query<SegmentRow, { id: number; m: string }>("SELECT * FROM segments WHERE id = $id AND meeting_id = $m")
     .get({ id: segId, m: m.id });
   if (!seg) httpError(404, "Segment not found.", "not_found");
+  let target: SpeakerRow | null = null;
   if (input.speaker) {
-    const exists = db
-      .query("SELECT 1 FROM speakers WHERE meeting_id = $m AND key = $k")
+    target = db
+      .query<SpeakerRow, { m: string; k: string }>("SELECT * FROM speakers WHERE meeting_id = $m AND key = $k")
       .get({ m: m.id, k: input.speaker });
-    if (!exists) httpError(422, "Unknown speaker.", "invalid_input");
+    if (!target) httpError(422, "Unknown speaker.", "invalid_input");
   }
   db.query(
     `UPDATE segments SET text = COALESCE($text, text),
@@ -412,6 +407,8 @@ meetingRoutes.patch("/:id/segments/:segId", async (c) => {
     setSpeaker: input.speaker !== undefined ? 1 : 0,
     speaker: input.speaker ?? null,
   });
+  // A named speaker added by hand has no voice fingerprint until it has speech.
+  if (target?.voice_status === "confirmed" && !target.voice && recognitionEnabled(m.owner_id)) enqueueVoiceprint(m, false);
   touchMeeting(m);
   return c.json({ ok: true });
 });
@@ -430,6 +427,8 @@ meetingRoutes.post("/:id/speakers", async (c) => {
     name: input.name,
     color: existing.length % 10,
   });
+  // Remembered like a renamed speaker, once paragraphs are assigned to it.
+  speakerNamed(m, key, input.name);
   touchMeeting(m);
   return c.json({ speaker: { key, name: input.name, color: existing.length % 10 } }, 201);
 });

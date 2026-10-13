@@ -58,8 +58,11 @@ class BackendClient:
     def heartbeat(self, name: str, info: dict) -> None:
         self._post("/worker/heartbeat", {"name": name, "info": info}, retries=0)
 
+    # Job kinds this worker can run; the backend hands older workers transcriptions only.
+    KINDS = ["transcribe", "voiceprint"]
+
     def claim(self) -> Optional[dict]:
-        status, body = self._post("/jobs/claim", {})
+        status, body = self._post("/jobs/claim", {"kinds": self.KINDS})
         return body["job"] if status == 200 and body else None
 
     def progress(self, job_id: str, stage: str, progress: float) -> bool:
