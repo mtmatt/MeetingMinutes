@@ -624,6 +624,14 @@
   font-size: var(--step--2);
   color: var(--ink-2);
 }
+/* A line of explanation under a menu label. */
+.menu-note {
+  margin: 0;
+  padding: 0 10px 4px;
+  max-width: 300px;
+  font-size: var(--step--2);
+  color: var(--ink-2);
+}
 .menu-item .end {
   margin-left: auto;
   color: var(--ink-3);

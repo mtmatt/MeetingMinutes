@@ -69,6 +69,8 @@ authRoutes.get("/state", (c) => {
     helpContact: config.adminContact || null,
     // Lets the upload page reject an oversized file before sending anything.
     uploadLimitBytes: config.maxUploadBytes,
+    // Public by design: Google shows it on its consent screen.
+    googleClientId: config.googleClientId || null,
   });
 });
 

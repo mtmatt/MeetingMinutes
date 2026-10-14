@@ -12,11 +12,13 @@ interface AuthValue {
   helpContact: string | null;
   /** Largest file the server accepts (MAX_UPLOAD_MB); null until known. */
   uploadLimitBytes: number | null;
+  /** Google OAuth client ID (GOOGLE_CLIENT_ID) for exporting straight to Google Docs; null when not set up. */
+  googleClientId: string | null;
   setUser: (u: User | null) => void;
 }
 
 type AuthState = Awaited<ReturnType<typeof api.authState>>;
-const emptyState: AuthState = { needsSetup: false, user: null, helpContact: null, uploadLimitBytes: null };
+const emptyState: AuthState = { needsSetup: false, user: null, helpContact: null, uploadLimitBytes: null, googleClientId: null };
 
 const AuthContext = createContext<AuthValue | null>(null);
 
@@ -42,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading: q.isLoading,
     helpContact: q.data?.helpContact ?? null,
     uploadLimitBytes: q.data?.uploadLimitBytes ?? null,
+    googleClientId: q.data?.googleClientId ?? null,
     setUser: (u) => {
       qc.setQueryData(["auth"], (old: AuthState | undefined) => ({ ...emptyState, ...old, needsSetup: false, user: u }));
       if (!u) qc.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });

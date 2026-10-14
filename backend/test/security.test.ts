@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { Hono } from "hono";
+import { securityHeaders } from "../src/app";
 import { Client, app, memberClient, waitFor, worker } from "./helpers";
 
 async function readyMeeting(c: Client, file: { name: string; type: string }, bytes = new Uint8Array(64)) {
@@ -84,5 +86,27 @@ describe("security", () => {
     ]);
     expect(ended).toBe(true);
     expect(cookie).not.toBe("");
+  });
+
+  test("Google is allowed in only when Google Docs export is configured", async () => {
+    // Not configured (the test environment): nothing from Google may load, and the site says so.
+    const page = await app.fetch(new Request("http://mm.test/api/auth/state", { headers: { host: "mm.test" } }));
+    expect(((await page.json()) as any).googleClientId).toBeNull();
+    const plain = page.headers.get("content-security-policy")!;
+    expect(plain).not.toContain("google");
+    expect(page.headers.get("cross-origin-opener-policy")).toBe("same-origin");
+
+    // Configured: Google's sign-in script and pop-up, and Drive uploads; nothing broader.
+    const site = new Hono();
+    site.use(securityHeaders({ google: true }));
+    site.get("/", (c) => c.text("ok"));
+    const res = await site.request("/");
+    const csp = res.headers.get("content-security-policy")!;
+    expect(csp).toContain("script-src 'self' https://accounts.google.com/gsi/client;");
+    expect(csp).toContain("connect-src 'self' https://accounts.google.com/gsi/ https://www.googleapis.com;");
+    expect(csp).toContain("frame-src 'self' https://accounts.google.com/gsi/;");
+    expect(csp).toContain("frame-ancestors 'none'");
+    // The sign-in pop-up hands the token back to this page, which needs a handle on it.
+    expect(res.headers.get("cross-origin-opener-policy")).toBe("same-origin-allow-popups");
   });
 });

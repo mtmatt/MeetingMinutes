@@ -36,7 +36,7 @@ A self-hosted meeting-minutes service. Upload a recording (audio or video). It i
   - talk-time per speaker;
   - search inside the transcript;
   - optional video pane.
-- **Exports**: TXT, Markdown, SRT, WebVTT, JSON, the original media, and summaries as `.md`.
+- **Exports**: TXT, Markdown, SRT, WebVTT, JSON, the original media, and summaries as `.md` or straight into **Google Docs** (see [Exporting to Google Docs](#exporting-to-google-docs)).
 - **Templates**: six built-ins (minutes, action items, executive brief, detailed notes, decision log, lecture notes) plus your own.
 - **Accounts**:
   - first-run admin setup protected by a one-time token;
@@ -217,6 +217,7 @@ All settings are environment variables. Put them in `.env` at the repository roo
 | --- | --- | --- |
 | `PUBLIC_URL` | – | External URL. Controls secure cookies and invite links. |
 | `ADMIN_CONTACT` | – | Contact shown on the sign-in page for people without an account or who forgot their password (an email becomes a mailto link). |
+| `GOOGLE_CLIENT_ID` | – | Google OAuth client ID that lets people create Google Docs from summaries (see "Exporting to Google Docs"). |
 | `TRUST_PROXY` | `false` | Trust `X-Forwarded-*` headers from your proxy. |
 | `DATA_DIR` | `data` | SQLite database, media, and tokens. Back this directory up. |
 | `TLS_CERT_FILE` / `TLS_KEY_FILE` | empty | Serve HTTPS directly (see "Option A"). |
@@ -249,6 +250,38 @@ It runs in an empty temporary directory, with the prompt (instructions, meeting 
 
 The admin page shows whether Codex is signed in, and whether summaries are paused.
 
+## Exporting to Google Docs
+
+Every summary's **Export** menu has a **Google Docs** section, for the summary alone or with the transcript appended. The document keeps the summary's headings, lists, tables and links, starts with the meeting details (date, length, speakers, which summary version), and every `[hh:mm:ss]` links back to that moment of the recording here (only its owner can open it).
+
+How it works depends on whether `GOOGLE_CLIENT_ID` is set:
+
+- **Set**: the document is created directly in the person's own Google Drive. The first time, Google asks them to sign in and allow access. They get a link to open the document.
+- **Not set** (the default): the formatted summary is copied, and a button opens a new Google Doc to paste it into. This needs no setup and works on any address, including a bare IP.
+
+### Setting up direct export
+
+You need a Google Cloud project (free) and a domain name for the site: Google does not accept a bare IP address as a sign-in origin, so with "Option A" on an IP address, keep the copy-and-paste mode.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create a project or pick one, open **APIs & Services → Library**, and enable the **Google Drive API**.
+2. Open **Google Auth Platform** (formerly *OAuth consent screen*) and fill in the app name and support email.
+   - **Audience**: *Internal* if everyone uses one Google Workspace organisation. Otherwise *External*: either publish the app (**In production**), or keep it in *Testing* and add each person as a test user.
+   - **Data access**: add the scope `https://www.googleapis.com/auth/drive.file`. It is a non-sensitive scope, so Google does not need to review the app.
+3. Under **Clients**, create an OAuth client of type **Web application**. Under **Authorised JavaScript origins**, add the site's address exactly as people open it, for example `https://minutes.example.com` (no path, no trailing slash). No redirect URI is needed.
+4. Put the client ID in `.env` and restart the server:
+
+   ```
+   GOOGLE_CLIENT_ID=1234567890-abc123.apps.googleusercontent.com
+   ```
+
+Only the client ID is needed. There is no client secret to keep, because the server never talks to Google.
+
+What this changes, and what it does not:
+
+- **The summary goes from the browser straight to Google**, under the person's own Google account. The server never receives a Google token, and Google never receives anything from the server.
+- **The `drive.file` permission only reaches files this site creates.** It cannot list, read or change anything else in the person's Drive. The token is kept in the open tab's memory for up to an hour and is never stored. People can withdraw the access at any time in their [Google account](https://myaccount.google.com/connections).
+- **Headers**: with a client ID set, the Content-Security-Policy also allows Google's sign-in script and pop-up (`https://accounts.google.com/gsi/`) and Drive uploads (`https://www.googleapis.com`). `Cross-Origin-Opener-Policy` becomes `same-origin-allow-popups`, so the sign-in pop-up can hand the token back to the page. Google's script is loaded only when someone opens an Export menu, not on every page.
+
 ## Security model
 
 - **Passwords**: argon2id (Bun's native implementation), 10 characters minimum.
@@ -261,7 +294,7 @@ The admin page shows whether Codex is signed in, and whether summaries are pause
 - **Browser recordings**: unsent recordings kept in the browser (IndexedDB) are tagged with the account that made them and are shown only to that account on a shared computer.
 - **Quotas**: at most 3 summaries queued or running per person, so one account cannot drain the shared Codex plan.
 - **Files on disk**: the server and worker create everything with mode `0600`/`0700` (`umask 077`), and the data directory is restricted to its owner at every start. The scripts make `.env` readable by its owner only.
-- **Headers**: a strict Content-Security-Policy (no third-party origins; fonts are self-hosted), `frame-ancestors 'none'`, HSTS over HTTPS, and a Permissions-Policy that allows only the microphone and tab capture (for recording) and only on this site.
+- **Headers**: a strict Content-Security-Policy (no third-party origins, except Google's sign-in and Drive when Google Docs export is set up; fonts are self-hosted), `frame-ancestors 'none'`, HSTS over HTTPS, and a Permissions-Policy that allows only the microphone and tab capture (for recording) and only on this site.
 - **Workers** authenticate with a shared bearer token (`WORKER_TOKEN` or `data/worker.token`), compared in constant time. With built-in HTTPS, the worker API listens only on loopback (`INTERNAL_PORT`).
 
 Recommended for a deployment:

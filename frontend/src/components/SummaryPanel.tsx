@@ -1,41 +1,21 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, ChevronDown, Copy, Download, FileText, MoreHorizontal, Pencil, RefreshCw, ScrollText, Sparkles, Square, Trash2, Users } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ClipboardCopy, Copy, Download, ExternalLink, FileText, MoreHorizontal, Pencil, RefreshCw, ScrollText, Sparkles, Square, Trash2, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "../api/client";
 import type { MeetingDetail, Summary, SummaryRequest } from "../api/types";
-import { useI18n } from "../i18n";
+import { useI18n, type TKey } from "../i18n";
+import { useAuth } from "../lib/auth";
 import { clock, relative } from "../lib/format";
 import { usePlayer } from "../lib/player";
-import { downloadText, safeFileName, summaryMarkdown } from "../lib/summaryExport";
+import { copyRichText, exportToGoogleDocs, GoogleDocsError, loadGoogleSignIn, NEW_GOOGLE_DOC, summaryDocument, type GoogleDocsFailure } from "../lib/googleDocs";
+import { downloadText, linkTimestamps, safeFileName, summaryMarkdown, type SummaryExport } from "../lib/summaryExport";
 import { segmentAt } from "./Player";
 import { Menu } from "./Menu";
 import { Modal, useConfirm } from "./Modal";
 import { DataFlowNote, SummaryComposer, defaultOutputLanguage, normalizeRequest, templateName, useTemplates } from "./SummaryComposer";
 import { useToast } from "./Toast";
-
-const TIMESTAMP = /\[?\b(\d{1,2}):(\d{2}):(\d{2})\b\]?/g;
-
-/** Turn [hh:mm:ss] mentions into links the renderer maps to seek buttons. */
-function linkTimestamps(md: string, duration: number): string {
-  // Leave fenced code blocks untouched.
-  return md
-    .split(/(```[\s\S]*?```)/g)
-    .map((part, i) =>
-      i % 2 === 1
-        ? part
-        : part.replace(TIMESTAMP, (m, h, mi, s, offset, whole) => {
-            // Skip timestamps that are already link text: [..](..)
-            if (whole[offset + m.length] === "(") return m;
-            const sec = Number(h) * 3600 + Number(mi) * 60 + Number(s);
-            // A time of day ("10:30:00") beyond the recording is left as text.
-            if (duration > 0 && sec > duration + 5) return m;
-            return `[${h.padStart(2, "0")}:${mi}:${s}](#t=${sec})`;
-          }),
-    )
-    .join("");
-}
 
 /**
  * A clickable [hh:mm:ss]. Hovering or focusing it shows who spoke at that
@@ -319,9 +299,11 @@ export function useSummarySelection(summaries: Summary[]) {
 }
 export type SummarySelection = ReturnType<typeof useSummarySelection>;
 
-/** Version numbers, display names and Markdown export for a meeting's summaries. */
+/** Version numbers, display names and exports (Markdown, Google Docs) for a meeting's summaries. */
 export function useSummaryInfo(meeting: MeetingDetail) {
   const { t, tMaybe, locale } = useI18n();
+  const { googleClientId } = useAuth();
+  const toast = useToast();
   const { data: tpl } = useTemplates();
   const summaries = meeting.summaries;
   const versionOf = (s: Summary) => summaries.length - summaries.indexOf(s);
@@ -331,26 +313,76 @@ export function useSummaryInfo(meeting: MeetingDetail) {
     if (s.templateId?.startsWith("builtin-")) return tMaybe(`builtin.${s.templateId}.name`) ?? s.templateName ?? t("summary.custom");
     return s.templateName ?? t("summary.custom");
   };
-  const exportMarkdown = (s: Summary, withTranscript: boolean) => {
-    const text = summaryMarkdown({
-      meeting,
-      summary: s,
-      version: versionOf(s),
-      templateLabel: labelOf(s),
-      withTranscript,
-      locale,
-      transcriptHeading: t("meeting.transcript"),
-    });
+  const exportOf = (s: Summary, withTranscript: boolean): SummaryExport => ({
+    meeting,
+    summary: s,
+    version: versionOf(s),
+    templateLabel: labelOf(s),
+    withTranscript,
+    locale,
+    transcriptHeading: t("meeting.transcript"),
+  });
+  /** "Weekly sync summary v2": the file or document name, without an extension. */
+  const nameOf = (s: Summary, withTranscript: boolean) => {
     const kind = withTranscript ? t("summary.fileWithTranscript") : t("summary.fileSummary");
     const version = summaries.length > 1 ? ` v${versionOf(s)}` : "";
-    downloadText(`${safeFileName(`${meeting.title} ${kind}${version}`)}.md`, text);
+    return `${meeting.title} ${kind}${version}`;
   };
-  return { versionOf, labelOf, exportMarkdown };
+  const exportMarkdown = (s: Summary, withTranscript: boolean) => {
+    downloadText(`${safeFileName(nameOf(s, withTranscript))}.md`, summaryMarkdown(exportOf(s, withTranscript)));
+  };
+  /**
+   * A new Google Doc in the person's Drive when the server has a Google client
+   * ID; otherwise the formatted summary is copied for pasting into one. Called
+   * straight from a click: it may open Google's sign-in window.
+   */
+  const exportGoogleDoc = (s: Summary, withTranscript: boolean) => {
+    const x = exportOf(s, withTranscript);
+    const doc = summaryDocument(x, t);
+    const open = (url: string) => window.open(url, "_blank", "noopener,noreferrer");
+    if (!googleClientId) {
+      copyRichText(doc.body, summaryMarkdown({ ...x, frontMatter: false })).then(
+        () => toast.show(t("summary.googleDocsCopied"), { label: t("summary.googleDocsNew"), onClick: () => open(NEW_GOOGLE_DOC) }),
+        () => toast.error(t("summary.googleDocsCopyFailed")),
+      );
+      return;
+    }
+    const name = nameOf(s, withTranscript);
+    exportToGoogleDocs(googleClientId, name, doc.page, () => toast.show(t("summary.googleDocsCreating"))).then(
+      (url) => toast.show(t("summary.googleDocsCreated", { name }), { label: t("summary.googleDocsOpen"), onClick: () => open(url) }),
+      (e: unknown) => {
+        const reason = e instanceof GoogleDocsError ? e.reason : "drive";
+        if (reason === "canceled") return;
+        const messages: Record<Exclude<GoogleDocsFailure, "canceled" | "drive">, TKey> = {
+          popup_blocked: "summary.googleDocsPopupBlocked",
+          denied: "summary.googleDocsDenied",
+          unreachable: "summary.googleDocsUnreachable",
+          expired: "summary.googleDocsExpired",
+          drive_api_off: "summary.googleDocsApiOff",
+        };
+        toast.error(
+          reason === "drive" ? t("summary.googleDocsFailed", { error: e instanceof Error ? e.message : String(e) }) : t(messages[reason]),
+        );
+      },
+    );
+  };
+  return { versionOf, labelOf, exportMarkdown, exportGoogleDoc };
 }
 
 /** Export choices for one summary version, used by the summary header and the page's Export menu. */
-export function SummaryExportItems({ onExport }: { onExport: (withTranscript: boolean) => void }) {
+export function SummaryExportItems({
+  onExport,
+  onGoogleDoc,
+}: {
+  onExport: (withTranscript: boolean) => void;
+  onGoogleDoc: (withTranscript: boolean) => void;
+}) {
   const { t } = useI18n();
+  const { googleClientId } = useAuth();
+  // Ready before an item is clicked, so Google's sign-in window can open from the click.
+  useEffect(() => {
+    if (googleClientId) loadGoogleSignIn().catch(() => {});
+  }, [googleClientId]);
   return (
     <>
       <button className="menu-item menu-item-rich" onClick={() => onExport(false)}>
@@ -369,6 +401,17 @@ export function SummaryExportItems({ onExport }: { onExport: (withTranscript: bo
         </span>
         <span className="end mono">.md</span>
       </button>
+      <div className="menu-sep" />
+      <div className="menu-label smallcaps">{t("summary.googleDocs")}</div>
+      <p className="menu-note">{googleClientId ? t("summary.googleDocsDrive") : t("summary.googleDocsCopy")}</p>
+      <button className="menu-item" onClick={() => onGoogleDoc(false)}>
+        <FileText /> {t("summary.exportSummaryOnly")}
+        <span className="end">{googleClientId ? <ExternalLink /> : <ClipboardCopy />}</span>
+      </button>
+      <button className="menu-item" onClick={() => onGoogleDoc(true)}>
+        <ScrollText /> {t("summary.exportWithTranscript")}
+        <span className="end">{googleClientId ? <ExternalLink /> : <ClipboardCopy />}</span>
+      </button>
     </>
   );
 }
@@ -385,7 +428,7 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
   const [copied, setCopied] = useState(false);
 
   const { current, select: setSelectedId } = selection;
-  const { versionOf, labelOf, exportMarkdown } = useSummaryInfo(meeting);
+  const { versionOf, labelOf, exportMarkdown, exportGoogleDoc } = useSummaryInfo(meeting);
   const invalidate = () => qc.invalidateQueries({ queryKey: ["meeting", meeting.id] });
 
   const cancel = async (s: Summary) => {
@@ -517,7 +560,7 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
                 <Menu
                   trigger={({ toggle, open }) => (
                     <button className="btn btn-sm" onClick={toggle} aria-expanded={open} aria-haspopup="menu">
-                      <Download /> {t("summary.exportMd")}
+                      <Download /> {t("summary.export")}
                     </button>
                   )}
                 >
@@ -525,6 +568,10 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
                     <SummaryExportItems
                       onExport={(withTranscript) => {
                         exportMarkdown(current, withTranscript);
+                        close();
+                      }}
+                      onGoogleDoc={(withTranscript) => {
+                        exportGoogleDoc(current, withTranscript);
                         close();
                       }}
                     />

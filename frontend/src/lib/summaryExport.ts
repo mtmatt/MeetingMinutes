@@ -2,7 +2,7 @@ import type { Locale, MeetingDetail, Segment, Summary } from "../api/types";
 import { downloadBlob } from "./download";
 
 /** "00:12:40": the same form the summary uses for its citations. */
-function stamp(sec: number): string {
+export function stamp(sec: number): string {
   const s = Math.max(0, Math.floor(sec));
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(Math.floor(s / 3600))}:${p(Math.floor((s % 3600) / 60))}:${p(s % 60)}`;
@@ -35,17 +35,23 @@ function joinText(parts: string[]): string {
   return out;
 }
 
+export interface TranscriptRun {
+  start: number;
+  /** The speaker's current name; null for lines without a speaker. */
+  who: string | null;
+  text: string;
+}
+
 /** Consecutive lines by the same speaker become one paragraph. */
-function transcriptMarkdown(meeting: MeetingDetail, locale: Locale): string {
+export function transcriptRuns(meeting: MeetingDetail): TranscriptRun[] {
   const names = new Map(meeting.speakers.map((s) => [s.key, s.name]));
-  const colon = locale === "zh-TW" ? "：" : ": ";
-  const paras: string[] = [];
+  const runs: TranscriptRun[] = [];
   let run: { speaker: string | null; start: number; parts: string[] } | null = null;
   const flush = () => {
     if (!run) return;
     const text = joinText(run.parts);
     const who = run.speaker ? (names.get(run.speaker) ?? run.speaker) : null;
-    if (text) paras.push(`**[${stamp(run.start)}]${who ? ` ${who}` : ""}${colon}**${text}`);
+    if (text) runs.push({ start: run.start, who, text });
     run = null;
   };
   for (const s of meeting.segments as Segment[]) {
@@ -56,7 +62,42 @@ function transcriptMarkdown(meeting: MeetingDetail, locale: Locale): string {
     }
   }
   flush();
-  return paras.join("\n\n");
+  return runs;
+}
+
+/** "：" after a name in Chinese, ": " in English. */
+export const nameColon = (locale: Locale) => (locale === "zh-TW" ? "：" : ": ");
+
+function transcriptMarkdown(meeting: MeetingDetail, locale: Locale): string {
+  const colon = nameColon(locale);
+  return transcriptRuns(meeting)
+    .map((r) => `**[${stamp(r.start)}]${r.who ? ` ${r.who}` : ""}${colon}**${r.text}`)
+    .join("\n\n");
+}
+
+const TIMESTAMP = /\[?\b(\d{1,2}):(\d{2}):(\d{2})\b\]?/g;
+
+/**
+ * Turn [hh:mm:ss] mentions in a summary into `#t=seconds` links, which the
+ * app shows as seek buttons and exports point back at the recording.
+ */
+export function linkTimestamps(md: string, duration: number): string {
+  // Leave fenced code blocks untouched.
+  return md
+    .split(/(```[\s\S]*?```)/g)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part.replace(TIMESTAMP, (m, h, mi, s, offset, whole) => {
+            // Skip timestamps that are already link text: [..](..)
+            if (whole[offset + m.length] === "(") return m;
+            const sec = Number(h) * 3600 + Number(mi) * 60 + Number(s);
+            // A time of day ("10:30:00") beyond the recording is left as text.
+            if (duration > 0 && sec > duration + 5) return m;
+            return `[${h.padStart(2, "0")}:${mi}:${s}](#t=${sec})`;
+          }),
+    )
+    .join("");
 }
 
 export interface SummaryExport {
@@ -68,6 +109,8 @@ export interface SummaryExport {
   withTranscript: boolean;
   locale: Locale;
   transcriptHeading: string;
+  /** Lead with YAML front matter carrying the meeting details (default true; a file needs it, pasted text does not). */
+  frontMatter?: boolean;
 }
 
 /**
@@ -93,7 +136,7 @@ export function summaryMarkdown(x: SummaryExport): string {
     `link: ${q(`${window.location.origin}/m/${meeting.id}`)}`,
     "---",
   );
-  let out = `${fm.join("\n")}\n\n${(summary.content ?? "").trim()}\n`;
+  let out = `${x.frontMatter === false ? "" : `${fm.join("\n")}\n\n`}${(summary.content ?? "").trim()}\n`;
   if (x.withTranscript && meeting.segments.length) {
     out += `\n---\n\n## ${x.transcriptHeading}\n\n${transcriptMarkdown(meeting, x.locale)}\n`;
   }
