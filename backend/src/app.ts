@@ -14,39 +14,55 @@ import { templateRoutes } from "./routes/templates";
 import { voiceRoutes } from "./routes/voices";
 import type { AppEnv } from "./types";
 
+/** Google Identity Services, which asks the person for a Drive token in a pop-up. */
+const GOOGLE_SIGN_IN = "https://accounts.google.com/gsi/";
+/** Drive's upload endpoint, which turns the exported HTML into a Google Doc. */
+const GOOGLE_APIS = "https://www.googleapis.com";
+
+/**
+ * Site-wide security headers. Only same-origin scripts and connections are
+ * allowed, except that with Google Docs export configured the page may also
+ * load Google's sign-in script, talk to Drive, and keep a handle on the
+ * sign-in pop-up (which reports the token back with postMessage).
+ */
+export function securityHeaders({ google }: { google: boolean }) {
+  const extra = (...src: string[]) => (google ? src : []);
+  return secureHeaders({
+    contentSecurityPolicy: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", ...extra(`${GOOGLE_SIGN_IN}client`)],
+      styleSrc: ["'self'", "'unsafe-inline'", ...extra(`${GOOGLE_SIGN_IN}style`)],
+      imgSrc: ["'self'", "data:", "blob:"],
+      mediaSrc: ["'self'", "blob:"],
+      fontSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", ...extra(GOOGLE_SIGN_IN, GOOGLE_APIS)],
+      ...(google ? { frameSrc: ["'self'", GOOGLE_SIGN_IN] } : {}),
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      objectSrc: ["'none'"],
+    },
+    strictTransportSecurity: config.cookieSecure ? "max-age=31536000; includeSubDomains" : false,
+    referrerPolicy: "same-origin",
+    // Recording needs the microphone and tab sharing; nothing else is used.
+    permissionsPolicy: {
+      microphone: ["self"],
+      displayCapture: ["self"],
+      camera: [],
+      geolocation: [],
+      payment: [],
+      usb: [],
+    },
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: google ? "same-origin-allow-popups" : "same-origin",
+    crossOriginResourcePolicy: "same-origin",
+  });
+}
+
 export function createApp() {
   const app = new Hono<AppEnv>();
 
-  app.use(
-    secureHeaders({
-      contentSecurityPolicy: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:", "blob:"],
-        mediaSrc: ["'self'", "blob:"],
-        fontSrc: ["'self'", "data:"],
-        connectSrc: ["'self'"],
-        frameAncestors: ["'none'"],
-        baseUri: ["'self'"],
-        formAction: ["'self'"],
-        objectSrc: ["'none'"],
-      },
-      strictTransportSecurity: config.cookieSecure ? "max-age=31536000; includeSubDomains" : false,
-      referrerPolicy: "same-origin",
-      // Recording needs the microphone and tab sharing; nothing else is used.
-      permissionsPolicy: {
-        microphone: ["self"],
-        displayCapture: ["self"],
-        camera: [],
-        geolocation: [],
-        payment: [],
-        usb: [],
-      },
-      crossOriginEmbedderPolicy: false,
-      crossOriginResourcePolicy: "same-origin",
-    }),
-  );
+  app.use(securityHeaders({ google: !!config.googleClientId }));
   app.use(withClientIp);
 
   app.onError((err, c) => {

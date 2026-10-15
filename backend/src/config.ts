@@ -101,6 +101,20 @@ function tlsFiles(): { cert: string; key: string } | null {
 }
 const tls = tlsFiles();
 
+/**
+ * OAuth client ID for exporting summaries straight into Google Docs: a "Web
+ * application" client from Google Cloud whose authorised JavaScript origin is
+ * this site. Only the public ID is needed; Google gives the access token to the
+ * browser, so the server never holds a client secret or anyone's Google token.
+ */
+function googleClientId(): string {
+  const id = str("GOOGLE_CLIENT_ID", "").trim();
+  if (id && !/^[\w.-]+\.apps\.googleusercontent\.com$/.test(id)) {
+    throw new Error(`GOOGLE_CLIENT_ID must be an OAuth client ID ending in .apps.googleusercontent.com, got "${id}"`);
+  }
+  return id;
+}
+
 function resolveCodexBin(): string {
   const explicit = process.env.CODEX_BIN;
   if (explicit) return explicit;
@@ -130,6 +144,8 @@ export const config = {
   trustProxy: bool("TRUST_PROXY", false),
   /** Shown on the sign-in page to people without an account or who forgot their password. */
   adminContact: str("ADMIN_CONTACT", "").trim(),
+  /** Google OAuth client ID; empty turns direct export to Google Docs off (summaries can still be copied into one). */
+  googleClientId: googleClientId(),
   cookieSecure: bool("COOKIE_SECURE", tls !== null || publicUrl.startsWith("https://")),
   sessionTtlDays: int("SESSION_TTL_DAYS", 30),
   maxUploadBytes: int("MAX_UPLOAD_MB", 4096) * 1024 * 1024,

@@ -312,6 +312,10 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
                             summaryInfo.exportMarkdown(exportable, withTranscript);
                             close();
                           }}
+                          onGoogleDoc={(withTranscript) => {
+                            summaryInfo.exportGoogleDoc(exportable, withTranscript);
+                            close();
+                          }}
                         />
                         <div className="menu-sep" />
                       </>
