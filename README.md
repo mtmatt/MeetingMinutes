@@ -32,6 +32,7 @@ A self-hosted meeting-minutes service. Upload a recording (audio or video). It i
   - a transcript that highlights and follows playback;
   - click any line or any `[hh:mm:ss]` in a summary to jump there;
   - rename speakers, reassign paragraphs, edit text;
+  - **listen to a speaker** before naming them: their turns play one short clip at a time, starting with the first one long enough to recognise the voice, with what is said in it;
   - speakers you have named before are **recognised by voice** in new recordings (and, on request, in older ones);
   - talk-time per speaker;
   - search inside the transcript;
@@ -70,7 +71,7 @@ Sources: [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR), [Qwen3-ASR technical 
 
 Naming speakers is the slowest part of tidying a transcript, so it only has to be done once per person:
 
-1. **Name a speaker** in any transcript (click the name above the transcript). Their voice is remembered under that name: the toast says so and offers *Undo*.
+1. **Name a speaker** in any transcript (click the name above the transcript). While you type, a panel below the name plays their turns, one clip of up to 15 seconds at a time: it opens on their first turn long enough to recognise the voice (the very first one is often just "OK"), and the arrows step through the others in order, with the words of each clip shown. Playing a clip keeps the cursor in the name field and the page where it is; the time stamp shows the clip in the transcript. The headphones beside a name (and the **by voice** / suggestion menu) open the same panel without renaming. Their voice is remembered under that name: the toast says so and offers *Undo*.
 2. **In later recordings**, each speaker who still has a default name ("Speaker 2") is compared with the voices you have named:
    - a close match is named for you and marked **by voice** (依聲紋), with a menu to confirm it or to say it is someone else, which puts the previous name back;
    - a weaker resemblance is only **suggested** ("王小明?"), and the name changes only if you accept;

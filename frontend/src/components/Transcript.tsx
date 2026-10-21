@@ -1,11 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { AudioLines, Check, LocateFixed, Pencil, Search, Settings2, UserPlus, Users, X } from "lucide-react";
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AudioLines, Check, ChevronLeft, ChevronRight, Headphones, LocateFixed, Pause, Pencil, Play, Search, Settings2, UserPlus, Users, X } from "lucide-react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 import { api } from "../api/client";
 import type { MeetingDetail, Segment, Speaker, VoiceOutcome } from "../api/types";
 import { useI18n } from "../i18n";
-import { clock, speakerVar, wordCount } from "../lib/format";
+import { clock, duration, speakerVar, wordCount } from "../lib/format";
 import { usePlayer } from "../lib/player";
 import { Menu } from "./Menu";
 import { Modal } from "./Modal";
@@ -29,6 +29,48 @@ function toBlocks(segments: Segment[]): Block[] {
     }
   }
   return blocks;
+}
+
+/** A turn this long is enough to recognise a voice; shorter ones ("Yes.") are passed over at first. */
+const REFERENCE_MIN_SEC = 3;
+/** Long enough to recognise a voice, short enough to try several turns in a row. */
+const CLIP_MAX_SEC = 15;
+/** Timestamps tend to clip the first syllable. */
+const CLIP_PREROLL_SEC = 0.25;
+
+/** One of a speaker's turns, as a transcript paragraph, and the clip of it that is played. */
+interface Turn {
+  start: number;
+  clip: { start: number; end: number };
+  /** What is said within the clip. */
+  text: string;
+}
+
+function turnsBySpeaker(blocks: Block[]): Map<string, Turn[]> {
+  const turns = new Map<string, Turn[]>();
+  for (const b of blocks) {
+    if (!b.speaker) continue;
+    const end = Math.min(b.segments[b.segments.length - 1]!.end, b.start + CLIP_MAX_SEC);
+    const text = b.segments
+      .filter((s) => s.start < end)
+      .map((s) => s.text)
+      .join(" ");
+    const list = turns.get(b.speaker) ?? [];
+    list.push({ start: b.start, clip: { start: Math.max(0, b.start - CLIP_PREROLL_SEC), end }, text });
+    turns.set(b.speaker, list);
+  }
+  return turns;
+}
+
+/** The turn to listen to first: the first one long enough to tell the voice, else the longest. */
+function referenceTurn(turns: Turn[]): number {
+  const first = turns.findIndex((t) => t.clip.end - t.start >= REFERENCE_MIN_SEC);
+  if (first >= 0) return first;
+  let best = 0;
+  turns.forEach((t, i) => {
+    if (t.clip.end - t.start > turns[best]!.clip.end - turns[best]!.start) best = i;
+  });
+  return best;
 }
 
 function findActive(segments: Segment[], t: number): number {
@@ -103,7 +145,18 @@ function useSpeakerVoice(meeting: MeetingDetail) {
  */
 type VoiceAction = "confirm" | "reject" | "forget" | "remember";
 
-function VoiceBadge({ meeting, sp, run }: { meeting: MeetingDetail; sp: Speaker; run: (sp: Speaker, action: VoiceAction) => void }) {
+function VoiceBadge({
+  meeting,
+  sp,
+  run,
+  onListen,
+}: {
+  meeting: MeetingDetail;
+  sp: Speaker;
+  run: (sp: Speaker, action: VoiceAction) => void;
+  /** Play the speaker's turns, to check the guess by ear; absent when they have none. */
+  onListen?: () => void;
+}) {
   const { t } = useI18n();
   const voice = sp.voice;
   if (!meeting.voiceRecognition || !voice?.status) return null;
@@ -149,6 +202,20 @@ function VoiceBadge({ meeting, sp, run }: { meeting: MeetingDetail; sp: Speaker;
             >
               <X /> {t("meeting.voiceReject", { name: profileName })}
             </button>
+            {onListen && (
+              <>
+                <div className="menu-sep" />
+                <button
+                  className="menu-item"
+                  onClick={() => {
+                    close();
+                    onListen();
+                  }}
+                >
+                  <Headphones /> {t("meeting.clipListenItem")}
+                </button>
+              </>
+            )}
           </>
         )}
       </Menu>
@@ -211,13 +278,145 @@ function VoiceBadge({ meeting, sp, run }: { meeting: MeetingDetail; sp: Speaker;
   return null;
 }
 
-function SpeakerLegend({ meeting }: { meeting: MeetingDetail }) {
+/** Keeps focus where it is (the name being typed) when a control is clicked. */
+const keepFocus = (e: ReactMouseEvent) => e.preventDefault();
+
+/**
+ * A speaker's turns, one clip at a time, to tell by ear who it is: it opens on
+ * the first turn long enough to recognise the voice, and steps through the
+ * others in order. Shown while the speaker is being named, or on request.
+ */
+function SpeakerClips({
+  sp,
+  turns,
+  playSignal,
+  onPlay,
+  onClose,
+}: {
+  sp: Speaker;
+  turns: Turn[];
+  /** Play the clip shown whenever this changes (0: wait to be asked). */
+  playSignal: number;
+  /** A clip was started from here. */
+  onPlay: () => void;
+  /** Absent while the speaker is being named: finishing the name closes it, unless a clip was played. */
+  onClose?: () => void;
+}) {
+  const { t, locale } = useI18n();
+  const { clip, playing, playClip, stopClip, toggle, seek, subscribe, getTime } = usePlayer();
+  const [index, setIndex] = useState(() => referenceTurn(turns));
+  const barRef = useRef<HTMLSpanElement>(null);
+  const tag = `speaker:${sp.key}`;
+  const i = Math.min(index, turns.length - 1);
+  const turn = turns[i]!;
+  const current = clip?.tag === tag && clip.start === turn.clip.start;
+
+  const play = (n: number) => {
+    const next = turns[n];
+    if (!next) return;
+    setIndex(n);
+    playClip({ ...next.clip, tag });
+    onPlay();
+  };
+
+  useEffect(() => {
+    if (playSignal > 0) play(i);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playSignal]);
+
+  // Closing the panel stops what it was playing.
+  useEffect(() => () => stopClip(tag), [stopClip, tag]);
+
+  // How far into the clip playback is, drawn every frame without re-rendering.
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const { start, end } = turn.clip;
+    const draw = (now: number) => {
+      const p = current ? Math.min(1, Math.max(0, (now - start) / Math.max(0.1, end - start))) : 0;
+      bar.style.transform = `scaleX(${p})`;
+    };
+    draw(getTime());
+    return subscribe(draw);
+  }, [current, turn, subscribe, getTime]);
+
+  const name = sp.name;
+  return (
+    <div className="speaker-clips" role="group" aria-label={t("meeting.clipGroup", { name })}>
+      <div className="speaker-clips-bar">
+        <button
+          type="button"
+          className="icon-btn sm speaker-clips-play"
+          onMouseDown={keepFocus}
+          onClick={() => (current ? toggle() : play(i))}
+          title={current && playing ? t("meeting.clipPause") : t("meeting.clipPlay")}
+          aria-label={current && playing ? t("meeting.clipPause") : t("meeting.clipPlay")}
+        >
+          {current && playing ? <Pause /> : <Play />}
+        </button>
+        <span className="speaker-clips-step">
+          <button
+            type="button"
+            className="icon-btn sm"
+            onMouseDown={keepFocus}
+            onClick={() => play(i - 1)}
+            disabled={i === 0}
+            title={t("meeting.clipPrev")}
+            aria-label={t("meeting.clipPrev")}
+          >
+            <ChevronLeft />
+          </button>
+          <span className="mono speaker-clips-count" title={t("meeting.clipCount", { i: i + 1, n: turns.length })}>
+            {i + 1} / {turns.length}
+          </span>
+          <button
+            type="button"
+            className="icon-btn sm"
+            onMouseDown={keepFocus}
+            onClick={() => play(i + 1)}
+            disabled={i === turns.length - 1}
+            title={t("meeting.clipNext")}
+            aria-label={t("meeting.clipNext")}
+          >
+            <ChevronRight />
+          </button>
+        </span>
+        <button
+          type="button"
+          className="speaker-clips-time mono"
+          onMouseDown={keepFocus}
+          onClick={() => seek(turn.start)}
+          title={t("meeting.clipShow")}
+        >
+          {clock(turn.start)}
+        </button>
+        <span className="speaker-clips-meta faint">
+          {i === 0 ? t("meeting.clipFirst") : duration(turn.clip.end - turn.start, locale)}
+        </span>
+        {onClose && (
+          <button type="button" className="icon-btn sm speaker-clips-close" onClick={onClose} title={t("common.close")} aria-label={t("common.close")}>
+            <X />
+          </button>
+        )}
+      </div>
+      <span className="speaker-clips-progress" aria-hidden="true">
+        <span ref={barRef} />
+      </span>
+      <p className="speaker-clips-text">{turn.text}</p>
+    </div>
+  );
+}
+
+function SpeakerLegend({ meeting, turns }: { meeting: MeetingDetail; turns: Map<string, Turn[]> }) {
   const { t } = useI18n();
   const toast = useToast();
   const qc = useQueryClient();
   const voice = useSpeakerVoice(meeting);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // Whose turns are open to listen to, and a count that asks to play one.
+  const [listening, setListening] = useState<{ key: string; play: number } | null>(null);
+  const plays = useRef(0);
 
   const talk = useMemo(() => {
     const totals = new Map<string, number>();
@@ -233,6 +432,17 @@ function SpeakerLegend({ meeting }: { meeting: MeetingDetail }) {
 
   const sorted = [...meeting.speakers].sort((a, b) => (talk.totals.get(b.key) ?? 0) - (talk.totals.get(a.key) ?? 0));
   const byVoice = meeting.voiceRecognition ? meeting.speakers.filter((s) => s.voice?.status === "auto").length : 0;
+  // One panel at a time: the speaker being named, else the one listened to.
+  const panelFor = editing ?? listening?.key ?? null;
+
+  const startEditing = (sp: Speaker) => {
+    setDraft(sp.name);
+    setEditing(sp.key);
+    setListening((l) => (l?.key === sp.key ? l : null));
+  };
+  const listen = (key: string) => setListening({ key, play: ++plays.current });
+  // Once a clip is played the panel stays open, also after naming is done.
+  const keepListening = (key: string) => setListening((l) => (l?.key === key ? l : { key, play: 0 }));
 
   const save = async (sp: Speaker) => {
     const name = draft.trim();
@@ -269,8 +479,18 @@ function SpeakerLegend({ meeting }: { meeting: MeetingDetail }) {
       <ul className="legend-list">
         {sorted.map((sp) => {
           const share = talk.sum ? (talk.totals.get(sp.key) ?? 0) / talk.sum : 0;
+          const spTurns = turns.get(sp.key) ?? [];
+          const open = panelFor === sp.key && spTurns.length > 0;
           return (
-            <li key={sp.key} style={{ ["--spk" as string]: speakerVar(sp.color) }}>
+            <li
+              key={sp.key}
+              className={open ? "has-clips" : ""}
+              style={{ ["--spk" as string]: speakerVar(sp.color) }}
+              // Naming ends when focus leaves the row, not when it moves to the clip controls.
+              onBlur={(e) => {
+                if (editing === sp.key && !e.currentTarget.contains(e.relatedTarget as Node | null)) void save(sp);
+              }}
+            >
               <span className="speaker-dot" />
               {editing === sp.key ? (
                 <input
@@ -278,7 +498,6 @@ function SpeakerLegend({ meeting }: { meeting: MeetingDetail }) {
                   autoFocus
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  onBlur={() => save(sp)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                     if (e.key === "Escape") setEditing(null);
@@ -286,21 +505,42 @@ function SpeakerLegend({ meeting }: { meeting: MeetingDetail }) {
                   maxLength={80}
                 />
               ) : (
-                <button
-                  className="legend-name"
-                  title={t("meeting.renameHint")}
-                  onClick={() => {
-                    setDraft(sp.name);
-                    setEditing(sp.key);
-                  }}
-                >
+                <button className="legend-name" title={t("meeting.renameHint")} onClick={() => startEditing(sp)}>
                   {sp.name}
                   <Pencil />
                 </button>
               )}
-              {editing !== sp.key && <VoiceBadge meeting={meeting} sp={sp} run={(s, a) => void voice.run(s, a)} />}
+              {editing !== sp.key && (
+                <VoiceBadge
+                  meeting={meeting}
+                  sp={sp}
+                  run={(s, a) => void voice.run(s, a)}
+                  onListen={spTurns.length ? () => listen(sp.key) : undefined}
+                />
+              )}
+              {editing !== sp.key && spTurns.length > 0 && (
+                <button
+                  type="button"
+                  className="legend-listen"
+                  aria-pressed={open}
+                  onClick={() => (open ? setListening(null) : listen(sp.key))}
+                  title={t("meeting.clipListen", { name: sp.name })}
+                  aria-label={t("meeting.clipListen", { name: sp.name })}
+                >
+                  <Headphones />
+                </button>
+              )}
               <span className="legend-share mono">{Math.round(share * 100)}%</span>
               <span className="legend-time mono faint">{clock(talk.totals.get(sp.key) ?? 0)}</span>
+              {open && (
+                <SpeakerClips
+                  sp={sp}
+                  turns={spTurns}
+                  playSignal={listening?.key === sp.key ? listening.play : 0}
+                  onPlay={() => keepListening(sp.key)}
+                  onClose={editing === sp.key ? undefined : () => setListening(null)}
+                />
+              )}
             </li>
           );
         })}
@@ -381,7 +621,7 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
   const { t, locale } = useI18n();
   const toast = useToast();
   const qc = useQueryClient();
-  const { time, seek } = usePlayer();
+  const { time, seek, clip } = usePlayer();
   const [query, setQuery] = useState("");
   const [follow, setFollow] = useState(true);
   const [editing, setEditing] = useState<number | null>(null);
@@ -389,6 +629,7 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
 
   const speakers = useMemo(() => new Map(meeting.speakers.map((s) => [s.key, s])), [meeting.speakers]);
   const blocks = useMemo(() => toBlocks(meeting.segments), [meeting.segments]);
+  const turns = useMemo(() => turnsBySpeaker(blocks), [blocks]);
   const activeIdx = findActive(meeting.segments, time);
   const activeId = activeIdx >= 0 ? meeting.segments[activeIdx]!.id : null;
   const q = query.trim();
@@ -442,9 +683,15 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
   );
 
   useEffect(() => {
-    if (!follow || detached || editing != null) return;
+    if (!follow || detached || editing != null || clip) return;
     scrollToActive(false);
-  }, [activeId, follow, detached, editing, scrollToActive]);
+  }, [activeId, follow, detached, editing, clip, scrollToActive]);
+
+  // A speaker's clip is listened to from the speaker list, so the page stays
+  // there instead of following it; "Back to playback" leads to it.
+  useEffect(() => {
+    if (clip && follow) setDetached(true);
+  }, [clip, follow]);
 
   // Explicit seeks re-attach and bring the target into view.
   const { seekCount } = usePlayer();
@@ -529,7 +776,7 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
 
   return (
     <div className="transcript">
-      <SpeakerLegend meeting={meeting} />
+      <SpeakerLegend meeting={meeting} turns={turns} />
       <div className="transcript-tools">
         <label className="input-line transcript-search">
           <Search />

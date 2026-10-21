@@ -286,9 +286,12 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 4px 20px;
+  /* A row with its clips open is taller; the others stay on their line. */
+  align-items: start;
 }
 .legend-list li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-height: 32px;
@@ -439,6 +442,130 @@
   font-size: var(--step--2);
   width: 52px;
   text-align: right;
+}
+
+/* Listening to a speaker, to tell who it is: a button beside the name, and
+   below it their turns, one clip at a time, with what is said in it. */
+.legend-listen {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  flex: none;
+  transition:
+    background var(--dur-fast),
+    color var(--dur-fast);
+}
+.legend-listen svg {
+  width: 13px;
+  height: 13px;
+}
+.legend-listen:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.legend-listen[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--spk) 16%, transparent);
+  color: var(--spk);
+}
+.speaker-clips {
+  flex: 1 0 100%;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 4px 8px 8px;
+  border-left: 2px solid var(--spk);
+  border-radius: 0 var(--radius-s) var(--radius-s) 0;
+  background: var(--surface-2);
+  animation: pop-in 180ms var(--ease-out);
+}
+.speaker-clips-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.speaker-clips .icon-btn.sm {
+  width: 24px;
+  height: 24px;
+}
+.speaker-clips .icon-btn.sm svg {
+  width: 14px;
+  height: 14px;
+}
+.speaker-clips .icon-btn:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+.speaker-clips .icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.speaker-clips-play {
+  color: var(--spk);
+}
+.speaker-clips-step {
+  display: inline-flex;
+  align-items: center;
+}
+.speaker-clips-count {
+  min-width: 3.4em;
+  text-align: center;
+  font-size: var(--step--2);
+  color: var(--ink-2);
+}
+.speaker-clips-time {
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  border-radius: var(--radius-s);
+  font-size: var(--step--2);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.speaker-clips-time:hover {
+  background: var(--surface-3);
+  color: var(--accent);
+}
+.speaker-clips-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--step--2);
+}
+.speaker-clips-close {
+  margin-left: auto;
+}
+.speaker-clips-progress {
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--rule);
+}
+.speaker-clips-progress span {
+  display: block;
+  height: 100%;
+  background: var(--spk);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+.speaker-clips-text {
+  margin: 0;
+  font-size: var(--step--1);
+  line-height: 1.5;
+  color: var(--ink-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .transcript-tools {

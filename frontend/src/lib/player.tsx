@@ -1,5 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+/** A stretch played on its own, such as one turn of a speaker: playback pauses at its end. */
+export interface Clip {
+  start: number;
+  end: number;
+  /** Who started it, so only they stop it. */
+  tag: string;
+}
+
 /**
  * One media clock for the meeting page. Either the <audio> element in the
  * docked player or the optional <video> element registers itself here; all
@@ -12,7 +20,13 @@ interface PlayerValue {
   rate: number;
   /** Increments on every explicit seek (transcript, summary timestamp, waveform, skip). */
   seekCount: number;
+  /** The clip being played, until it reaches its end or another seek. */
+  clip: Clip | null;
   seek: (t: number, autoplay?: boolean) => void;
+  /** Play just this stretch. Not an explicit seek: the transcript does not jump to it. */
+  playClip: (clip: Clip) => void;
+  /** Stop the clip, if it is still the one `tag` started. */
+  stopClip: (tag: string) => void;
   toggle: () => void;
   skip: (delta: number) => void;
   setRate: (r: number) => void;
@@ -31,6 +45,8 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
   const [playing, setPlaying] = useState(false);
   const [rate, setRateState] = useState(1);
   const [seekCount, setSeekCount] = useState(0);
+  const [clip, setClipState] = useState<Clip | null>(null);
+  const clipRef = useRef<Clip | null>(null);
   const listeners = useRef(new Set<(t: number) => void>());
   const pendingSeek = useRef<{ t: number; play: boolean } | null>(null);
   const lastState = useRef({ t: 0, playing: false, rate: 1 });
@@ -39,6 +55,22 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
     for (const l of listeners.current) l(t);
   }, []);
 
+  const setClip = useCallback((c: Clip | null) => {
+    clipRef.current = c;
+    setClipState(c);
+  }, []);
+
+  /** Pause at the end of the clip being played. */
+  const endClip = useCallback(
+    (el: HTMLMediaElement) => {
+      const c = clipRef.current;
+      if (!c || el.currentTime < c.end) return;
+      el.pause();
+      setClip(null);
+    },
+    [setClip],
+  );
+
   // Coarse React state at ~4 Hz; fine-grained updates go to subscribers via rAF.
   useEffect(() => {
     let raf = 0;
@@ -46,6 +78,7 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
     const loop = (now: number) => {
       const el = elRef.current;
       if (el && !el.paused) {
+        endClip(el);
         emit(el.currentTime);
         if (now - lastCoarse > 250) {
           lastCoarse = now;
@@ -56,7 +89,7 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [emit]);
+  }, [emit, endClip]);
 
   const register = useCallback(
     (el: HTMLMediaElement | null) => {
@@ -72,11 +105,18 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
         setTime(el.currentTime);
         emit(el.currentTime);
       };
-      el.addEventListener("timeupdate", sync);
+      el.addEventListener("timeupdate", () => {
+        // Animation frames stop in a background tab; the clip still ends on time.
+        endClip(el);
+        sync();
+      });
       el.addEventListener("seeked", sync);
       el.addEventListener("play", () => setPlaying(true));
       el.addEventListener("pause", () => setPlaying(false));
-      el.addEventListener("ended", () => setPlaying(false));
+      el.addEventListener("ended", () => {
+        setPlaying(false);
+        setClip(null);
+      });
       el.addEventListener("ratechange", () => setRateState(el.playbackRate));
       el.addEventListener("loadedmetadata", () => {
         if (Number.isFinite(el.duration) && el.duration > 0) setDuration(el.duration);
@@ -91,14 +131,14 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
       el.playbackRate = lastState.current.rate;
       if (prev) pendingSeek.current = { t: lastState.current.t, play: lastState.current.playing };
     },
-    [emit],
+    [emit, endClip, setClip],
   );
 
-  const seek = useCallback(
-    (t: number, autoplay = false) => {
+  /** Move the playhead, without counting as an explicit seek. */
+  const jump = useCallback(
+    (t: number, autoplay: boolean) => {
       const el = elRef.current;
       const clamped = Math.max(0, t);
-      setSeekCount((c) => c + 1);
       setTime(clamped);
       emit(clamped);
       if (!el) {
@@ -114,6 +154,32 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
       }
     },
     [emit],
+  );
+
+  const seek = useCallback(
+    (t: number, autoplay = false) => {
+      setClip(null);
+      setSeekCount((c) => c + 1);
+      jump(t, autoplay);
+    },
+    [jump, setClip],
+  );
+
+  const playClip = useCallback(
+    (c: Clip) => {
+      setClip(c);
+      jump(c.start, true);
+    },
+    [jump, setClip],
+  );
+
+  const stopClip = useCallback(
+    (tag: string) => {
+      if (clipRef.current?.tag !== tag) return;
+      elRef.current?.pause();
+      setClip(null);
+    },
+    [setClip],
   );
 
   const toggle = useCallback(() => {
@@ -144,8 +210,8 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
   const getTime = useCallback(() => elRef.current?.currentTime ?? 0, []);
 
   const value = useMemo(
-    () => ({ time, duration, playing, rate, seekCount, seek, toggle, skip, setRate, register, subscribe, getTime }),
-    [time, duration, playing, rate, seekCount, seek, toggle, skip, setRate, register, subscribe, getTime],
+    () => ({ time, duration, playing, rate, seekCount, clip, seek, playClip, stopClip, toggle, skip, setRate, register, subscribe, getTime }),
+    [time, duration, playing, rate, seekCount, clip, seek, playClip, stopClip, toggle, skip, setRate, register, subscribe, getTime],
   );
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
