@@ -474,12 +474,15 @@
   color: var(--spk);
 }
 .speaker-clips {
-  flex: 1 0 100%;
+  /* Under the name, past the colour dot (9px) and the row gap (8px). */
+  flex: 1 0 calc(100% - 17px);
   min-width: 0;
   display: grid;
-  gap: 4px;
-  margin: 0 0 8px;
-  padding: 4px 8px 8px;
+  gap: 6px;
+  margin: 0 0 8px 17px;
+  padding: 8px 10px 10px;
+  /* Kept clear of the player bar when scrolled into view. */
+  scroll-margin-bottom: calc(var(--player-h) + 12px);
   border-left: 2px solid var(--spk);
   border-radius: 0 var(--radius-s) var(--radius-s) 0;
   background: var(--surface-2);
@@ -506,8 +509,34 @@
   opacity: 0.35;
   cursor: default;
 }
+/* The main action, drawn like the player's own play button. */
 .speaker-clips-play {
-  color: var(--spk);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--bg);
+  cursor: pointer;
+  transition:
+    transform var(--dur-fast),
+    background var(--dur-fast);
+}
+.speaker-clips-play:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.speaker-clips-play:active {
+  transform: scale(0.94);
+}
+.speaker-clips-play svg {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
 }
 .speaker-clips-step {
   display: inline-flex;
@@ -518,6 +547,14 @@
   text-align: center;
   font-size: var(--step--2);
   color: var(--ink-2);
+}
+.speaker-clips-where {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  margin-left: 4px;
+  font-size: var(--step--2);
+  white-space: nowrap;
 }
 .speaker-clips-time {
   flex: none;
@@ -533,12 +570,16 @@
   background: var(--surface-3);
   color: var(--accent);
 }
-.speaker-clips-meta {
+.speaker-clips-length {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+.speaker-clips-length::before {
+  content: "·";
+  margin: 0 6px 0 2px;
+  color: var(--ink-4);
 }
 .speaker-clips-close {
   margin-left: auto;
@@ -556,6 +597,18 @@
   background: var(--spk);
   transform: scaleX(0);
   transform-origin: left;
+}
+.speaker-clips-first {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--spk) 14%, transparent);
+  color: var(--spk);
+  font-size: var(--step--2);
+  font-weight: 600;
+  line-height: 1.6;
+  vertical-align: 1px;
 }
 .speaker-clips-text {
   margin: 0;
