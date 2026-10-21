@@ -318,6 +318,7 @@ export const zhTW: Dict = {
     clipNext: "下一段發言",
     clipCount: "第 {i} 段，共 {n} 段",
     clipFirst: "首次發言",
+    clipQuote: "「{text}」",
     clipShow: "在逐字稿中顯示",
   },
   summary: {

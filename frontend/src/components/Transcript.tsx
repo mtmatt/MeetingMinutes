@@ -292,6 +292,7 @@ function SpeakerClips({
   playSignal,
   onPlay,
   onClose,
+  onScroll,
 }: {
   sp: Speaker;
   turns: Turn[];
@@ -301,11 +302,14 @@ function SpeakerClips({
   onPlay: () => void;
   /** Absent while the speaker is being named: finishing the name closes it, unless a clip was played. */
   onClose?: () => void;
+  /** Called before the panel scrolls itself into view, which is not the reader scrolling away. */
+  onScroll: () => void;
 }) {
   const { t, locale } = useI18n();
   const { clip, playing, playClip, stopClip, toggle, seek, subscribe, getTime } = usePlayer();
   const [index, setIndex] = useState(() => referenceTurn(turns));
   const barRef = useRef<HTMLSpanElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const tag = `speaker:${sp.key}`;
   const i = Math.min(index, turns.length - 1);
   const turn = turns[i]!;
@@ -323,6 +327,18 @@ function SpeakerClips({
     if (playSignal > 0) play(i);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playSignal]);
+
+  // Opened low on a short screen, it would be under the player bar.
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    // "nearest" would ignore the scroll margin that keeps it clear of the player.
+    const covered = el.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(el).scrollMarginBottom) || 0) > window.innerHeight;
+    if (!covered) return;
+    onScroll();
+    el.scrollIntoView({ block: "end", behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Closing the panel stops what it was playing.
   useEffect(() => () => stopClip(tag), [stopClip, tag]);
@@ -342,11 +358,22 @@ function SpeakerClips({
 
   const name = sp.name;
   return (
-    <div className="speaker-clips" role="group" aria-label={t("meeting.clipGroup", { name })}>
+    <div
+      ref={panelRef}
+      className="speaker-clips"
+      role="group"
+      aria-label={t("meeting.clipGroup", { name })}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && onClose) {
+          e.stopPropagation();
+          onClose();
+        }
+      }}
+    >
       <div className="speaker-clips-bar">
         <button
           type="button"
-          className="icon-btn sm speaker-clips-play"
+          className="speaker-clips-play"
           onMouseDown={keepFocus}
           onClick={() => (current ? toggle() : play(i))}
           title={current && playing ? t("meeting.clipPause") : t("meeting.clipPlay")}
@@ -381,17 +408,17 @@ function SpeakerClips({
             <ChevronRight />
           </button>
         </span>
-        <button
-          type="button"
-          className="speaker-clips-time mono"
-          onMouseDown={keepFocus}
-          onClick={() => seek(turn.start)}
-          title={t("meeting.clipShow")}
-        >
-          {clock(turn.start)}
-        </button>
-        <span className="speaker-clips-meta faint">
-          {i === 0 ? t("meeting.clipFirst") : duration(turn.clip.end - turn.start, locale)}
+        <span className="speaker-clips-where">
+          <button
+            type="button"
+            className="speaker-clips-time mono"
+            onMouseDown={keepFocus}
+            onClick={() => seek(turn.start)}
+            title={t("meeting.clipShow")}
+          >
+            {clock(turn.start)}
+          </button>
+          <span className="speaker-clips-length">{duration(turn.clip.end - turn.start, locale)}</span>
         </span>
         {onClose && (
           <button type="button" className="icon-btn sm speaker-clips-close" onClick={onClose} title={t("common.close")} aria-label={t("common.close")}>
@@ -402,12 +429,15 @@ function SpeakerClips({
       <span className="speaker-clips-progress" aria-hidden="true">
         <span ref={barRef} />
       </span>
-      <p className="speaker-clips-text">{turn.text}</p>
+      <p className="speaker-clips-text">
+        {i === 0 && <span className="speaker-clips-first">{t("meeting.clipFirst")}</span>}
+        {t("meeting.clipQuote", { text: turn.text })}
+      </p>
     </div>
   );
 }
 
-function SpeakerLegend({ meeting, turns }: { meeting: MeetingDetail; turns: Map<string, Turn[]> }) {
+function SpeakerLegend({ meeting, turns, onScroll }: { meeting: MeetingDetail; turns: Map<string, Turn[]>; onScroll: () => void }) {
   const { t } = useI18n();
   const toast = useToast();
   const qc = useQueryClient();
@@ -539,6 +569,7 @@ function SpeakerLegend({ meeting, turns }: { meeting: MeetingDetail; turns: Map<
                   playSignal={listening?.key === sp.key ? listening.play : 0}
                   onPlay={() => keepListening(sp.key)}
                   onClose={editing === sp.key ? undefined : () => setListening(null)}
+                  onScroll={onScroll}
                 />
               )}
             </li>
@@ -621,7 +652,7 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
   const { t, locale } = useI18n();
   const toast = useToast();
   const qc = useQueryClient();
-  const { time, seek, clip } = usePlayer();
+  const { time, seek, clip, playing } = usePlayer();
   const [query, setQuery] = useState("");
   const [follow, setFollow] = useState(true);
   const [editing, setEditing] = useState<number | null>(null);
@@ -682,16 +713,18 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
     [activeEl],
   );
 
+  // A speaker's clips are listened to in the speaker list, so the page holds
+  // still while one plays and after it ends, until playback is started some
+  // other way or a seek moves it.
+  const held = useRef(false);
+  const wasPlaying = useRef(false);
   useEffect(() => {
-    if (!follow || detached || editing != null || clip) return;
+    if (clip) held.current = true;
+    else if (playing && !wasPlaying.current) held.current = false;
+    wasPlaying.current = playing;
+    if (!follow || detached || editing != null || held.current) return;
     scrollToActive(false);
-  }, [activeId, follow, detached, editing, clip, scrollToActive]);
-
-  // A speaker's clip is listened to from the speaker list, so the page stays
-  // there instead of following it; "Back to playback" leads to it.
-  useEffect(() => {
-    if (clip && follow) setDetached(true);
-  }, [clip, follow]);
+  }, [activeId, follow, detached, editing, clip, playing, scrollToActive]);
 
   // Explicit seeks re-attach and bring the target into view.
   const { seekCount } = usePlayer();
@@ -702,6 +735,7 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
       return;
     }
     setDetached(false);
+    held.current = false;
     // Wait a frame so the active line reflects the new time.
     requestAnimationFrame(() => scrollToActive(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -720,6 +754,10 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, [follow, activeEl]);
+
+  const markScroll = useCallback(() => {
+    programmatic.current = performance.now();
+  }, []);
 
   const backToPlayback = () => {
     setDetached(false);
@@ -776,7 +814,7 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
 
   return (
     <div className="transcript">
-      <SpeakerLegend meeting={meeting} turns={turns} />
+      <SpeakerLegend meeting={meeting} turns={turns} onScroll={markScroll} />
       <div className="transcript-tools">
         <label className="input-line transcript-search">
           <Search />

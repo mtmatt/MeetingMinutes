@@ -315,7 +315,8 @@ export const en = {
     clipPrev: "Previous turn",
     clipNext: "Next turn",
     clipCount: "Turn {i} of {n}",
-    clipFirst: "first time speaking",
+    clipFirst: "First time speaking",
+    clipQuote: "“{text}”",
     clipShow: "Show in transcript",
   },
   summary: {
