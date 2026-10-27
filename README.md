@@ -51,19 +51,19 @@ A self-hosted meeting-minutes service. Upload a recording (audio or video). It i
 
 The target is Mandarin–English code-switched meetings, with Traditional Chinese output, on one or two RTX 4090s (24 GB each).
 
-| Option | Chinese | English | Code-switching | Notes |
-| --- | --- | --- | --- | --- |
-| **Qwen3-ASR-1.7B** (chosen) | AISHELL-2 WER **2.71** | LibriSpeech 1.63 / 3.38 | strong; language ID per chunk | Apache-2.0 (2026). Accepts a text *context* for names and jargon. Transformers and vLLM backends. About 5 GB of VRAM in bf16. |
-| Whisper large-v3 / turbo | AISHELL-2 WER 5.06 | 1.51 / 3.97 | good | Tends to output Simplified. Known hallucination loops on silence. |
-| Breeze-ASR-25 (Whisper-v2 fine-tune) | tuned for Taiwanese Mandarin | good | good | Worth trying as an alternative; still has Whisper's failure modes. |
-| SenseVoice / Paraformer | very fast, strong Mandarin | weaker English | weak | Better suited to Mandarin-only audio. |
-| Parakeet / Canary | – | best-in-class | – | English only. |
+| Option                               | Chinese                      | English                 | Code-switching                | Notes                                                                                                                         |
+| ------------------------------------ | ---------------------------- | ----------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Qwen3-ASR-1.7B** (chosen)          | AISHELL-2 WER **2.71**       | LibriSpeech 1.63 / 3.38 | strong; language ID per chunk | Apache-2.0 (2026). Accepts a text _context_ for names and jargon. Transformers and vLLM backends. About 5 GB of VRAM in bf16. |
+| Whisper large-v3 / turbo             | AISHELL-2 WER 5.06           | 1.51 / 3.97             | good                          | Tends to output Simplified. Known hallucination loops on silence.                                                             |
+| Breeze-ASR-25 (Whisper-v2 fine-tune) | tuned for Taiwanese Mandarin | good                    | good                          | Worth trying as an alternative; still has Whisper's failure modes.                                                            |
+| SenseVoice / Paraformer              | very fast, strong Mandarin   | weaker English          | weak                          | Better suited to Mandarin-only audio.                                                                                         |
+| Parakeet / Canary                    | –                            | best-in-class           | –                             | English only.                                                                                                                 |
 
 Qwen3-ASR-1.7B roughly halves Whisper-large-v3's Chinese error rate, keeps English at parity, and takes a vocabulary prompt, which matters for product names in meetings. The 0.6B variant exists if throughput matters more than accuracy.
 
 Speaker diarization uses **pyannote `speaker-diarization-community-1`**. It improves on 3.1 for speaker counting (for example AliMeeting DER 20.3 vs 24.5). The worker takes each speaker turn, merges short same-speaker turns, splits long ones at quiet points (≤ 30 s), and transcribes those segments in batches. Segment boundaries become the transcript timestamps.
 
-On a 4090, both models together use roughly 6–8 GB. Each GPU runs its own worker, so two GPUs process two meetings in parallel. `ASR_BACKEND=vllm` (install with `--vllm`) gives higher throughput on long recordings.
+On a 4090, both models together use roughly 6–8 GB. Each GPU runs one GPU session at a time, so two GPUs process two meetings in parallel. `ASR_BACKEND=vllm` (install with `--vllm`) gives higher throughput on long recordings.
 
 Sources: [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR), [Qwen3-ASR technical report](https://arxiv.org/abs/2601.21337), [pyannote community-1 benchmarks](https://github.com/pyannote/pyannote-audio).
 
@@ -71,12 +71,12 @@ Sources: [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR), [Qwen3-ASR technical 
 
 Naming speakers is the slowest part of tidying a transcript, so it only has to be done once per person:
 
-1. **Name a speaker** in any transcript (click the name above the transcript). While you type, a panel below the name plays their turns, one clip of up to 15 seconds at a time: it opens on their first turn long enough to recognise the voice (the very first one is often just "OK"), and the arrows step through the others in order, with the words of each clip shown. Playing a clip keeps the cursor in the name field and the page where it is; the time stamp shows the clip in the transcript. The headphones beside a name (and the **by voice** / suggestion menu) open the same panel without renaming. Their voice is remembered under that name: the toast says so and offers *Undo*.
+1. **Name a speaker** in any transcript (click the name above the transcript). While you type, a panel below the name plays their turns, one clip of up to 15 seconds at a time: it opens on their first turn long enough to recognise the voice (the very first one is often just "OK"), and the arrows step through the others in order, with the words of each clip shown. Playing a clip keeps the cursor in the name field and the page where it is; the time stamp shows the clip in the transcript. The headphones beside a name (and the **by voice** / suggestion menu) open the same panel without renaming. Their voice is remembered under that name: the toast says so and offers _Undo_.
 2. **In later recordings**, each speaker who still has a default name ("Speaker 2") is compared with the voices you have named:
    - a close match is named for you and marked **by voice** (依聲紋), with a menu to confirm it or to say it is someone else, which puts the previous name back;
    - a weaker resemblance is only **suggested** ("王小明?"), and the name changes only if you accept;
    - each person is given to at most one speaker per meeting, never under a name already used in that meeting, and two similar voices that are nearly tied are only suggested.
-   Recognition runs before the automatic summary, so the summary is written with the recognised names; finished summaries are updated the same way as for a manual rename.
+     Recognition runs before the automatic summary, so the summary is written with the recognised names; finished summaries are updated the same way as for a manual rename.
 3. **Past recordings**: **Voices → Find voices in past recordings** remembers everyone you have already named in earlier transcripts and recognises the people still called "Speaker N" there. Recordings transcribed before this feature first get voice fingerprints from a background job (the meeting stays readable; nothing is transcribed again).
 
 Only names you give or confirm become part of a voice: a guess you have not confirmed never changes what a person sounds like, so one wrong match cannot snowball. The **Voices** page lists each person with the recordings their voice was learned from. There you can remove a recording that was someone else, rename or merge people (for one person named two ways), forget a person, or turn recognition off. A person whose recordings sound like different people (for example a name like "Guest" used for several people) is flagged, because recognition with that name is unreliable.
@@ -89,11 +89,13 @@ Privacy: voices are per account and never compared across accounts. A voice fing
 
 The worker supervisor that runs all the time never imports PyTorch or creates a CUDA context, so **an idle worker uses no GPU memory**. When the backend has a job, the supervisor starts a separate GPU process. That process:
 
-1. loads the models (shown as *Loading models* in the UI);
+1. loads the models (shown as _Loading models_ in the UI);
 2. processes the job, and any other jobs already waiting, back to back;
 3. exits.
 
 Process exit is what guarantees all VRAM is returned, including the CUDA context that `torch.cuda.empty_cache()` cannot release. The cost is model-loading latency at the start of each busy period (typically tens of seconds from a warm disk cache). `MODEL_KEEPALIVE_SEC` (default `0`) can keep a session warm for a few seconds if you ever want to trade that off. GPU status on the admin page comes from `nvidia-smi`, which does not allocate VRAM.
+
+One supervisor serves all the GPUs in `WORKER_GPUS`, and the admin page still lists each GPU as a worker. Before it claims a job, it asks `nvidia-smi` how much memory each idle GPU has free, including memory used by other programs, and starts the session on the GPU with the most. A GPU with less than `MIN_FREE_VRAM_GB` (default `8`, enough for both models) free is skipped; if every idle GPU is short of memory, jobs stay queued until one has room.
 
 ## Requirements
 
@@ -119,7 +121,7 @@ Run it:
 
 ```bash
 scripts/start.sh                # web server; prints the one-time setup token on first start
-scripts/worker.sh               # one worker per GPU (WORKER_GPUS=0,1 or all GPUs by default)
+scripts/worker.sh               # a worker for every GPU (or WORKER_GPUS=0,1)
 ```
 
 Open the site, enter the setup token (also saved in `data/setup.token`), and create the administrator. Invite everyone else from **Admin → Invitations**. You can also create an admin from the shell with `bun run admin create-admin <username>`.
@@ -159,12 +161,13 @@ GPU workers on the same machine connect to a separate plain-HTTP port, `INTERNAL
 **Certificate warning.** Browsers do not know your team CA, so they show a warning. There are two ways to handle it:
 
 - **Trust the CA on each computer (recommended).** Import `data/tls/ca.crt` once:
-  - Windows: double-click it, then *Install Certificate → Current User → Place all certificates in: Trusted Root Certification Authorities*. This needs no admin rights and covers Chrome and Edge.
-  - macOS: open it in Keychain Access, then set *Trust → Always Trust*.
-  - Chrome on Linux: *Settings → Privacy and security → Security → Manage certificates → Authorities → Import*.
-  - Firefox (all systems): *Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import*.
+  - Windows: double-click it, then _Install Certificate → Current User → Place all certificates in: Trusted Root Certification Authorities_. This needs no admin rights and covers Chrome and Edge.
+  - macOS: open it in Keychain Access, then set _Trust → Always Trust_.
+  - Chrome on Linux: _Settings → Privacy and security → Security → Manage certificates → Authorities → Import_.
+  - Firefox (all systems): _Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import_.
 
   Afterwards there is no warning, and re-issuing the server certificate (for example after an IP change) needs nothing new on clients.
+
 - **Accept the warning.** Each person clicks through the warning once, after checking that the SHA-256 fingerprint shown by the browser matches the one `make-cert.sh` printed. Recording works either way.
 
 **Publicly trusted certificate instead.** If the server has a domain name, a public certificate avoids the warning altogether. [acme.sh](https://github.com/acmesh-official/acme.sh) can issue one without root, using a DNS challenge (`--dns`), so no port 80 is needed. Point `TLS_CERT_FILE` / `TLS_KEY_FILE` at its output and restart the server after each renewal (acme.sh `--reloadcmd`). Let's Encrypt also issues certificates for bare IP addresses, but they last only about six days and must be validated on port 80 or 443, which normally needs privileges.
@@ -188,10 +191,10 @@ With either option, HTTPS turns on `Secure`, `__Host-` session cookies and HSTS.
 
 **New recording → Record a meeting** offers two sources:
 
-| Source | Captures | Browsers |
-| --- | --- | --- |
-| Online meeting | The shared meeting tab (other participants) plus your microphone, or the tab alone when the microphone is set to *No microphone* | Desktop Chrome, Edge and other Chromium browsers |
-| Microphone | Only the microphone | Any modern browser |
+| Source         | Captures                                                                                                                         | Browsers                                         |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| Online meeting | The shared meeting tab (other participants) plus your microphone, or the tab alone when the microphone is set to _No microphone_ | Desktop Chrome, Edge and other Chromium browsers |
+| Microphone     | Only the microphone                                                                                                              | Any modern browser                               |
 
 To record Google Meet:
 
@@ -199,7 +202,7 @@ To record Google Meet:
 2. Pick the Meet tab in the share dialog.
 3. Turn on **Also share tab audio**.
 
-With *No microphone*, the browser never asks for the microphone, and your own voice is not recorded, since the meeting tab does not play it back. You can still add the microphone during the recording.
+With _No microphone_, the browser never asks for the microphone, and your own voice is not recorded, since the meeting tab does not play it back. You can still add the microphone during the recording.
 
 Wear headphones, so the meeting audio from your speakers is not picked up a second time by the microphone. Echo cancellation is on, but headphones are more reliable.
 
@@ -214,24 +217,25 @@ A few limits to know about:
 
 All settings are environment variables. Put them in `.env` at the repository root; `.env.example` documents each one. The most relevant:
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `PUBLIC_URL` | – | External URL. Controls secure cookies and invite links. |
-| `ADMIN_CONTACT` | – | Contact shown on the sign-in page for people without an account or who forgot their password (an email becomes a mailto link). |
-| `GOOGLE_CLIENT_ID` | – | Google OAuth client ID that lets people create Google Docs from summaries (see "Exporting to Google Docs"). |
-| `TRUST_PROXY` | `false` | Trust `X-Forwarded-*` headers from your proxy. |
-| `DATA_DIR` | `data` | SQLite database, media, and tokens. Back this directory up. |
-| `TLS_CERT_FILE` / `TLS_KEY_FILE` | empty | Serve HTTPS directly (see "Option A"). |
-| `INTERNAL_PORT` | `8788` | Loopback-only worker API port, used when `TLS_CERT_FILE` is set. |
-| `MAX_UPLOAD_MB` / `UPLOAD_CHUNK_MB` | `4096` / `32` | Largest accepted file, and the size of each upload request. The upload page shows `MAX_UPLOAD_MB` and rejects larger files before sending. A reverse proxy must allow request bodies larger than `UPLOAD_CHUNK_MB` (for example nginx `client_max_body_size 64m`); otherwise users see "the server refused the upload (HTTP 413)". |
-| `MAX_AUDIO_HOURS` | `8` | Longest recording a worker decodes. Longer (or crafted) files fail with a clear message instead of exhausting memory. |
-| `HF_TOKEN` | – | Enables speaker diarization (and with it, recognising speakers by voice). |
-| `VOICE_MATCH_THRESHOLD` / `VOICE_SUGGEST_THRESHOLD` | `0.6` / `0.45` | Voice similarity at which a speaker is named after a known voice, or only suggested. |
-| `ASR_MODEL` / `ASR_BACKEND` | `Qwen/Qwen3-ASR-1.7B` / `transformers` | Recognition model and engine (`vllm` for speed). |
-| `WORKER_GPUS` | all | GPUs to run workers on, e.g. `0,1`. |
-| `MODEL_KEEPALIVE_SEC` | `0` | Seconds a GPU session waits for more work before releasing the GPU. |
-| `CODEX_MODEL` / `CODEX_REASONING_EFFORT` | Codex defaults | Summary model settings. |
-| `CODEX_CONCURRENCY` | `1` | Parallel summaries (each uses quota). Each person can have at most 3 summaries queued or running. |
+| Variable                                            | Default                                | Purpose                                                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PUBLIC_URL`                                        | –                                      | External URL. Controls secure cookies and invite links.                                                                                                                                                                                                                                                                            |
+| `ADMIN_CONTACT`                                     | –                                      | Contact shown on the sign-in page for people without an account or who forgot their password (an email becomes a mailto link).                                                                                                                                                                                                     |
+| `GOOGLE_CLIENT_ID`                                  | –                                      | Google OAuth client ID that lets people create Google Docs from summaries (see "Exporting to Google Docs").                                                                                                                                                                                                                        |
+| `TRUST_PROXY`                                       | `false`                                | Trust `X-Forwarded-*` headers from your proxy.                                                                                                                                                                                                                                                                                     |
+| `DATA_DIR`                                          | `data`                                 | SQLite database, media, and tokens. Back this directory up.                                                                                                                                                                                                                                                                        |
+| `TLS_CERT_FILE` / `TLS_KEY_FILE`                    | empty                                  | Serve HTTPS directly (see "Option A").                                                                                                                                                                                                                                                                                             |
+| `INTERNAL_PORT`                                     | `8788`                                 | Loopback-only worker API port, used when `TLS_CERT_FILE` is set.                                                                                                                                                                                                                                                                   |
+| `MAX_UPLOAD_MB` / `UPLOAD_CHUNK_MB`                 | `4096` / `32`                          | Largest accepted file, and the size of each upload request. The upload page shows `MAX_UPLOAD_MB` and rejects larger files before sending. A reverse proxy must allow request bodies larger than `UPLOAD_CHUNK_MB` (for example nginx `client_max_body_size 64m`); otherwise users see "the server refused the upload (HTTP 413)". |
+| `MAX_AUDIO_HOURS`                                   | `8`                                    | Longest recording a worker decodes. Longer (or crafted) files fail with a clear message instead of exhausting memory.                                                                                                                                                                                                              |
+| `HF_TOKEN`                                          | –                                      | Enables speaker diarization (and with it, recognising speakers by voice).                                                                                                                                                                                                                                                          |
+| `VOICE_MATCH_THRESHOLD` / `VOICE_SUGGEST_THRESHOLD` | `0.6` / `0.45`                         | Voice similarity at which a speaker is named after a known voice, or only suggested.                                                                                                                                                                                                                                               |
+| `ASR_MODEL` / `ASR_BACKEND`                         | `Qwen/Qwen3-ASR-1.7B` / `transformers` | Recognition model and engine (`vllm` for speed).                                                                                                                                                                                                                                                                                   |
+| `WORKER_GPUS`                                       | all                                    | GPUs to run workers on, as `nvidia-smi` numbers them, e.g. `0,1`.                                                                                                                                                                                                                                                                  |
+| `MIN_FREE_VRAM_GB`                                  | `8`                                    | Free GPU memory a GPU needs before a GPU session starts on it. Raise it if sessions run out of memory with a larger `ASR_BATCH_SIZE`.                                                                                                                                                                                              |
+| `MODEL_KEEPALIVE_SEC`                               | `0`                                    | Seconds a GPU session waits for more work before releasing the GPU.                                                                                                                                                                                                                                                                |
+| `CODEX_MODEL` / `CODEX_REASONING_EFFORT`            | Codex defaults                         | Summary model settings.                                                                                                                                                                                                                                                                                                            |
+| `CODEX_CONCURRENCY`                                 | `1`                                    | Parallel summaries (each uses quota). Each person can have at most 3 summaries queued or running.                                                                                                                                                                                                                                  |
 
 ## How summaries use Codex
 
@@ -265,8 +269,8 @@ How it works depends on whether `GOOGLE_CLIENT_ID` is set:
 You need a Google Cloud project (free) and a domain name for the site: Google does not accept a bare IP address as a sign-in origin, so with "Option A" on an IP address, keep the copy-and-paste mode.
 
 1. In the [Google Cloud console](https://console.cloud.google.com/), create a project or pick one, open **APIs & Services → Library**, and enable the **Google Drive API**.
-2. Open **Google Auth Platform** (formerly *OAuth consent screen*) and fill in the app name and support email.
-   - **Audience**: *Internal* if everyone uses one Google Workspace organisation. Otherwise *External*: either publish the app (**In production**), or keep it in *Testing* and add each person as a test user.
+2. Open **Google Auth Platform** (formerly _OAuth consent screen_) and fill in the app name and support email.
+   - **Audience**: _Internal_ if everyone uses one Google Workspace organisation. Otherwise _External_: either publish the app (**In production**), or keep it in _Testing_ and add each person as a test user.
    - **Data access**: add the scope `https://www.googleapis.com/auth/drive.file`. It is a non-sensitive scope, so Google does not need to review the app.
 3. Under **Clients**, create an OAuth client of type **Web application**. Under **Authorised JavaScript origins**, add the site's address exactly as people open it, for example `https://minutes.example.com` (no path, no trailing slash). No redirect URI is needed.
 4. Put the client ID in `.env` and restart the server:
@@ -338,11 +342,12 @@ deploy/    Caddyfile, nginx.conf, systemd user units
 - **Speaker diarization status**: the admin page shows a warning on a worker only after loading the diarization model actually failed, with the reason. Each meeting also records whether diarization ran; a transcript without speakers says why and offers **Separate speakers again**.
 - **Everyone appears as one speaker**: usually pyannote is not running. To enable it:
   1. With a Hugging Face account, accept the conditions of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1).
-  2. Create a *read* token, and put it in `.env` as `HF_TOKEN=hf_…`. A token saved with `huggingface-cli login` as the worker's user also works.
+  2. Create a _read_ token, and put it in `.env` as `HF_TOKEN=hf_…`. A token saved with `huggingface-cli login` as the worker's user also works.
   3. Restart `scripts/worker.sh`, then run `scripts/worker.sh check`: it must print `Diarization: ready`.
   4. On affected meetings, choose **Separate speakers again** (the meeting's ⋯ menu).
 
   If pyannote runs but still merges people, give the number of speakers: automatic detection can merge similar voices into one, while a given count (or range) splits into exactly that many.
+
 - **Backups**: copy `data/`. SQLite runs in WAL mode; use `sqlite3 data/meetingminutes.sqlite ".backup backup.sqlite"` for a consistent snapshot while the server is running.
 - **Workers after an update**: a worker from before voice recognition still runs transcriptions; it is never given the background voice-fingerprint jobs, which wait until an updated worker claims them. Restart `scripts/worker.sh` after `git pull` to process them.
 - **Stuck jobs**: if a worker dies mid-job, the backend notices the missing heartbeat within 3 minutes and requeues the job (up to 3 attempts).

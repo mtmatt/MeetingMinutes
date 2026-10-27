@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import socket
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Optional
 
@@ -55,7 +55,40 @@ class WorkerConfig:
     model_keepalive_sec: float
     # Longest recording accepted, in seconds (MAX_AUDIO_HOURS); bounds decoded audio in memory.
     max_audio_sec: float = 8 * 3600
+    # GPUs this worker may use (WORKER_GPUS), as nvidia-smi indices or UUIDs.
+    gpus: list = field(default_factory=lambda: ["0"])
+    # Free VRAM a GPU needs before a session starts on it: Qwen3-ASR-1.7B and
+    # pyannote together use roughly 6-8 GB on a 4090.
+    min_free_vram_gb: float = 8.0
     extra: dict = field(default_factory=dict)
+
+    @property
+    def uses_gpu(self) -> bool:
+        return self.device.startswith("cuda") and self.asr_backend != "fake"
+
+    def for_gpu(self, gpu: str) -> "WorkerConfig":
+        """The worker on one of `gpus`. Its session sees only that GPU, as cuda:0.
+        With several GPUs, each reports to the backend under its own ID and
+        name, suffixed with the GPU."""
+        device = "cuda:0" if self.device.startswith("cuda") else self.device
+        if len(self.gpus) == 1:
+            return replace(self, gpus=[gpu], device=device)
+        return replace(
+            self, gpus=[gpu], device=device, worker_id=f"{self.worker_id}-gpu{gpu}", worker_name=f"{self.worker_name}-gpu{gpu}"
+        )
+
+
+def _device_gpu(device: str, visible: Optional[str]) -> str:
+    """The GPU that MM_DEVICE (cuda:N) means, given CUDA_VISIBLE_DEVICES."""
+    if not device.startswith("cuda"):
+        return "0"  # unused; it only names the worker, as it always has
+    n = int(device[5:]) if device[5:].isdigit() else 0
+    if visible is None:
+        return str(n)
+    listed = [g.strip() for g in visible.split(",") if g.strip()]
+    if n >= len(listed):
+        raise SystemExit(f"MM_DEVICE={device} but CUDA_VISIBLE_DEVICES={visible!r} lists {len(listed)} GPU(s); set WORKER_GPUS instead.")
+    return listed[n]
 
 
 def load_config() -> WorkerConfig:
@@ -82,16 +115,22 @@ def load_config() -> WorkerConfig:
     else:
         default_url = f"http://127.0.0.1:{os.environ.get('PORT', '').strip() or '8787'}"
     server_url = os.environ.get("MM_SERVER_URL", "").strip().rstrip("/") or default_url
-    gpu = os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")[0] or "0"
+    device = os.environ.get("MM_DEVICE", "cuda:0")
+    # scripts/worker.sh passes every GPU in WORKER_GPUS. A worker started by
+    # hand without it uses the visible GPU that MM_DEVICE names (cuda:N).
+    gpus = list(dict.fromkeys(g.strip() for g in os.environ.get("WORKER_GPUS", "").split(",") if g.strip()))
+    if not gpus:
+        gpus = [_device_gpu(device, os.environ.get("CUDA_VISIBLE_DEVICES"))]
     host = socket.gethostname()
-    worker_id = os.environ.get("MM_WORKER_ID") or f"{host}-gpu{gpu}"
+    # With several GPUs, WorkerConfig.for_gpu adds "-gpuN" to each one's ID.
+    worker_id = os.environ.get("MM_WORKER_ID") or (host if len(gpus) > 1 else f"{host}-gpu{gpus[0]}")
 
     return WorkerConfig(
         server_url=server_url,
         token=token,
         worker_id=worker_id,
         worker_name=os.environ.get("MM_WORKER_NAME") or worker_id,
-        device=os.environ.get("MM_DEVICE", "cuda:0"),
+        device=device,
         hf_token=os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or None,
         asr_model=os.environ.get("ASR_MODEL", "Qwen/Qwen3-ASR-1.7B"),
         asr_backend=os.environ.get("ASR_BACKEND", "transformers"),
@@ -102,4 +141,6 @@ def load_config() -> WorkerConfig:
         poll_interval=_float("MM_POLL_INTERVAL", 3.0),
         model_keepalive_sec=max(0.0, _float("MODEL_KEEPALIVE_SEC", 0.0)),
         max_audio_sec=max(0.1, _float("MAX_AUDIO_HOURS", 8.0)) * 3600,
+        gpus=gpus,
+        min_free_vram_gb=max(0.0, _float("MIN_FREE_VRAM_GB", 8.0)),
     )
