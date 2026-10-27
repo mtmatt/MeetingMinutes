@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Run one transcription worker per GPU.
+# Run the transcription worker for this machine's GPUs.
 #
-#   scripts/worker.sh           one worker per GPU (WORKER_GPUS in .env, or all GPUs)
+#   scripts/worker.sh           one worker for the GPUs in WORKER_GPUS (.env), or all GPUs
 #   scripts/worker.sh check     load the models once (downloads them) and report
 #   scripts/worker.sh transcribe FILE [--language auto] [--no-diarize]
 #
@@ -26,23 +26,14 @@ if [ -z "$GPUS" ]; then
 fi
 
 cd "$ROOT/worker"
+# GPU numbers are nvidia-smi's, so CUDA has to count GPUs the same way.
+export CUDA_DEVICE_ORDER=${CUDA_DEVICE_ORDER:-PCI_BUS_ID}
 if [ "${1:-run}" != "run" ]; then
   export CUDA_VISIBLE_DEVICES=${GPUS%%,*}
   exec uv run --no-sync python -m mm_worker "$@"
 fi
 
-pids=()
-cleanup() {
-  for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done
-  wait
-}
-trap cleanup INT TERM
-
-IFS=',' read -ra LIST <<<"$GPUS"
-for gpu in "${LIST[@]}"; do
-  gpu=$(echo "$gpu" | tr -d ' ')
-  echo "starting worker on GPU $gpu"
-  CUDA_VISIBLE_DEVICES=$gpu uv run --no-sync python -m mm_worker run &
-  pids+=("$!")
-done
-wait
+# One process for all of them: before each GPU session it picks the GPU with the
+# most free memory (MIN_FREE_VRAM_GB), and each GPU still appears as its own worker.
+echo "starting worker on GPUs $GPUS"
+WORKER_GPUS=$(echo "$GPUS" | tr -d ' ') exec uv run --no-sync python -m mm_worker run

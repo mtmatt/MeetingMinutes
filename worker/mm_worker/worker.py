@@ -16,41 +16,34 @@ import logging
 import multiprocessing as mp
 import os
 import queue
-import shutil
 import signal
-import subprocess
 import threading
 import time
 import traceback
-from typing import Optional
+from typing import Callable, Optional
 
 from . import __version__
 from .audio import MediaError
 from .client import BackendClient
 from .config import WorkerConfig
+from .gpus import GpuMemory, find_gpu, pick_gpu, query_gpus
 from .pipeline import Canceled, JobSpec, run_job, run_voiceprint
 
 log = logging.getLogger("mm_worker")
 
 
-def gpu_info() -> dict:
+def gpu_info(gpu: str) -> dict:
     """GPU name and memory via nvidia-smi, which does not allocate VRAM (unlike torch.cuda)."""
-    exe = shutil.which("nvidia-smi")
-    if not exe:
-        return {"cuda": None}
-    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "0").split(",")[0].strip() or "0"
     try:
-        out = subprocess.run(
-            [exe, "--query-gpu=name,memory.total,memory.used", "--format=csv,noheader,nounits", "-i", visible],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        name, total, used = [p.strip() for p in out.stdout.strip().splitlines()[0].split(",")]
-        total_gb, used_gb = float(total) / 1024, float(used) / 1024
-        return {"cuda": True, "gpu": name, "vramTotalGb": round(total_gb, 1), "vramFreeGb": round(total_gb - used_gb, 1)}
+        gpus = query_gpus()
     except Exception as e:
         return {"cuda": None, "error": str(e)[:200]}
+    if gpus is None:
+        return {"cuda": None}
+    mem = find_gpu(gpus, gpu)
+    if mem is None:
+        return {"cuda": None, "error": f"nvidia-smi does not list GPU {gpu}"}
+    return {"cuda": True, "gpu": mem.name, "vramTotalGb": round(mem.total_gb, 1), "vramFreeGb": round(mem.free_gb, 1)}
 
 
 def load_transcriber(cfg: WorkerConfig):
@@ -262,6 +255,9 @@ class _JobRunner:
 
 def gpu_session(cfg: WorkerConfig, first_job: dict, events) -> None:
     """Entry point of the short-lived GPU process (multiprocessing 'spawn')."""
+    # Before anything initialises CUDA: only this session's GPU, numbered the way nvidia-smi numbers it.
+    os.environ["CUDA_VISIBLE_DEVICES"] = cfg.gpus[0]
+    os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s[gpu]: %(message)s")
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
@@ -320,11 +316,13 @@ def gpu_session(cfg: WorkerConfig, first_job: dict, events) -> None:
 # ------------------------------------------------------------- supervisor
 
 
-class Supervisor:
+class GpuWorker:
+    """One GPU of the supervisor. The backend sees each GPU as a worker of its own."""
+
     def __init__(self, cfg: WorkerConfig):
         self.cfg = cfg
+        self.gpu = cfg.gpus[0]
         self.client = BackendClient(cfg.server_url, cfg.token, cfg.worker_id)
-        self.stop = threading.Event()
         self.child: Optional[mp.process.BaseProcess] = None
         self.models_loaded = False
         self.current_job: Optional[str] = None
@@ -343,49 +341,28 @@ class Supervisor:
             "modelsLoaded": self.models_loaded,
             "loadPolicy": "on-demand",
             "jobId": self.current_job,
-            **gpu_info(),
+            **gpu_info(self.gpu),
         }
 
-    def heartbeat_loop(self):
-        while not self.stop.wait(20):
-            try:
-                self.client.heartbeat(self.cfg.worker_name, self.info())
-            except Exception as e:
-                log.debug("heartbeat failed: %s", e)
-
-    def run(self):
-        threading.Thread(target=self.heartbeat_loop, daemon=True).start()
+    def heartbeat(self):
         try:
             self.client.heartbeat(self.cfg.worker_name, self.info())
         except Exception as e:
-            log.warning("backend not reachable yet: %s", e)
-        log.info(
-            "worker %s idle (models load on demand, GPU untouched); polling %s",
-            self.cfg.worker_id,
-            self.cfg.server_url,
-        )
-        while not self.stop.is_set():
-            try:
-                job = self.client.claim()
-            except Exception as e:
-                log.warning("claim failed: %s", e)
-                self.stop.wait(10)
-                continue
-            if not job:
-                self.stop.wait(self.cfg.poll_interval)
-                continue
-            self.run_session(job)
+            log.debug("heartbeat failed: %s", e)
 
-    def run_session(self, job: dict):
+    def start_session(self, job: dict):
+        """Starts a GPU session for `job`; this GPU is busy until the session exits."""
         ctx = mp.get_context("spawn")
         events = ctx.Queue()
-        child = ctx.Process(target=gpu_session, args=(self.cfg, job, events), name="mm-gpu-session")
+        child = ctx.Process(target=gpu_session, args=(self.cfg, job, events), name=f"mm-gpu{self.gpu}-session")
         self.child = child
         self.current_job = job["jobId"]
-        log.info("job %s claimed; starting GPU session", job["jobId"])
+        log.info("job %s claimed; starting GPU session on GPU %s", job["jobId"], self.gpu)
         child.start()
-        self._heartbeat_now()
-        in_flight: Optional[str] = job["jobId"]
+        threading.Thread(target=self._watch_session, args=(child, events, job["jobId"]), daemon=True).start()
+
+    def _watch_session(self, child: mp.process.BaseProcess, events, in_flight: Optional[str]):
+        self.heartbeat()
         while child.is_alive() or not events.empty():
             try:
                 kind, value = events.get(timeout=1.0)
@@ -401,28 +378,114 @@ class Supervisor:
                 self.models_loaded = True
                 if value:
                     self.diarization = value
-                self._heartbeat_now()
+                self.heartbeat()
         child.join()
         if child.exitcode not in (0, None) and in_flight:
-            log.error("GPU session exited with code %s during job %s", child.exitcode, in_flight)
+            log.error("GPU session on GPU %s exited with code %s during job %s", self.gpu, child.exitcode, in_flight)
             try:
                 self.client.fail(in_flight, f"The GPU process exited unexpectedly (code {child.exitcode}).", True)
             except Exception as e:
                 log.error("could not report failure: %s", e)
-        self.child = None
         self.models_loaded = False
         self.current_job = None
-        log.info("GPU session ended; GPU memory released")
-        self._heartbeat_now()
+        self.child = None
+        log.info("GPU session on GPU %s ended; GPU memory released", self.gpu)
+        self.heartbeat()
 
-    def _heartbeat_now(self):
+
+class Supervisor:
+    """Claims jobs for the GPUs in `cfg.gpus`, one GPU session per GPU at a time.
+
+    Before claiming, it asks nvidia-smi how much memory each idle GPU has free,
+    counting what other programs use, and claims for the one with the most, if
+    that is at least `min_free_vram_gb`. Otherwise jobs wait in the backend's
+    queue until a GPU has room (or another worker takes them).
+    """
+
+    def __init__(self, cfg: WorkerConfig, query: Optional[Callable[[], Optional[list[GpuMemory]]]] = None):
+        self.cfg = cfg
+        self.workers = [GpuWorker(cfg.for_gpu(gpu)) for gpu in cfg.gpus]
+        self.stop = threading.Event()
+        # Stand-in models and CPU workers use no GPU memory, so there is nothing to check.
+        self.query = query or (query_gpus if cfg.uses_gpu else None)
+        self._waiting: Optional[str] = None
+
+    def heartbeat_loop(self):
+        while not self.stop.wait(20):
+            for worker in self.workers:
+                worker.heartbeat()
+
+    def _note(self, reason: Optional[str], message: str = ""):
+        """Logs why no GPU can be used, once each time the reason changes."""
+        if reason != self._waiting:
+            if reason:
+                log.warning("%s", message)
+            elif self._waiting:
+                log.info("a GPU has enough free memory again")
+        self._waiting = reason
+
+    def pick(self, idle: list[GpuWorker]) -> Optional[GpuWorker]:
+        """The idle GPU to claim a job for, or None to leave jobs queued for now."""
+        if self.query is None:
+            return idle[0]
         try:
-            self.client.heartbeat(self.cfg.worker_name, self.info())
-        except Exception:
-            pass
+            gpus = self.query()
+        except Exception as e:
+            self._note("error", f"cannot read GPU memory, so no job is claimed until it can: {e}")
+            return None
+        if gpus is None:
+            self._note("no-smi", "nvidia-smi not found: GPUs are used without checking their free memory")
+            return idle[0]
+        gpu = pick_gpu([w.gpu for w in idle], gpus, self.cfg.min_free_vram_gb)
+        if gpu is None:
+            free = ", ".join(
+                f"GPU {w.gpu} {mem.free_gb:.1f} GB" if (mem := find_gpu(gpus, w.gpu)) else f"GPU {w.gpu} not found"
+                for w in idle
+            )
+            self._note(
+                "full",
+                f"waiting for GPU memory: no idle GPU has {self.cfg.min_free_vram_gb:g} GB free (MIN_FREE_VRAM_GB); free: {free}",
+            )
+            return None
+        self._note(None)
+        return next(w for w in idle if w.gpu == gpu)
+
+    def run(self):
+        threading.Thread(target=self.heartbeat_loop, daemon=True).start()
+        for worker in self.workers:
+            try:
+                worker.client.heartbeat(worker.cfg.worker_name, worker.info())
+            except Exception as e:
+                log.warning("backend not reachable yet: %s", e)
+                break
+        log.info(
+            "worker %s idle on GPU %s (models load on demand, GPU untouched); polling %s",
+            self.cfg.worker_id,
+            ", ".join(self.cfg.gpus),
+            self.cfg.server_url,
+        )
+        while not self.stop.is_set():
+            idle = [w for w in self.workers if w.child is None]
+            worker = self.pick(idle) if idle else None
+            if worker is None:
+                self.stop.wait(self.cfg.poll_interval)
+                continue
+            try:
+                job = worker.client.claim()
+            except Exception as e:
+                log.warning("claim failed: %s", e)
+                self.stop.wait(10)
+                continue
+            if not job:
+                self.stop.wait(self.cfg.poll_interval)
+                continue
+            # The GPU is busy from here, so the next pick chooses among the others.
+            worker.start_session(job)
 
     def shutdown(self, signum=None, frame=None):
         log.info("shutting down (signal %s)", signum)
         self.stop.set()
-        if self.child is not None and self.child.is_alive():
-            self.child.terminate()  # SIGTERM: the session reports its job as retryable and exits
+        for worker in self.workers:
+            child = worker.child
+            if child is not None and child.is_alive():
+                child.terminate()  # SIGTERM: the session reports its job as retryable and exits
