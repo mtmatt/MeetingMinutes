@@ -19,3 +19,20 @@ jobs:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
       - run: bun run build
+      # Backend tests use a throwaway data directory and a fake Codex (see bunfig.toml).
+      - run: bun run test
+
+  worker:
+    name: Worker tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: 0.13.5
+      # No `gpu` extra: the tests cover the pipeline with stand-in models, so CI needs no CUDA or torch.
+      - run: uv sync --locked
+      - run: uv run --locked pytest
