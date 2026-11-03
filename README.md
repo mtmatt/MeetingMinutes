@@ -2,6 +2,8 @@
 
 A self-hosted meeting-minutes service. Upload a recording (audio or video). It is transcribed **locally on your own GPUs**, with speaker separation and Taiwan Traditional Chinese output, and then summarised by **Codex**, billed to your ChatGPT plan, using a prompt you choose.
 
+Planned changes, including where transcription will run, are in [docs/ROADMAP.md](docs/ROADMAP.md).
+
 - **Backend**: TypeScript on Bun, with Hono and SQLite (`bun:sqlite`).
 - **Frontend**: React and Vite with a custom design system, in English and 繁體中文, with light and dark themes.
 - **GPU worker**: Python, running Qwen3-ASR-1.7B for recognition and pyannote community-1 for speaker diarization.
