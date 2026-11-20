@@ -87,7 +87,15 @@ function fakeOpenAI() {
       requests.push({ path: url.pathname, body, headers: req.headers });
       if (url.pathname === "/v1/models") return Response.json({ data: [{ id: "Qwen/Qwen3-14B-AWQ", max_model_len: 32768 }] });
       if (url.pathname === "/v1/chat/completions") {
-        if (body.messages.at(-1).content.includes("THINK_FOREVER")) {
+        // A model that thinks although asked not to, and needs more than 10,000 tokens for it.
+        if (body.messages.at(-1).content.includes("THINK_LONG") && body.max_tokens >= 10_000) {
+          const events = [
+            { model: body.model, choices: [{ delta: { reasoning_content: "Thinking. ".repeat(50) } }] },
+            { model: body.model, choices: [{ delta: { content: "# Minutes after thinking" }, finish_reason: "stop" }] },
+          ];
+          return new Response(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
+        }
+        if (/THINK_FOREVER|THINK_LONG/.test(body.messages.at(-1).content)) {
           // A reasoning model that thinks until the answer budget runs out.
           const events = [
             { model: body.model, choices: [{ delta: { reasoning_content: "Let me think about this meeting. ".repeat(50) } }] },
@@ -414,10 +422,22 @@ describe("summaries with a local model", () => {
 
       // Thinking used up the answer budget: say so, rather than "raise the context window".
       await admin.req("PUT", "/api/admin/summarizer", { json: local(vllm.url + "/v1", { api: "openai", model: "Qwen/Qwen3-14B-AWQ", think: false }) });
+      // A model that thinks anyway (GLM on NVIDIA): retried once with the thinking budget, which is then kept.
+      vllm.requests.length = 0;
+      const long = await summarize(admin, id, "THINK_LONG", "en");
+      expect(long.status).toBe("done");
+      expect(long.content).toBe("# Minutes after thinking");
+      const tries = vllm.requests.filter((r) => r.path === "/v1/chat/completions");
+      expect(tries.map((r) => r.body.max_tokens)).toEqual([8192, 16384]);
+      expect(tries.every((r) => r.body.chat_template_kwargs.enable_thinking === false)).toBe(true);
+      vllm.requests.length = 0;
+      expect((await summarize(admin, id, "THINK_LONG", "en")).status).toBe("done");
+      expect(vllm.requests.filter((r) => r.path === "/v1/chat/completions").map((r) => r.body.max_tokens)).toEqual([16384]);
+
+      // Even the larger budget is not enough: say so, rather than "raise the context window" alone.
       const thought = await summarize(admin, id, "THINK_FOREVER", "en");
       expect(thought.status).toBe("failed");
-      expect(thought.error).toContain("mostly on thinking, although thinking is off");
-      expect(vllm.requests.at(-1)!.body.chat_template_kwargs).toEqual({ enable_thinking: false, thinking: false });
+      expect(thought.error).toContain("thinks even with thinking off");
       expect(call.body.max_tokens).toBe(16384);
       const probe = (await (await admin.post("/api/admin/summarizer/probe", { api: "openai", baseUrl: vllm.url, model: "Qwen/Qwen3-14B-AWQ" })).json()) as any;
       expect(probe.status).toMatchObject({ reachable: true, installed: true, contextLength: 32768 });
