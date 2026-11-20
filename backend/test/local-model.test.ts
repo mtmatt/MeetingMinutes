@@ -237,7 +237,7 @@ describe("summaries with a local model", () => {
     const admin = await adminClient();
     const before = (await (await admin.get("/api/admin/summarizer")).json()) as any;
     expect(before.saved).toBe(false);
-    expect(before.defaults.local).toMatchObject({ api: "ollama", baseUrl: "http://127.0.0.1:11434", model: "batiai/qwen3.8-27b:q3" });
+    expect(before.defaults.local).toMatchObject({ api: "ollama", baseUrl: "http://127.0.0.1:11434", model: "batiai/qwen3.8-27b:q3", contextTokens: 65536 });
     expect(JSON.stringify(before)).not.toContain(process.env.LLM_API_KEY!);
 
     const saved = (await (await admin.req("PUT", "/api/admin/summarizer", { json: local(ollama.url + "/") })).json()) as any;
