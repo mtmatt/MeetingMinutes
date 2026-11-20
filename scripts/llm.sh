@@ -2,10 +2,15 @@
 # The local model that writes summaries: Ollama, installed and run as a normal
 # user (no root, no system service).
 #
-#   scripts/llm.sh install        download Ollama into ~/.local/ollama (run again to update)
+#   scripts/llm.sh install        download Ollama into OLLAMA_PREFIX (default ~/.local/ollama; run again to update)
 #   scripts/llm.sh serve          run it in the foreground on LLM_BASE_URL (default 127.0.0.1:11434)
 #   scripts/llm.sh pull [MODEL]   download a model (default: LLM_MODEL from .env)
 #   scripts/llm.sh check          show the server and the model, and ask it for one sentence
+#   scripts/llm.sh where          print where Ollama and the models are
+#
+# OLLAMA_PREFIX (the program, a few GB) and OLLAMA_MODELS (the models, about
+# 13 GB for the default) can be set in .env, e.g. to keep them off a home
+# directory with a quota.
 #
 # The model is loaded onto the GPU only while a summary is being written and
 # released right after (LLM_KEEP_ALIVE_SEC, default 0), so transcription keeps
@@ -24,14 +29,25 @@ setting() {
   if [ -z "$v" ] && [ -f .env ]; then
     v=$(grep -E "^${name}=" .env | tail -n 1 | cut -d= -f2- | sed -e 's/^["'\'']//' -e 's/["'\'']$//' || true)
   fi
-  printf '%s' "${v:-$fallback}"
+  v=${v:-$fallback}
+  # Paths may be written as ~/… or $HOME/… in .env.
+  case "$v" in
+    "~") v=$HOME ;;
+    "~/"*) v=$HOME/${v#\~/} ;;
+    '$HOME' | '${HOME}') v=$HOME ;;
+    '$HOME/'*) v=$HOME/${v#\$HOME/} ;;
+    '${HOME}/'*) v=$HOME/${v#\$\{HOME\}/} ;;
+  esac
+  printf '%s' "$v"
 }
 
 BASE_URL=$(setting LLM_BASE_URL http://127.0.0.1:11434)
 BASE_URL=${BASE_URL%/}
 MODEL=$(setting LLM_MODEL batiai/qwen3.8-27b:q3)
 GPUS=$(setting LLM_GPUS "")
-PREFIX=${OLLAMA_PREFIX:-$HOME/.local/ollama}
+PREFIX=$(setting OLLAMA_PREFIX "$HOME/.local/ollama")
+# Empty: Ollama's own default, ~/.ollama/models.
+MODELS_DIR=$(setting OLLAMA_MODELS "")
 
 say() { printf '\033[1;31m==>\033[0m %s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -123,6 +139,10 @@ serve_env() {
   # Requests say how long to stay loaded; anything else (the CLI) unloads at once.
   export OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-0}
   export CUDA_DEVICE_ORDER=${CUDA_DEVICE_ORDER:-PCI_BUS_ID}
+  if [ -n "$MODELS_DIR" ]; then
+    mkdir -p "$MODELS_DIR"
+    export OLLAMA_MODELS=$MODELS_DIR
+  fi
   if [ -n "$GPUS" ]; then export CUDA_VISIBLE_DEVICES=$GPUS; fi
 }
 
@@ -174,8 +194,14 @@ case "$cmd" in
     curl -fsS "$BASE_URL/api/chat" -d "{\"model\":\"$MODEL\",\"stream\":false,\"keep_alive\":0,\"messages\":[{\"role\":\"user\",\"content\":\"請用一句臺灣繁體中文回答：會議紀錄的重點是什麼？\"}]}" |
       sed -n 's/.*"content":"\([^"]*\)".*/\1/p' | sed 's/\\n/ /g'
     ;;
+  where)
+    bin=$(ollama_bin) || bin="(not installed; scripts/llm.sh install puts it in $PREFIX)"
+    echo "Ollama: $bin"
+    echo "Models: ${MODELS_DIR:-$HOME/.ollama/models}"
+    ollama_bin >/dev/null
+    ;;
   *)
-    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
     ;;
 esac

@@ -237,7 +237,7 @@ describe("summaries with a local model", () => {
     const admin = await adminClient();
     const before = (await (await admin.get("/api/admin/summarizer")).json()) as any;
     expect(before.saved).toBe(false);
-    expect(before.defaults.local).toMatchObject({ api: "ollama", baseUrl: "http://127.0.0.1:11434", model: "batiai/qwen3.8-27b:q3" });
+    expect(before.defaults.local).toMatchObject({ api: "ollama", baseUrl: "http://127.0.0.1:11434", model: "batiai/qwen3.8-27b:q3", contextTokens: 65536 });
     expect(JSON.stringify(before)).not.toContain(process.env.LLM_API_KEY!);
 
     const saved = (await (await admin.req("PUT", "/api/admin/summarizer", { json: local(ollama.url + "/") })).json()) as any;
@@ -418,5 +418,33 @@ describe("summaries with a local model", () => {
     const args = JSON.parse(await Bun.file(process.env.FAKE_CODEX_ARGS_FILE!).text()) as string[];
     expect(args[args.indexOf("--model") + 1]).toBe("gpt-5.1-codex");
     expect(args).toContain('model_reasoning_effort="high"');
+  });
+
+  test("a cloud API entered as Ollama, with its full endpoint pasted, is explained and fixed up", async () => {
+    const api = fakeOpenAI();
+    try {
+      const admin = await adminClient();
+      // What NVIDIA's documentation shows: the whole chat endpoint.
+      const saved = (await (await admin.req("PUT", "/api/admin/summarizer", { json: local(api.url + "/v1/chat/completions", { model: "Qwen/Qwen3-14B-AWQ" }) })).json()) as any;
+      expect(saved.settings.local.baseUrl).toBe(api.url + "/v1");
+      expect(saved.apiKeyConfigured).toBe(true);
+
+      const id = await readyMeeting(admin, SHORT);
+      const wrongType = await summarize(admin, id, "Write minutes.", "en");
+      expect(wrongType.status).toBe("failed");
+      expect(wrongType.error).toContain("does not answer like Ollama");
+      expect(wrongType.error).toContain("OpenAI-compatible");
+      expect(wrongType.error).not.toContain("scripts/llm.sh pull");
+      const probe = (await (await admin.post("/api/admin/summarizer/probe", { api: "ollama", baseUrl: api.url + "/v1", model: "Qwen/Qwen3-14B-AWQ" })).json()) as any;
+      expect(probe.status.error).toContain("does not answer like Ollama");
+
+      await admin.req("PUT", "/api/admin/summarizer", { json: local(api.url + "/v1/chat/completions", { api: "openai", model: "Qwen/Qwen3-14B-AWQ" }) });
+      const ok = await summarize(admin, id, "Write minutes.", "en");
+      expect(ok.status).toBe("done");
+      expect(api.requests.some((r) => r.path === "/v1/chat/completions")).toBe(true);
+      expect(api.requests.some((r) => r.path.includes("/chat/completions/v1"))).toBe(false);
+    } finally {
+      api.server.stop(true);
+    }
   });
 });

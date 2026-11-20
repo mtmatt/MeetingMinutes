@@ -5,8 +5,8 @@ import type { LocalModelSettings } from "./summarySettings";
 /**
  * Summaries written by a local model.
  *
- * A local model has a much smaller context window than Codex (Qwen3: 32K
- * tokens, about two hours of Mandarin), and servers cut an over-long prompt
+ * A local model has a much smaller context window than Codex (64K tokens by
+ * default, about three hours of Mandarin), and servers cut an over-long prompt
  * silently. So the prompt is measured first: a transcript that fits is
  * summarised in one call; a longer one is read in consecutive parts, each
  * turned into detailed notes with their timestamps, and the document is then

@@ -21,7 +21,9 @@ const baseUrl = z
   .string()
   .trim()
   .max(300)
-  .transform((s) => s.replace(/\/+$/, ""))
+  // The address of the server, not of one endpoint: API docs often show the full
+  // chat URL (…/v1/chat/completions, …/api/chat), which people paste as is.
+  .transform((s) => s.replace(/\/+$/, "").replace(/\/(chat\/completions|completions|models|api\/chat|api\/generate)$/i, "").replace(/\/+$/, ""))
   .refine((s) => {
     try {
       const u = new URL(s);

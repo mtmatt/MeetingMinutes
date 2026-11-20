@@ -187,12 +187,14 @@ export const config = {
   llm: {
     api: oneOf("LLM_API", ["ollama", "openai"] as const, "ollama"),
     baseUrl: str("LLM_BASE_URL", "http://127.0.0.1:11434").replace(/\/+$/, ""),
-    // Qwen3.8 27B at 3-bit (Q3_K_M, about 13 GB): fits one 24 GB GPU with a 32K window.
+    // Qwen3.8 27B at 3-bit (Q3_K_M, about 13 GB). Only 16 of its 64 layers keep a
+    // KV cache (the rest are Gated DeltaNet), so a 64K window adds about 2 GB
+    // (8-bit cache) and the whole fits one 24 GB GPU.
     model: str("LLM_MODEL", "batiai/qwen3.8-27b:q3"),
     /** Bearer token for an OpenAI-compatible server that requires one. Never shown in the UI or sent to the browser. */
     apiKey: str("LLM_API_KEY", ""),
     /** Largest context window (prompt + answer) a summary may use; longer transcripts are summarised in parts. */
-    contextTokens: Math.round(num("LLM_CONTEXT_TOKENS", 32768, 4096, 1_048_576)),
+    contextTokens: Math.round(num("LLM_CONTEXT_TOKENS", 65536, 4096, 1_048_576)),
     /** Let reasoning models (Qwen3) think before answering: better on hard material, several times slower. */
     think: bool("LLM_THINK", false),
     /** Ollama only: seconds the model stays in GPU memory after a summary (0 frees it at once, for transcription). */

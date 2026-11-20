@@ -34,7 +34,23 @@ export interface ChatResult {
   truncated: boolean;
 }
 
-export class LlmError extends Error {}
+export class LlmError extends Error {
+  constructor(
+    message: string,
+    /** HTTP status the server answered with, when that is what failed. */
+    readonly status?: number,
+  ) {
+    super(message);
+  }
+}
+
+/** Ollama says "model … not found" in JSON; any other 404 means this is not an Ollama server. */
+function notOllama(s: LocalModelSettings, detail: string): LlmError {
+  return new LlmError(
+    `The server at ${s.baseUrl} does not answer like Ollama (${detail}). If it is an OpenAI-compatible API (vLLM, llama.cpp, NVIDIA, OpenRouter…), choose "OpenAI-compatible" as the server type in Admin → Summary model, with the address ending in /v1.`,
+    404,
+  );
+}
 
 export interface ModelInfo {
   /** The model's own maximum context, when the server reports it. */
@@ -101,7 +117,7 @@ async function getJson<T>(s: LocalModelSettings, url: string, init: { method?: s
   } catch (e) {
     throw unreachable(s, e);
   }
-  if (!res.ok) throw new LlmError(await errorText(res));
+  if (!res.ok) throw new LlmError(await errorText(res), res.status);
   return (await res.json()) as T;
 }
 
@@ -144,7 +160,10 @@ async function chatOllama(s: LocalModelSettings, messages: ChatMessage[], o: Cha
   };
   if (o.sendThink) body.think = s.think;
   const res = await post(s, `${s.baseUrl}/api/chat`, body, o.signal);
-  if (res.status === 404) throw modelMissing(s, await errorText(res));
+  if (res.status === 404) {
+    const detail = await errorText(res);
+    throw /model/i.test(detail) ? modelMissing(s, detail) : notOllama(s, detail);
+  }
   if (!res.ok) throw new LlmError(`The local model server answered: ${await errorText(res)}`);
 
   let text = "";
@@ -236,7 +255,7 @@ export async function modelInfo(s: LocalModelSettings): Promise<ModelInfo> {
     try {
       show = await getJson(s, `${s.baseUrl}/api/show`, { method: "POST", body: { model: s.model } });
     } catch (e) {
-      if (e instanceof LlmError && /not found/i.test(e.message)) throw modelMissing(s, e.message);
+      if (e instanceof LlmError && e.status === 404) throw /model/i.test(e.message) ? modelMissing(s, e.message) : notOllama(s, e.message);
       throw e;
     }
     const ctxKey = Object.keys(show.model_info ?? {}).find((k) => k.endsWith(".context_length"));
@@ -320,7 +339,12 @@ export async function localModelStatus(s: LocalModelSettings): Promise<LocalMode
       status.contextLength = entry?.max_model_len ?? null;
     }
   } catch (e) {
-    status.error = e instanceof Error ? e.message : String(e);
+    status.error =
+      s.api === "ollama" && e instanceof LlmError && e.status === 404 && !/model/i.test(e.message)
+        ? notOllama(s, e.message).message
+        : e instanceof Error
+          ? e.message
+          : String(e);
   }
   return status;
 }
