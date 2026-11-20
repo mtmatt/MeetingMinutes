@@ -1637,6 +1637,101 @@
   color: var(--ink);
   font-weight: 600;
 }
+/* Admin → Summary model */
+.model-admin {
+  display: grid;
+  gap: 24px;
+  max-width: 980px;
+}
+.model-section {
+  display: grid;
+  gap: 14px;
+}
+.model-section-head .system-h {
+  margin-bottom: 4px;
+}
+.model-section-head p {
+  margin: 0;
+  font-size: var(--step--1);
+  max-width: 80ch;
+}
+.model-card {
+  padding: 22px;
+  gap: 18px;
+}
+.model-card .system-h {
+  margin-bottom: 0;
+}
+.model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 20px;
+}
+.model-status {
+  display: grid;
+  gap: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+}
+.model-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.model-status .kv {
+  align-items: center;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+}
+.model-status .kv dd {
+  text-align: left;
+}
+/* A switch inside a field: label and state side by side, not spread apart. */
+.model-grid .field > label.switch {
+  justify-content: flex-start;
+  justify-self: start;
+  align-items: center;
+  font-weight: 400;
+}
+.model-status .callout p {
+  margin: 4px 0 0;
+}
+.model-error {
+  font-size: var(--step--2);
+  overflow-wrap: anywhere;
+}
+.model-installed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.model-pull {
+  display: grid;
+  gap: 6px;
+  max-width: 360px;
+  font-size: var(--step--2);
+}
+.model-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+.model-saved {
+  font-size: var(--step--1);
+}
+.model-switch-note {
+  margin: -10px 0 0;
+}
+@media (max-width: 700px) {
+  .model-grid {
+    grid-template-columns: 1fr;
+  }
+  .model-card {
+    padding: 16px;
+  }
+}
 .admin-hint {
   margin: 0 0 14px;
   font-size: var(--step--1);

@@ -51,7 +51,7 @@ const summaryRequestSchema = z.object({
   outputLanguage: z.enum(["zh-TW", "en", "auto"]).default("zh-TW"),
 });
 
-/** Queued or running summaries one person may have at once (they use the shared Codex quota). */
+/** Queued or running summaries one person may have at once (they share the Codex quota or the local GPU). */
 const MAX_ACTIVE_SUMMARIES = 3;
 
 function owned(c: { get(k: "user"): { id: string } }, id: string): MeetingRow {
@@ -520,7 +520,7 @@ meetingRoutes.post("/:id/summaries", async (c) => {
   if (m.status !== "ready") httpError(409, "The transcript is not ready yet.", "not_ready");
   const input = await body(c, summaryRequestSchema);
   validateTemplate(user.id, input.templateId);
-  // Summaries spend the server's shared Codex quota: a few at a time per person.
+  // Summaries share the Codex quota or the local GPU: a few at a time per person.
   const active =
     db
       .query<{ n: number }, { u: string }>("SELECT COUNT(*) AS n FROM summaries WHERE created_by = $u AND status IN ('queued', 'running')")

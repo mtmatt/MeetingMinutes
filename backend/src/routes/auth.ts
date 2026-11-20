@@ -26,6 +26,7 @@ import {
 import { checkSetupToken, clearSetupToken } from "../auth/setup";
 import { consumeInvite, findInvite } from "../auth/invites";
 import { httpError } from "../lib/util";
+import { publicSummarizerInfo } from "../services/summarySettings";
 import type { AppEnv, SessionRow } from "../types";
 import { body } from "./validate";
 
@@ -71,6 +72,8 @@ authRoutes.get("/state", (c) => {
     uploadLimitBytes: config.maxUploadBytes,
     // Public by design: Google shows it on its consent screen.
     googleClientId: config.googleClientId || null,
+    // Which model writes summaries, so people are told where a transcript goes.
+    summarizer: resolved ? publicSummarizerInfo() : null,
   });
 });
 

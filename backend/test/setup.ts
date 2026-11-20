@@ -14,3 +14,6 @@ chmodSync(fake, 0o755);
 process.env.CODEX_BIN = fake;
 process.env.FAKE_CODEX_ARGS_FILE = join(process.env.DATA_DIR, "codex-args.json");
 process.env.FAKE_CODEX_PROMPT_FILE = join(process.env.DATA_DIR, "codex-prompt.txt");
+// Existing tests exercise Codex (the fake above); local-model tests choose "local" themselves.
+process.env.SUMMARY_PROVIDER = "codex";
+process.env.LLM_API_KEY = "test-llm-key-0123456789abcdef";

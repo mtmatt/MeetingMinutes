@@ -221,4 +221,17 @@ export const migrations: string[] = [
   ALTER TABLE jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'transcribe' CHECK (kind IN ('transcribe', 'voiceprint'));
   ALTER TABLE jobs ADD COLUMN learn INTEGER NOT NULL DEFAULT 0;
   `,
+  // Server-wide settings an administrator changes on the admin page (JSON
+  // values), starting with which model writes summaries. summaries.provider
+  // records which one wrote each summary; everything before this was Codex.
+  `
+  CREATE TABLE settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    updated_by TEXT REFERENCES users(id) ON DELETE SET NULL
+  );
+  ALTER TABLE summaries ADD COLUMN provider TEXT CHECK (provider IN ('local', 'codex'));
+  UPDATE summaries SET provider = 'codex' WHERE status IN ('running', 'done', 'failed');
+  `,
 ];

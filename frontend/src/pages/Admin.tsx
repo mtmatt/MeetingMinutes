@@ -10,6 +10,8 @@ import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { diarizationReason } from "../lib/errors";
 import { bytes, initials, relative, until } from "../lib/format";
+import { useSummaryEngine } from "../lib/summaryEngine";
+import { SummaryModel } from "./AdminSummaryModel";
 
 function CopyLink({ url }: { url: string }) {
   const { t } = useI18n();
@@ -354,6 +356,7 @@ function Invites() {
 
 function System() {
   const { t, locale } = useI18n();
+  const engine = useSummaryEngine();
   const { data, isLoading } = useQuery({ queryKey: ["admin", "system"], queryFn: api.adminSystem, refetchInterval: 10_000 });
   if (isLoading || !data) return <div className="skeleton" style={{ height: 240 }} />;
   const diskUsed = data.disk ? 1 - data.disk.freeBytes / data.disk.totalBytes : 0;
@@ -428,6 +431,11 @@ function System() {
             )}
             <dt>{t("admin.summaryJobs")}</dt>
             <dd className="mono">{t("admin.runningQueued", { running: data.summaries.running, queued: data.summaries.queued })}</dd>
+            <dt>{t("admin.summaryModel")}</dt>
+            <dd>
+              {engine.name}
+              {data.summaries.provider === "local" && <span className="faint"> · {t("admin.summaryModelLocal")}</span>}
+            </dd>
           </dl>
         </section>
         <section className="card system-card">
@@ -476,7 +484,7 @@ function System() {
 
 export function AdminPage() {
   const { t } = useI18n();
-  const [tab, setTab] = useState<"users" | "invites" | "system">("users");
+  const [tab, setTab] = useState<"users" | "invites" | "model" | "system">("users");
   return (
     <div className="admin">
       <div className="page-head">
@@ -491,7 +499,7 @@ export function AdminPage() {
         )}
       </div>
       <div className="tabs admin-tabs" role="tablist">
-        {(["users", "invites", "system"] as const).map((k) => (
+        {(["users", "invites", "model", "system"] as const).map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
             {t(`admin.${k}`)}
           </button>
@@ -500,6 +508,7 @@ export function AdminPage() {
       <div className="admin-body">
         {tab === "users" && <Users />}
         {tab === "invites" && <Invites />}
+        {tab === "model" && <SummaryModel />}
         {tab === "system" && <System />}
       </div>
     </div>

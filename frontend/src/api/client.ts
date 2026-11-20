@@ -1,12 +1,18 @@
 import type {
   AdminUser,
   Invite,
+  LocalModelSettings,
+  LocalModelStatus,
   MeetingDetail,
   MeetingSummary,
+  ModelPull,
   Peaks,
   SessionInfo,
   Summary,
+  SummarizerInfo,
+  SummarizerState,
   SummaryRequest,
+  SummarySettings,
   SystemInfo,
   Template,
   TranscribeOptions,
@@ -73,9 +79,14 @@ const del = <T>(p: string) => request<T>("DELETE", p);
 export const api = {
   // auth
   authState: () =>
-    get<{ needsSetup: boolean; user: User | null; helpContact: string | null; uploadLimitBytes: number | null; googleClientId: string | null }>(
-      "/auth/state",
-    ),
+    get<{
+      needsSetup: boolean;
+      user: User | null;
+      helpContact: string | null;
+      uploadLimitBytes: number | null;
+      googleClientId: string | null;
+      summarizer: SummarizerInfo | null;
+    }>("/auth/state"),
   login: (username: string, password: string) => post<{ user: User }>("/auth/login", { username, password }),
   logout: () => post<{ ok: true }>("/auth/logout"),
   setup: (b: { setupToken: string; username: string; displayName: string; password: string }) =>
@@ -161,6 +172,13 @@ export const api = {
     post<{ url: string; invite: Invite }>("/admin/invites", b),
   adminDeleteInvite: (id: string) => del<{ ok: true }>(`/admin/invites/${id}`),
   adminSystem: () => get<SystemInfo>("/admin/system"),
+  adminSummarizer: () => get<SummarizerState>("/admin/summarizer"),
+  adminSaveSummarizer: (b: SummarySettings) => request<SummarizerState>("PUT", "/admin/summarizer", b),
+  adminResetSummarizer: () => del<SummarizerState>("/admin/summarizer"),
+  /** Look at a model server with the form's values, before they are saved. */
+  adminProbeModel: (b: Pick<LocalModelSettings, "api" | "baseUrl" | "model">) =>
+    post<{ status: LocalModelStatus; pull: ModelPull | null }>("/admin/summarizer/probe", b),
+  adminPullModel: (b: Pick<LocalModelSettings, "api" | "baseUrl" | "model">) => post<{ pull: ModelPull }>("/admin/summarizer/pull", b),
 };
 
 export const mediaUrl = {

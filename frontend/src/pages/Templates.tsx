@@ -8,11 +8,13 @@ import { templateDescription, templateName, useTemplates } from "../components/S
 import { useToast } from "../components/Toast";
 import { useI18n } from "../i18n";
 import { relative } from "../lib/format";
+import { useSummaryEngine } from "../lib/summaryEngine";
 
 type Draft = { id: string | null; name: string; description: string; body: string };
 
 export function TemplatesPage() {
   const { t, tMaybe, locale } = useI18n();
+  const engine = useSummaryEngine();
   const toast = useToast();
   const confirm = useConfirm();
   const qc = useQueryClient();
@@ -154,7 +156,7 @@ export function TemplatesPage() {
                   spellCheck={false}
                   onChange={(e) => setDraft({ ...draft, body: e.target.value })}
                 />
-                <span className="field-hint">{t("upload.promptHint")}</span>
+                <span className="field-hint">{t("upload.promptHint", { engine: engine.name })}</span>
               </div>
               <div className="tpl-actions">
                 {draft.id && (

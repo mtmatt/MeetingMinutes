@@ -56,6 +56,13 @@ function num(name: string, fallback: number, min: number, max: number): number {
   return n;
 }
 
+function oneOf<const T extends readonly string[]>(name: string, allowed: T, fallback: T[number]): T[number] {
+  const v = process.env[name];
+  if (v === undefined || v === "") return fallback;
+  if (!allowed.includes(v)) throw new Error(`Environment variable ${name} must be one of ${allowed.join(", ")}, got "${v}"`);
+  return v;
+}
+
 function absPath(p: string): string {
   return isAbsolute(p) ? p : resolve(REPO_ROOT, p);
 }
@@ -165,6 +172,35 @@ export const config = {
     minSpeechSec: num("VOICE_MIN_SPEECH_SEC", 5, 0, 600),
   },
   frontendDist: absPath(str("FRONTEND_DIST", "frontend/dist")),
+  /**
+   * Which model writes summaries. These are the defaults; an administrator can
+   * change all of them on the admin page (Admin → Summary model), and what is
+   * saved there takes precedence until it is reset.
+   */
+  summary: {
+    provider: oneOf("SUMMARY_PROVIDER", ["local", "codex"] as const, "local"),
+  },
+  /**
+   * A model served on this machine (or the local network): Ollama's own API, or
+   * any OpenAI-compatible server (vLLM, llama.cpp, LM Studio, SGLang).
+   */
+  llm: {
+    api: oneOf("LLM_API", ["ollama", "openai"] as const, "ollama"),
+    baseUrl: str("LLM_BASE_URL", "http://127.0.0.1:11434").replace(/\/+$/, ""),
+    // Qwen3.8 27B at 3-bit (Q3_K_M, about 13 GB): fits one 24 GB GPU with a 32K window.
+    model: str("LLM_MODEL", "batiai/qwen3.8-27b:q3"),
+    /** Bearer token for an OpenAI-compatible server that requires one. Never shown in the UI or sent to the browser. */
+    apiKey: str("LLM_API_KEY", ""),
+    /** Largest context window (prompt + answer) a summary may use; longer transcripts are summarised in parts. */
+    contextTokens: Math.round(num("LLM_CONTEXT_TOKENS", 32768, 4096, 1_048_576)),
+    /** Let reasoning models (Qwen3) think before answering: better on hard material, several times slower. */
+    think: bool("LLM_THINK", false),
+    /** Ollama only: seconds the model stays in GPU memory after a summary (0 frees it at once, for transcription). */
+    keepAliveSec: Math.round(num("LLM_KEEP_ALIVE_SEC", 0, 0, 86_400)),
+    concurrency: Math.max(1, int("LLM_CONCURRENCY", 1)),
+    /** Longest a whole summary may take, including every part of a long transcript. */
+    timeoutSeconds: int("LLM_TIMEOUT_SEC", 3600),
+  },
   codex: {
     bin: resolveCodexBin(),
     home: process.env.CODEX_HOME || undefined,

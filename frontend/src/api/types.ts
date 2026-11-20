@@ -156,6 +156,8 @@ export interface Summary {
   error: string | null;
   model: string | null;
   usage: Record<string, number> | null;
+  /** Which kind of model wrote it; null while queued. */
+  provider: SummaryProvider | null;
   /** Speaker key → the name this summary uses; null until it is written. */
   speakerNames: Record<string, string> | null;
   createdAt: number;
@@ -236,7 +238,7 @@ export interface SystemInfo {
   workers: WorkerInfo[];
   /** Transcriptions; voiceprints are the background voice fingerprint jobs. */
   jobs: { queued: number; running: number; voiceprints?: { queued: number; running: number } };
-  summaries: { running: number; queued: number; concurrency: number };
+  summaries: { running: number; queued: number; concurrency: number; provider: SummaryProvider };
   /** isolationError: summaries are paused because Codex tools cannot be verified as disabled. */
   codex: { available: boolean; loggedIn: boolean; version: string | null; detail: string; isolationError?: string | null };
   disk: { freeBytes: number; totalBytes: number } | null;
@@ -248,4 +250,65 @@ export interface Peaks {
   duration: number;
   pointsPerSecond: number;
   peaks: number[];
+}
+
+export type SummaryProvider = "local" | "codex";
+
+/** Where summaries are written, as shown to everyone who starts one. */
+export interface SummarizerInfo {
+  provider: SummaryProvider;
+  model: string | null;
+  /** A local model on this machine: transcripts never leave the server. */
+  onServer: boolean;
+  /** Host of a model server on another machine. */
+  host: string | null;
+}
+
+export type LocalModelApi = "ollama" | "openai";
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+
+export interface LocalModelSettings {
+  api: LocalModelApi;
+  baseUrl: string;
+  model: string;
+  contextTokens: number;
+  think: boolean;
+  keepAliveSec: number;
+}
+
+export interface SummarySettings {
+  provider: SummaryProvider;
+  local: LocalModelSettings;
+  codex: { model: string | null; reasoningEffort: ReasoningEffort | null };
+}
+
+export interface SummarizerState {
+  settings: SummarySettings;
+  /** What .env says; in force while nothing is saved. */
+  defaults: SummarySettings;
+  saved: boolean;
+  updatedAt: number | null;
+  updatedBy: string | null;
+}
+
+export interface LocalModelStatus {
+  reachable: boolean;
+  server: string | null;
+  models: { name: string; size: number | null; details: string | null }[];
+  installed: boolean;
+  loaded: { sizeBytes: number; vramBytes: number } | null;
+  contextLength: number | null;
+  thinking: boolean | null;
+  error: string | null;
+}
+
+export interface ModelPull {
+  model: string;
+  baseUrl: string;
+  status: string;
+  completed: number | null;
+  total: number | null;
+  done: boolean;
+  error: string | null;
+  startedAt: number;
 }

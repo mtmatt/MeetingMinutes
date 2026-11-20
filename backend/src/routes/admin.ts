@@ -9,7 +9,17 @@ import { db, now } from "../db";
 import { httpError, parseJson } from "../lib/util";
 import { codexStatus } from "../services/codex";
 import { deleteMeeting, queueStats } from "../services/meetings";
-import { summarizerStats } from "../services/summarizer";
+import { kick, summarizerStats } from "../services/summarizer";
+import { LlmError, localModelStatus, pullState, startPull } from "../services/llm";
+import {
+  defaultSummarySettings,
+  localSettingsSchema,
+  resetSummarySettings,
+  saveSummarySettings,
+  summarySettings,
+  summarySettingsMeta,
+  summarySettingsSchema,
+} from "../services/summarySettings";
 import type { AppEnv, MeetingRow, UserRow } from "../types";
 import { body } from "./validate";
 
@@ -197,4 +207,54 @@ adminRoutes.get("/system", async (c) => {
       audioHours: (db.query<{ s: number | null }, []>("SELECT SUM(duration_sec) AS s FROM meetings").get()?.s ?? 0) / 3600,
     },
   });
+});
+
+// ------------------------------------------------------- summary model
+
+function summarizerState() {
+  return { settings: summarySettings(), defaults: defaultSummarySettings(), ...summarySettingsMeta() };
+}
+
+adminRoutes.get("/summarizer", (c) => c.json(summarizerState()));
+
+adminRoutes.put("/summarizer", async (c) => {
+  const input = await body(c, summarySettingsSchema);
+  saveSummarySettings(input, c.get("user").id);
+  // A higher concurrency, or a model that is now available, can start waiting summaries.
+  kick();
+  return c.json(summarizerState());
+});
+
+// Back to the .env defaults.
+adminRoutes.delete("/summarizer", (c) => {
+  resetSummarySettings();
+  kick();
+  return c.json(summarizerState());
+});
+
+/** The server to look at: the form's values, so a setting can be checked before it is saved. */
+const probeSchema = localSettingsSchema.pick({ api: true, baseUrl: true, model: true });
+
+function probeTarget(input: { api: "ollama" | "openai"; baseUrl: string; model: string }) {
+  return { ...summarySettings().local, ...input };
+}
+
+adminRoutes.post("/summarizer/probe", async (c) => {
+  const input = await body(c, probeSchema);
+  const target = probeTarget(input);
+  const pull = pullState();
+  return c.json({
+    status: await localModelStatus(target),
+    pull: pull && pull.baseUrl === target.baseUrl ? pull : null,
+  });
+});
+
+adminRoutes.post("/summarizer/pull", async (c) => {
+  const input = await body(c, probeSchema);
+  try {
+    return c.json({ pull: startPull(probeTarget(input)) }, 202);
+  } catch (e) {
+    if (e instanceof LlmError) httpError(409, e.message, "cannot_pull");
+    throw e;
+  }
 });
