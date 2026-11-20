@@ -119,7 +119,7 @@ export function SummaryModel() {
       </section>
 
       {form.provider === "local" ? (
-        <LocalModelForm value={form.local} onChange={setLocal} />
+        <LocalModelForm value={form.local} onChange={setLocal} apiKeyConfigured={data.apiKeyConfigured} />
       ) : (
         <section className="model-section card model-card">
           <h3 className="system-h">
@@ -201,7 +201,15 @@ export function SummaryModel() {
   );
 }
 
-function LocalModelForm({ value, onChange }: { value: LocalModelSettings; onChange: (patch: Partial<LocalModelSettings>) => void }) {
+function LocalModelForm({
+  value,
+  onChange,
+  apiKeyConfigured,
+}: {
+  value: LocalModelSettings;
+  onChange: (patch: Partial<LocalModelSettings>) => void;
+  apiKeyConfigured: boolean;
+}) {
   const { t } = useI18n();
   const toast = useToast();
   const target = useDebounced({ api: value.api, baseUrl: value.baseUrl.trim(), model: value.model.trim() }, 600);
@@ -270,7 +278,11 @@ function LocalModelForm({ value, onChange }: { value: LocalModelSettings; onChan
               {t("model.openai")}
             </button>
           </div>
-          <span className="field-hint">{value.api === "ollama" ? t("model.ollamaHint") : t("model.openaiHint")}</span>
+          <span className="field-hint">
+            {value.api === "ollama"
+              ? t("model.ollamaHint")
+              : `${t("model.openaiHint")} ${apiKeyConfigured ? t("model.apiKeySet") : t("model.apiKeyUnset")}`}
+          </span>
         </div>
         <div className="field">
           <label htmlFor="llm-url">{t("model.baseUrl")}</label>
@@ -286,6 +298,11 @@ function LocalModelForm({ value, onChange }: { value: LocalModelSettings; onChan
           <span className="field-hint">
             {validUrl(value.baseUrl) && !isLoopback(value.baseUrl) ? t("model.baseUrlRemote", { host: new URL(value.baseUrl.trim()).host }) : t("model.baseUrlHint")}
           </span>
+          {/* A cloud API entered while "Ollama" is selected: the usual mix-up. */}
+          {value.api === "ollama" && /^https:/i.test(value.baseUrl.trim()) && !isLoopback(value.baseUrl) && (
+            <span className="field-error">{t("model.looksOpenAI")}</span>
+          )}
+          {/\/(chat\/completions|api\/chat)\/?$/i.test(value.baseUrl.trim()) && <span className="field-hint">{t("model.endpointStripped")}</span>}
         </div>
         <div className="field">
           <label htmlFor="llm-model">{t("model.model")}</label>

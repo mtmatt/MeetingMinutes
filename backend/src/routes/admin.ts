@@ -212,7 +212,13 @@ adminRoutes.get("/system", async (c) => {
 // ------------------------------------------------------- summary model
 
 function summarizerState() {
-  return { settings: summarySettings(), defaults: defaultSummarySettings(), ...summarySettingsMeta() };
+  return {
+    settings: summarySettings(),
+    defaults: defaultSummarySettings(),
+    ...summarySettingsMeta(),
+    // Whether LLM_API_KEY is set (never the key itself), for OpenAI-compatible servers that need one.
+    apiKeyConfigured: config.llm.apiKey !== "",
+  };
 }
 
 adminRoutes.get("/summarizer", (c) => c.json(summarizerState()));

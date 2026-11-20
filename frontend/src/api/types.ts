@@ -289,6 +289,8 @@ export interface SummarizerState {
   saved: boolean;
   updatedAt: number | null;
   updatedBy: string | null;
+  /** LLM_API_KEY is set in .env (the key itself never reaches the browser). */
+  apiKeyConfigured: boolean;
 }
 
 export interface LocalModelStatus {
