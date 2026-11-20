@@ -141,6 +141,8 @@ scripts/llm.sh check            # confirm the server, the model, and a one-sente
 
 **Ollama is reachable from this machine only.** It has no authentication, so `scripts/llm.sh` always binds it to `127.0.0.1` (the port from `LLM_BASE_URL`, default 11434) and refuses to start if `OLLAMA_HOST` names any other address, such as `0.0.0.0`. Browsers never talk to it either: only the web server does, so the web server's port stays the only one to open in the firewall. `scripts/llm.sh check` confirms the listening socket is loopback only, and warns if an Ollama started some other way is open to the network.
 
+Ollama goes in `~/.local/ollama` and the models in `~/.ollama/models` unless `.env` says otherwise: `OLLAMA_PREFIX` and `OLLAMA_MODELS` move them, for example off a home directory with a disk quota (`scripts/llm.sh where` shows where they are).
+
 `serve` turns on flash attention and an 8-bit KV cache (half the memory for long transcripts) and keeps one model loaded at a time. An Ollama you installed another way is used if it is on `PATH`. For vLLM or another OpenAI-compatible server, choose **OpenAI-compatible** and give its address (with or without `/v1`) and the model name it serves; an API key, if it needs one, goes in `LLM_API_KEY` and is never shown in the browser.
 
 ## Requirements

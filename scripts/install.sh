@@ -58,21 +58,22 @@ EXTRAS=()
 uv sync "${EXTRAS[@]}"
 cd "$ROOT"
 
-if [ "$LLM" = 1 ]; then
-  if [ -x "$HOME/.local/ollama/bin/ollama" ] || command -v ollama >/dev/null 2>&1; then
-    say "Ollama is already installed (run scripts/llm.sh install to update it)"
-  else
-    say "Installing Ollama into ~/.local/ollama, for summaries"
-    scripts/llm.sh install || echo "warning: Ollama could not be installed; see scripts/llm.sh, or choose Codex in Admin → Summary model" >&2
-  fi
-fi
-
 if [ ! -f .env ]; then
   say "Creating .env"
   cp .env.example .env
   chmod 600 .env
   TOKEN=$(head -c 32 /dev/urandom | base64 | tr -d '/+=\n' | head -c 43)
   sed -i "s/^WORKER_TOKEN=.*/WORKER_TOKEN=$TOKEN/" .env
+fi
+
+# After .env exists: it may say where Ollama goes (OLLAMA_PREFIX).
+if [ "$LLM" = 1 ]; then
+  if scripts/llm.sh where >/dev/null 2>&1; then
+    say "Ollama is already installed (run scripts/llm.sh install to update it)"
+  else
+    say "Installing Ollama, for summaries"
+    scripts/llm.sh install || echo "warning: Ollama could not be installed; see scripts/llm.sh, or choose Codex in Admin → Summary model" >&2
+  fi
 fi
 
 cat <<MSG
