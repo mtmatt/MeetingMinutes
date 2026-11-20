@@ -39,8 +39,9 @@ export function estimateTokens(text: string): number {
 
 /** How a context window is shared between the prompt and the answer. */
 export function contextBudget(contextTokens: number, think: boolean): { answer: number; input: number } {
-  // Thinking spends tokens before the answer starts, so it needs more room.
-  const answer = Math.min(think ? 16384 : 8192, Math.floor(contextTokens * (think ? 0.5 : 0.35)));
+  // A quarter of the window for the answer (8K of 32K, 16K of 64K), half when
+  // the model thinks first, since thinking is spent before the answer starts.
+  const answer = think ? Math.min(32768, Math.floor(contextTokens * 0.5)) : Math.min(16384, Math.max(2048, Math.floor(contextTokens * 0.25)));
   return { answer, input: contextTokens - answer };
 }
 
@@ -210,8 +211,17 @@ export async function summarizeLocally(p: SummaryPromptParts, s: LocalModelSetti
   const r = await call([sys, { role: "user", content: finalUser }], true);
   const text = cleanModelOutput(r.text);
   if (r.truncated) {
+    const limit = `${answer.toLocaleString("en-US")} tokens`;
+    if (r.stoppedInReasoning || r.reasoningChars > r.text.length) {
+      // The budget went to thinking: either it is on, or the model thinks even when asked not to.
+      throw new LlmError(
+        s.think
+          ? `The model used its whole answer budget (${limit}) mostly on thinking, before finishing the summary. Turn thinking off in Admin → Summary model, or raise the context window (the answer gets half of it).`
+          : `The model used its whole answer budget (${limit}) mostly on thinking, although thinking is off: this model (${model}) seems to think regardless. Choose its non-thinking variant, or raise the context window (the answer gets a quarter of it).`,
+      );
+    }
     throw new LlmError(
-      `The model stopped before finishing: the answer reached its length limit (${answer.toLocaleString("en-US")} tokens${s.think ? ", thinking included" : ""}). Raise the context window${s.think ? " or turn thinking off" : ""} in Admin → Summary model.`,
+      `The model stopped before finishing: the summary reached its length limit (${limit}), which usually means it started repeating itself. Try again, or raise the context window in Admin → Summary model (the answer gets a quarter of it).`,
     );
   }
   if (!text) throw new LlmError("The local model returned an empty answer.");
