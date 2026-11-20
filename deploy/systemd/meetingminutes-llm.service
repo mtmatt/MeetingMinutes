@@ -1,0 +1,12 @@
+[Unit]
+Description=MeetingMinutes local summary model (Ollama)
+Before=meetingminutes.service
+
+[Service]
+WorkingDirectory=%h/MeetingMinutes
+ExecStart=%h/MeetingMinutes/scripts/llm.sh serve
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

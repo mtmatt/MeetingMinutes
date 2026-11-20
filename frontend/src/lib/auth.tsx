@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, type ReactNode } from "react";
 import { api, setUnauthorizedHandler } from "../api/client";
-import type { User } from "../api/types";
+import type { SummarizerInfo, User } from "../api/types";
 import { useI18n } from "../i18n";
 
 interface AuthValue {
@@ -14,11 +14,13 @@ interface AuthValue {
   uploadLimitBytes: number | null;
   /** Google OAuth client ID (GOOGLE_CLIENT_ID) for exporting straight to Google Docs; null when not set up. */
   googleClientId: string | null;
+  /** Which model writes summaries (and so where a transcript goes); null until signed in. */
+  summarizer: SummarizerInfo | null;
   setUser: (u: User | null) => void;
 }
 
 type AuthState = Awaited<ReturnType<typeof api.authState>>;
-const emptyState: AuthState = { needsSetup: false, user: null, helpContact: null, uploadLimitBytes: null, googleClientId: null };
+const emptyState: AuthState = { needsSetup: false, user: null, helpContact: null, uploadLimitBytes: null, googleClientId: null, summarizer: null };
 
 const AuthContext = createContext<AuthValue | null>(null);
 
@@ -45,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     helpContact: q.data?.helpContact ?? null,
     uploadLimitBytes: q.data?.uploadLimitBytes ?? null,
     googleClientId: q.data?.googleClientId ?? null,
+    summarizer: q.data?.summarizer ?? null,
     setUser: (u) => {
       qc.setQueryData(["auth"], (old: AuthState | undefined) => ({ ...emptyState, ...old, needsSetup: false, user: u }));
       if (!u) qc.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });

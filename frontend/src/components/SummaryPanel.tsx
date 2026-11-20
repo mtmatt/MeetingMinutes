@@ -16,6 +16,7 @@ import { Menu } from "./Menu";
 import { Modal, useConfirm } from "./Modal";
 import { DataFlowNote, SummaryComposer, defaultOutputLanguage, normalizeRequest, templateName, useTemplates } from "./SummaryComposer";
 import { useToast } from "./Toast";
+import { useSummaryEngine } from "../lib/summaryEngine";
 
 /**
  * A clickable [hh:mm:ss]. Hovering or focusing it shows who spoke at that
@@ -208,6 +209,7 @@ function StaleNames({ summary, meeting }: { summary: Summary; meeting: MeetingDe
 
 function Writing({ summary, onCancel }: { summary: Summary; onCancel: () => void }) {
   const { t } = useI18n();
+  const engine = useSummaryEngine();
   const running = summary.status === "running";
   return (
     <div className="writing">
@@ -216,7 +218,7 @@ function Writing({ summary, onCancel }: { summary: Summary; onCancel: () => void
           <Sparkles />
         </span>
         <div>
-          <div className="writing-title">{running ? t("summary.running") : t("summary.queued")}</div>
+          <div className="writing-title">{running ? t("summary.running", { engine: engine.name }) : t("summary.queued")}</div>
           {running && summary.startedAt && (
             <div className="faint" style={{ fontSize: "var(--step--1)" }}>
               <Elapsed since={summary.startedAt} />
@@ -238,6 +240,7 @@ function Writing({ summary, onCancel }: { summary: Summary; onCancel: () => void
 
 
 export function Composer({ meeting, onClose, initial }: { meeting: MeetingDetail; onClose: () => void; initial?: SummaryRequest }) {
+  const engine = useSummaryEngine();
   const { t, locale } = useI18n();
   const toast = useToast();
   const qc = useQueryClient();
@@ -276,7 +279,7 @@ export function Composer({ meeting, onClose, initial }: { meeting: MeetingDetail
         </>
       }
     >
-      <p className="composer-note">{meeting.summaries.length ? t("summary.regenerateNote") : t("summary.firstNote")}</p>
+      <p className="composer-note">{t(meeting.summaries.length ? "summary.regenerateNote" : "summary.firstNote", { engine: engine.name })}</p>
       <SummaryComposer value={value} onChange={setValue} />
       <DataFlowNote />
     </Modal>
@@ -417,6 +420,7 @@ export function SummaryExportItems({
 }
 
 export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; selection: SummarySelection }) {
+  const engine = useSummaryEngine();
   const { t, locale } = useI18n();
   const toast = useToast();
   const confirm = useConfirm();
@@ -463,7 +467,7 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
           <Sparkles />
         </span>
         <h3>{t("summary.none")}</h3>
-        <p>{t("summary.noneBody")}</p>
+        <p>{t("summary.noneBody", { engine: engine.name })}</p>
         <button className="btn btn-primary" onClick={() => setComposer(null)}>
           <Sparkles /> {t("summary.generate")}
         </button>

@@ -2,8 +2,9 @@
 # Install MeetingMinutes without root: Bun and uv go to your home directory,
 # everything else stays inside this repository.
 #
-#   scripts/install.sh            backend + frontend + GPU worker
-#   scripts/install.sh --no-gpu   skip the worker's GPU dependencies (web host only)
+#   scripts/install.sh            backend + frontend + GPU worker + Ollama (summary model)
+#   scripts/install.sh --no-gpu   skip the worker's GPU dependencies and Ollama (web host only)
+#   scripts/install.sh --no-llm   skip Ollama (summaries by Codex, or a model server elsewhere)
 #   scripts/install.sh --vllm     also install the vLLM backend for faster ASR
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -11,9 +12,11 @@ ROOT=$PWD
 
 GPU=1
 VLLM=0
+LLM=1
 for arg in "$@"; do
   case "$arg" in
-    --no-gpu) GPU=0 ;;
+    --no-gpu) GPU=0; LLM=0 ;;
+    --no-llm) LLM=0 ;;
     --vllm) VLLM=1 ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
@@ -55,6 +58,15 @@ EXTRAS=()
 uv sync "${EXTRAS[@]}"
 cd "$ROOT"
 
+if [ "$LLM" = 1 ]; then
+  if [ -x "$HOME/.local/ollama/bin/ollama" ] || command -v ollama >/dev/null 2>&1; then
+    say "Ollama is already installed (run scripts/llm.sh install to update it)"
+  else
+    say "Installing Ollama into ~/.local/ollama, for summaries"
+    scripts/llm.sh install || echo "warning: Ollama could not be installed; see scripts/llm.sh, or choose Codex in Admin → Summary model" >&2
+  fi
+fi
+
 if [ ! -f .env ]; then
   say "Creating .env"
   cp .env.example .env
@@ -67,9 +79,12 @@ cat <<MSG
 
 Installed. Next steps:
   1. Edit .env: set PUBLIC_URL, and HF_TOKEN for speaker diarization.
-  2. Sign Codex in with your ChatGPT account:   bun run codex:login
+  2. Summaries are written by a local model (Qwen3.8 27B, about 13 GB):
+       start it:                                  scripts/llm.sh serve
+       download the model (once):                 scripts/llm.sh pull
+     Or use Codex instead (Admin → Summary model): bun run codex:login
   3. Start the web server:                        scripts/start.sh
   4. Start the GPU worker(s):                     scripts/worker.sh
   5. Open the site and create the admin account with the setup token printed by step 3.
-  Optional: download the models ahead of time:    scripts/worker.sh check
+  Optional: download the speech models ahead of time: scripts/worker.sh check
 MSG

@@ -111,7 +111,7 @@ function serverSecrets(): string[] {
     if (typeof v === "string" && v.trim().length >= 16) secrets.add(v.trim());
   };
   add(config.workerToken);
-  for (const k of ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "OPENAI_API_KEY", "CODEX_API_KEY"]) add(process.env[k]);
+  for (const k of ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "OPENAI_API_KEY", "CODEX_API_KEY", "LLM_API_KEY"]) add(process.env[k]);
   // Codex's own login (ChatGPT tokens or API key).
   const authFile = join(config.codex.home ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "auth.json");
   try {
@@ -132,7 +132,13 @@ export function containsSecret(text: string, secrets = serverSecrets()): boolean
   return secrets.some((s) => text.includes(s));
 }
 
-export async function buildCodexArgs(workdir: string, outFile: string): Promise<string[]> {
+/** Model choices an administrator made on the admin page; they take precedence over CODEX_MODEL / CODEX_REASONING_EFFORT. */
+export interface CodexModelChoice {
+  model?: string | null;
+  reasoningEffort?: string | null;
+}
+
+export async function buildCodexArgs(workdir: string, outFile: string, choice: CodexModelChoice = {}): Promise<string[]> {
   const args = [
     "exec",
     "--skip-git-repo-check",
@@ -154,8 +160,10 @@ export async function buildCodexArgs(workdir: string, outFile: string): Promise<
     if (stage && !stage.includes("removed")) args.push("--disable", f);
   }
   args.push("-c", 'web_search="disabled"');
-  if (config.codex.model) args.push("--model", config.codex.model);
-  if (config.codex.reasoningEffort) args.push("-c", `model_reasoning_effort="${config.codex.reasoningEffort}"`);
+  const model = choice.model ?? config.codex.model;
+  const effort = choice.reasoningEffort ?? config.codex.reasoningEffort;
+  if (model) args.push("--model", model);
+  if (effort) args.push("-c", `model_reasoning_effort="${effort}"`);
   args.push("-");
   return args;
 }
@@ -166,13 +174,16 @@ export async function buildCodexArgs(workdir: string, outFile: string): Promise<
  * read-only sandbox and tool features disabled, so it behaves like a plain
  * model call billed against the server's ChatGPT/Codex plan.
  */
-export async function runCodex(prompt: string, opts: { signal?: AbortSignal; onEvent?: (e: any) => void } = {}): Promise<CodexResult> {
+export async function runCodex(
+  prompt: string,
+  opts: { signal?: AbortSignal; onEvent?: (e: any) => void; choice?: CodexModelChoice } = {},
+): Promise<CodexResult> {
   const features = await codexFeatures();
   if (features.isolationError) throw new CodexError(`Summaries are paused: ${features.isolationError}`);
   const workdir = await mkdtemp(join(tmpdir(), "mm-codex-"));
   const outFile = join(workdir, "..", `${workdir.split("/").pop()}.out.md`);
   try {
-    const args = await buildCodexArgs(workdir, outFile);
+    const args = await buildCodexArgs(workdir, outFile, opts.choice);
     const proc = Bun.spawn([config.codex.bin, ...args], {
       cwd: workdir,
       env: codexEnv(),
@@ -191,7 +202,7 @@ export async function runCodex(prompt: string, opts: { signal?: AbortSignal; onE
     await proc.stdin.end();
 
     let usage: Record<string, number> | null = null;
-    let model: string | null = config.codex.model ?? null;
+    let model: string | null = opts.choice?.model ?? config.codex.model ?? null;
     let lastError: string | null = null;
     let agentText: string | null = null;
     /** Set when codex started using a tool; the run is stopped at once. */

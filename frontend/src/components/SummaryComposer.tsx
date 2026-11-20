@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { OutputLanguage, SummaryRequest, Template } from "../api/types";
 import { useI18n } from "../i18n";
+import { useSummaryEngine } from "../lib/summaryEngine";
 
 export function useTemplates() {
   return useQuery({ queryKey: ["templates"], queryFn: api.templates, staleTime: 60_000 });
@@ -35,6 +36,10 @@ export function normalizeRequest(req: SummaryRequest, templates: Template[]): Su
 /** Where meeting data goes: shown wherever a summary can be started. */
 export function DataFlowNote() {
   const { t } = useI18n();
+  const { name, info } = useSummaryEngine();
+  // Codex sends the transcript to OpenAI; a local model keeps it on this server (or the one the admin named).
+  const where = info?.provider === "local" ? (info.onServer ? "Local" : "Remote") : "";
+  const vars = { engine: name, host: info?.host ?? "" };
   return (
     <div className="dataflow">
       <ShieldCheck />
@@ -42,11 +47,11 @@ export function DataFlowNote() {
         <strong>{t("privacy.title")}</strong>
         <ul>
           <li>{t("privacy.asr")}</li>
-          <li>{t("privacy.summary")}</li>
+          <li>{t(`privacy.summary${where}`, vars)}</li>
         </ul>
         <details>
           <summary>{t("privacy.more")}</summary>
-          <p>{t("privacy.details")}</p>
+          <p>{t(`privacy.details${where}`, vars)}</p>
         </details>
       </div>
     </div>
@@ -56,6 +61,7 @@ export function DataFlowNote() {
 /** Template chooser, optional prompt customisation, output language. Controlled. */
 export function SummaryComposer({ value, onChange }: { value: SummaryRequest; onChange: (v: SummaryRequest) => void }) {
   const { t, tMaybe } = useI18n();
+  const engineLabel = useSummaryEngine().name;
   const { data } = useTemplates();
   const templates = data?.templates ?? [];
   const selected = templates.find((x) => x.id === value.templateId) ?? null;
@@ -125,7 +131,7 @@ export function SummaryComposer({ value, onChange }: { value: SummaryRequest; on
               aria-label={t("upload.prompt")}
             />
             <div className="disclosure-foot">
-              <span className="field-hint">{t("upload.promptHint")}</span>
+              <span className="field-hint">{t("upload.promptHint", { engine: engineLabel })}</span>
               {modified && selected && (
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => pick(selected)}>
                   <RotateCcw /> {t("upload.resetPrompt")}
