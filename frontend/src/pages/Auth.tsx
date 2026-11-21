@@ -203,6 +203,9 @@ function NewAccountFields({
   showIdentity?: boolean;
 }) {
   const { t } = useI18n();
+  // The rule is shown only once a too-short password has been left (or confirmed).
+  const [leftPassword, setLeftPassword] = useState(false);
+  const tooShort = password.length > 0 && password.length < 10 && (leftPassword || confirm.length > 0);
   return (
     <>
       {showIdentity && (
@@ -235,9 +238,16 @@ function NewAccountFields({
           minLength={10}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          onBlur={() => setLeftPassword(true)}
+          aria-invalid={tooShort || undefined}
+          aria-describedby={tooShort ? "password-rule" : undefined}
           required
         />
-        <span className="field-hint">{t("auth.passwordHint")}</span>
+        {tooShort && (
+          <span id="password-rule" className="field-error">
+            {t("apiError.weakPassword")}
+          </span>
+        )}
       </div>
       <div className="field">
         <label htmlFor="confirm">{t("auth.confirmPassword")}</label>

@@ -315,7 +315,6 @@ export function VoicesPage() {
     <div className="settings voices-page">
       <div className="page-head">
         <div>
-          <div className="smallcaps eyebrow">{t("voices.eyebrow")}</div>
           <h1>{t("voices.title")}</h1>
           <p className="lede">{t("voices.lede")}</p>
         </div>

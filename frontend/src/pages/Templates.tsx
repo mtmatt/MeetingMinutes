@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Copy, Lock, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { Template } from "../api/types";
 import { useConfirm } from "../components/Modal";
@@ -28,9 +28,17 @@ export function TemplatesPage() {
 
   const selected = templates.find((x) => x.id === selectedId) ?? null;
 
+  // Show the first template until one is chosen, but not while a new one
+  // (from "New template" or "Duplicate") is being written.
+  const writingNew = draft !== null && draft.id === null;
   useEffect(() => {
-    if (!selectedId && templates.length) setSelectedId(templates[0]!.id);
-  }, [templates, selectedId]);
+    if (!selectedId && !writingNew && templates.length) setSelectedId(templates[0]!.id);
+  }, [templates, selectedId, writingNew]);
+
+  const nameRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (writingNew) nameRef.current?.focus();
+  }, [writingNew]);
 
   useEffect(() => {
     if (selected && !selected.builtin) {
@@ -103,7 +111,6 @@ export function TemplatesPage() {
     <div className="templates">
       <div className="page-head">
         <div>
-          <div className="smallcaps eyebrow">{t("nav.templates")}</div>
           <h1>{t("templates.title")}</h1>
           <p className="lede">{t("templates.lede")}</p>
         </div>
@@ -132,7 +139,7 @@ export function TemplatesPage() {
             <>
               <div className="field">
                 <label htmlFor="tpl-name">{t("templates.name")}</label>
-                <input id="tpl-name" className="input input-title" value={draft.name} maxLength={80} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+                <input ref={nameRef} id="tpl-name" className="input input-title" value={draft.name} maxLength={80} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
               </div>
               <div className="field">
                 <label htmlFor="tpl-desc">
