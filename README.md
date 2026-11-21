@@ -220,7 +220,14 @@ GPU workers on the same machine connect to a separate plain-HTTP port, `INTERNAL
 
 - **Accept the warning.** Each person clicks through the warning once, after checking that the SHA-256 fingerprint shown by the browser matches the one `make-cert.sh` printed. Recording works either way.
 
-**Publicly trusted certificate instead.** If the server has a domain name, a public certificate avoids the warning altogether. [acme.sh](https://github.com/acmesh-official/acme.sh) can issue one without root, using a DNS challenge (`--dns`), so no port 80 is needed. Point `TLS_CERT_FILE` / `TLS_KEY_FILE` at its output and restart the server after each renewal (acme.sh `--reloadcmd`). Let's Encrypt also issues certificates for bare IP addresses, but they last only about six days and must be validated on port 80 or 443, which normally needs privileges.
+**Publicly trusted certificate instead.** If the server has a domain name, a public certificate avoids the warning altogether. [acme.sh](https://github.com/acmesh-official/acme.sh) can issue one without root, using a DNS challenge (`--dns`), so no port 80 is needed. Issue it, then install it with `scripts/install-cert.sh`. That puts it in `data/tls/` and has every renewal restart the web server:
+
+  ```bash
+  ~/.acme.sh/acme.sh --issue --dns dns_cf -d minutes.example.com   # Cloudflare; other DNS providers have their own dns_* name
+  scripts/install-cert.sh minutes.example.com
+  ```
+
+  Then set `PUBLIC_URL=https://minutes.example.com:8443` (the `TLS_*` lines stay as above). acme.sh renews the certificate from its daily cron job and runs `scripts/restart.sh web` afterwards. `scripts/restart.sh` restarts the server in tmux sessions (`mm-web`, `mm-worker`); `web` or `worker` restarts one of them. Let's Encrypt also issues certificates for bare IP addresses, but they last only about six days and must be validated on port 80 or 443, which normally needs privileges.
 
 If the machine runs a firewall, the chosen port (8443 above) has to be open.
 
