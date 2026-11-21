@@ -1,14 +1,31 @@
 #!/usr/bin/env bash
-set -e
+# Restart MeetingMinutes in the background, in tmux sessions that survive logout.
+#
+#   scripts/restart.sh          # web server and GPU worker
+#   scripts/restart.sh web      # web server only (e.g. after a new TLS certificate)
+#   scripts/restart.sh worker   # GPU worker only
+#
+# Watch them with `tmux attach -t mm-web` / `tmux attach -t mm-worker`
+# (detach again with Ctrl-b d).
+set -euo pipefail
 
-PROJECT_DIR="/home/student/12/b12902033/tmp/MeetingMinutes"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+command -v tmux >/dev/null || { echo "tmux is required" >&2; exit 1; }
 
-# 重啟主服務 (8443)
-tmux kill-session -t mm-web 2>/dev/null || true
-tmux new-session -d -s mm-web -c "$PROJECT_DIR" "bash scripts/start.sh"
+restart() { # <session> <script>
+  tmux kill-session -t "$1" 2>/dev/null || true
+  tmux new-session -d -s "$1" -c "$PROJECT_DIR" "bash $2"
+  echo "Restarted $1 (tmux attach -t $1)"
+}
 
-# 重啟 Worker（如果 worker 不吃 TLS 憑證，其實這段也可以不重啟，看你需求）
-tmux kill-session -t mm-worker 2>/dev/null || true
-tmux new-session -d -s mm-worker -c "$PROJECT_DIR" "bash scripts/worker.sh"
-
-echo "MeetingMinutes restarted in tmux (mm-web, mm-worker)."
+what="${1:-all}"
+case "$what" in
+  web) restart mm-web scripts/start.sh ;;
+  worker) restart mm-worker scripts/worker.sh ;;
+  all)
+    restart mm-web scripts/start.sh
+    # The worker does not use the TLS certificate; it is restarted here so code updates reach it too.
+    restart mm-worker scripts/worker.sh
+    ;;
+  *) echo "usage: scripts/restart.sh [all|web|worker]" >&2; exit 2 ;;
+esac
