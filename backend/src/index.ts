@@ -45,6 +45,9 @@ kick();
 const scheme = config.tls ? "https" : "http";
 const url = `${scheme}://${config.host === "0.0.0.0" ? "localhost" : config.host}:${server.port}`;
 console.log(`MeetingMinutes backend listening on ${url}${config.publicUrl ? ` (public URL ${config.publicUrl})` : ""}`);
+if (config.allowedHosts.length) {
+  console.log(`Answering only to: ${config.allowedHosts.join(", ")} (and localhost from this machine); other hosts get 421`);
+}
 if (internal) console.log(`Worker API on http://127.0.0.1:${internal.port} (loopback only)`);
 const loopback = ["127.0.0.1", "localhost", "::1"].includes(config.host);
 if (config.tls && config.trustProxy) {

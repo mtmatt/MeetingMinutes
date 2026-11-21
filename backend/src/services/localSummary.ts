@@ -39,8 +39,9 @@ export function estimateTokens(text: string): number {
 
 /** How a context window is shared between the prompt and the answer. */
 export function contextBudget(contextTokens: number, think: boolean): { answer: number; input: number } {
-  // Thinking spends tokens before the answer starts, so it needs more room.
-  const answer = Math.min(think ? 16384 : 8192, Math.floor(contextTokens * (think ? 0.5 : 0.35)));
+  // A quarter of the window for the answer (8K of 32K, 16K of 64K), half when
+  // the model thinks first, since thinking is spent before the answer starts.
+  const answer = think ? Math.min(32768, Math.floor(contextTokens * 0.5)) : Math.min(16384, Math.max(2048, Math.floor(contextTokens * 0.25)));
   return { answer, input: contextTokens - answer };
 }
 
@@ -120,11 +121,33 @@ export interface LocalSummaryOptions {
   onProgress?: (done: number, total: number) => void;
 }
 
+/**
+ * Models found to think although asked not to (some hosted models ignore every
+ * switch), by server and name. They get the thinking budget from then on.
+ */
+const thinksAnyway = new Set<string>();
+const modelKey = (s: LocalModelSettings) => `${s.api} ${s.baseUrl} ${s.model}`;
+
+/** The answer budget went to thinking that was not asked for: worth one more try with the thinking budget. */
+class ThinksAnyway extends Error {}
+
 export async function summarizeLocally(p: SummaryPromptParts, s: LocalModelSettings, opts: LocalSummaryOptions): Promise<LocalSummaryResult> {
+  const key = modelKey(s);
+  try {
+    return await summarizeWith(p, s, opts, s.think || thinksAnyway.has(key));
+  } catch (e) {
+    if (!(e instanceof ThinksAnyway)) throw e;
+    thinksAnyway.add(key);
+    console.warn(`[summarizer] ${s.model} thinks although thinking is off; giving it the thinking budget from now on`);
+    return summarizeWith(p, s, opts, true);
+  }
+}
+
+async function summarizeWith(p: SummaryPromptParts, s: LocalModelSettings, opts: LocalSummaryOptions, thinkingBudget: boolean): Promise<LocalSummaryResult> {
   const info = await modelInfo(s);
   // The model's own limit wins over the configured window.
   const ctx = Math.min(s.contextTokens, info.contextLength ?? Number.POSITIVE_INFINITY);
-  const { answer, input } = contextBudget(ctx, s.think);
+  const { answer, input } = contextBudget(ctx, thinkingBudget);
   const sendThink = info.thinking === true || (info.thinking === null && s.think);
 
   let promptTokens = 0;
@@ -145,6 +168,16 @@ export async function summarizeLocally(p: SummaryPromptParts, s: LocalModelSetti
     promptTokens += r.promptTokens ?? 0;
     outputTokens += r.outputTokens ?? 0;
     model = r.model || model;
+    // Cut off while (mostly) thinking: the notes or the summary would be missing.
+    if (r.truncated && (r.stoppedInReasoning || r.reasoningChars > r.text.length)) {
+      if (!thinkingBudget) throw new ThinksAnyway();
+      const limit = `${answer.toLocaleString("en-US")} tokens`;
+      throw new LlmError(
+        s.think
+          ? `The model used its whole answer budget (${limit}) mostly on thinking, before finishing. Turn thinking off in Admin → Summary model, or raise the context window (the answer gets half of it).`
+          : `The model (${model}) thinks even with thinking off, and used up even the larger answer budget (${limit}) doing so. Raise the context window in Admin → Summary model (the answer gets half of it for this model), or choose a model that can answer without thinking.`,
+      );
+    }
     return r;
   };
   const sys: ChatMessage = { role: "system", content: p.system };
@@ -211,7 +244,7 @@ export async function summarizeLocally(p: SummaryPromptParts, s: LocalModelSetti
   const text = cleanModelOutput(r.text);
   if (r.truncated) {
     throw new LlmError(
-      `The model stopped before finishing: the answer reached its length limit (${answer.toLocaleString("en-US")} tokens${s.think ? ", thinking included" : ""}). Raise the context window${s.think ? " or turn thinking off" : ""} in Admin → Summary model.`,
+      `The model stopped before finishing: the summary reached its length limit (${answer.toLocaleString("en-US")} tokens), which usually means it started repeating itself. Try again, or raise the context window in Admin → Summary model (the answer gets ${thinkingBudget ? "half" : "a quarter"} of it).`,
     );
   }
   if (!text) throw new LlmError("The local model returned an empty answer.");

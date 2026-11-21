@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import { securityHeaders } from "../src/app";
+import { config } from "../src/config";
 import { Client, app, memberClient, waitFor, worker } from "./helpers";
 
 async function readyMeeting(c: Client, file: { name: string; type: string }, bytes = new Uint8Array(64)) {
@@ -108,5 +109,28 @@ describe("security", () => {
     expect(csp).toContain("frame-ancestors 'none'");
     // The sign-in pop-up hands the token back to this page, which needs a handle on it.
     expect(res.headers.get("cross-origin-opener-policy")).toBe("same-origin-allow-popups");
+  });
+
+  test("with allowed hosts set, other host names (such as the bare IP) are refused before anything runs", async () => {
+    const cfg = config as { allowedHosts: string[] };
+    const saved = cfg.allowedHosts;
+    cfg.allowedHosts = ["meeting.example.com"];
+    try {
+      const at = (host: string, path = "/api/auth/state") => app.fetch(new Request(`http://${host}${path}`, { headers: { host } }));
+      expect((await at("meeting.example.com")).status).toBe(200);
+      expect((await at("Meeting.Example.com:8443")).status).toBe(200);
+      for (const host of ["203.0.113.10:8443", "203.0.113.10", "[2001:db8::1]:8443", "meeting.example.com.evil.test"]) {
+        const res = await at(host);
+        expect(res.status).toBe(421);
+        expect(await res.text()).toBe("Misdirected request.\n");
+        expect(res.headers.get("set-cookie")).toBeNull();
+      }
+      expect((await at("203.0.113.10", "/")).status).toBe(421);
+      expect((await at("203.0.113.10", "/internal/jobs/claim")).status).toBe(421);
+      // "localhost" is accepted only from a loopback peer; app.fetch here has none.
+      expect((await at("localhost")).status).toBe(421);
+    } finally {
+      cfg.allowedHosts = saved;
+    }
   });
 });

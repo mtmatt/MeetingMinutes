@@ -35,6 +35,7 @@ describe.skipIf(!hasOpenssl)("built-in HTTPS", () => {
         TLS_CERT_FILE: cert,
         TLS_KEY_FILE: key,
         PUBLIC_URL: "",
+        ALLOWED_HOSTS: "minutes.test",
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -87,5 +88,21 @@ describe.skipIf(!hasOpenssl)("built-in HTTPS", () => {
       body: JSON.stringify({ workerId: "tls-test", info: {} }),
     });
     expect(claim.status).toBe(204); // authenticated, nothing queued
+  });
+
+  test("answers only to its own name; this machine may still use 127.0.0.1", async () => {
+    const at = (host?: string) =>
+      fetch(`https://127.0.0.1:${port}/api/auth/state`, { tls: { ca }, headers: host ? { host } : {} });
+    expect((await at("minutes.test")).status).toBe(200);
+    expect((await at(`MINUTES.test.:${port}`)).status).toBe(200);
+    // From this machine, the loopback name is fine (workers, health checks).
+    expect((await at()).status).toBe(200);
+    // The public IP, or any other name, is refused without showing the site.
+    const byIp = await at(`203.0.113.10:${port}`);
+    expect(byIp.status).toBe(421);
+    expect(await byIp.text()).not.toContain("minutes.test");
+    expect((await at("evil.example")).status).toBe(421);
+    // The loopback worker port is unaffected.
+    expect((await fetch(`http://127.0.0.1:${internalPort}/healthz`)).status).toBe(200);
   });
 });

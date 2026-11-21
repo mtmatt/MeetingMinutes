@@ -32,6 +32,10 @@ export interface ChatResult {
   outputTokens: number | null;
   /** The answer stopped at maxTokens or the context window. */
   truncated: boolean;
+  /** Characters of reasoning the model produced (sent separately, or inline as <think>…</think>). */
+  reasoningChars: number;
+  /** The answer ended while the model was still reasoning, before any of the document. */
+  stoppedInReasoning: boolean;
 }
 
 export class LlmError extends Error {
@@ -167,6 +171,7 @@ async function chatOllama(s: LocalModelSettings, messages: ChatMessage[], o: Cha
   if (!res.ok) throw new LlmError(`The local model server answered: ${await errorText(res)}`);
 
   let text = "";
+  let reasoning = 0;
   let model = s.model;
   let promptTokens: number | null = null;
   let outputTokens: number | null = null;
@@ -181,6 +186,7 @@ async function chatOllama(s: LocalModelSettings, messages: ChatMessage[], o: Cha
       }
       if (typeof ev.error === "string") throw new LlmError(`The local model failed: ${ev.error.slice(0, 500)}`);
       if (typeof ev.message?.content === "string") text += ev.message.content;
+      if (typeof ev.message?.thinking === "string") reasoning += ev.message.thinking.length;
       if (typeof ev.model === "string") model = ev.model;
       if (ev.done) {
         doneReason = ev.done_reason ?? null;
@@ -192,7 +198,7 @@ async function chatOllama(s: LocalModelSettings, messages: ChatMessage[], o: Cha
     if (o.signal?.aborted) throw new LlmError("Canceled.");
     throw e instanceof LlmError ? e : new LlmError(`The connection to the local model server was lost: ${(e as Error).message}`);
   }
-  return { text, model, promptTokens, outputTokens, truncated: doneReason === "length" };
+  return { text, model, promptTokens, outputTokens, truncated: doneReason === "length", ...reasoningOf(text, reasoning) };
 }
 
 async function chatOpenAI(s: LocalModelSettings, messages: ChatMessage[], o: ChatOptions): Promise<ChatResult> {
@@ -204,13 +210,16 @@ async function chatOpenAI(s: LocalModelSettings, messages: ChatMessage[], o: Cha
     max_tokens: o.maxTokens,
     // vLLM, SGLang and llama.cpp pass this to the chat template: Qwen3 and
     // other hybrid models think only when asked. Other servers ignore it.
-    chat_template_kwargs: { enable_thinking: s.think },
+    // Templates name the switch differently: Qwen3 and GLM use enable_thinking,
+    // DeepSeek and some NVIDIA-hosted models use thinking. Unused keys are ignored.
+    chat_template_kwargs: { enable_thinking: s.think, thinking: s.think },
   };
   const res = await post(s, openaiUrl(s.baseUrl, "/chat/completions"), body, o.signal);
   if (res.status === 404) throw modelMissing(s, await errorText(res));
   if (!res.ok) throw new LlmError(`The local model server answered: ${await errorText(res)}`);
 
   let text = "";
+  let reasoning = 0;
   let model = s.model;
   let promptTokens: number | null = null;
   let outputTokens: number | null = null;
@@ -230,6 +239,7 @@ async function chatOpenAI(s: LocalModelSettings, messages: ChatMessage[], o: Cha
       const choice = ev.choices?.[0];
       // Reasoning arrives separately (delta.reasoning_content) and is not part of the summary.
       if (typeof choice?.delta?.content === "string") text += choice.delta.content;
+      for (const r of [choice?.delta?.reasoning_content, choice?.delta?.reasoning]) if (typeof r === "string") reasoning += r.length;
       if (choice?.finish_reason) finish = choice.finish_reason;
       if (typeof ev.model === "string") model = ev.model;
       if (ev.usage) {
@@ -241,7 +251,16 @@ async function chatOpenAI(s: LocalModelSettings, messages: ChatMessage[], o: Cha
     if (o.signal?.aborted) throw new LlmError("Canceled.");
     throw e instanceof LlmError ? e : new LlmError(`The connection to the local model server was lost: ${(e as Error).message}`);
   }
-  return { text, model, promptTokens, outputTokens, truncated: finish === "length" };
+  return { text, model, promptTokens, outputTokens, truncated: finish === "length", ...reasoningOf(text, reasoning) };
+}
+
+/** How much of an answer was reasoning, counting <think> blocks left in the text by servers without a reasoning parser. */
+function reasoningOf(text: string, streamed: number): { reasoningChars: number; stoppedInReasoning: boolean } {
+  let inline = 0;
+  for (const m of text.matchAll(/<think>([\s\S]*?)(<\/think>|$)/g)) inline += m[1]!.length;
+  const openThink = /<think>(?![\s\S]*<\/think>)/.test(text);
+  const visible = text.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trim();
+  return { reasoningChars: streamed + inline, stoppedInReasoning: openThink || ((streamed > 0 || inline > 0) && visible === "") };
 }
 
 export function chat(s: LocalModelSettings, messages: ChatMessage[], o: ChatOptions): Promise<ChatResult> {
