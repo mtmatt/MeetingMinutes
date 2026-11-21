@@ -489,7 +489,6 @@ export function AdminPage() {
     <div className="admin">
       <div className="page-head">
         <div>
-          <div className="smallcaps eyebrow">{t("nav.admin")}</div>
           <h1>{t("admin.title")}</h1>
         </div>
         {tab !== "invites" && (

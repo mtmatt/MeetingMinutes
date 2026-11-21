@@ -216,20 +216,11 @@
   margin-top: 36px;
 }
 .ledger-month {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
   font-size: var(--step-0);
   font-weight: 600;
   color: var(--ink-2);
   padding-bottom: 10px;
   border-bottom: 1px solid var(--ink);
-}
-.ledger-month-count {
-  font-style: normal;
-  font-size: var(--step--2);
-  color: var(--ink-3);
-  letter-spacing: 0.1em;
 }
 
 .ledger-row {
@@ -299,14 +290,31 @@
   transition: color var(--dur-fast);
   overflow-wrap: anywhere;
 }
+/* Title on the left, the meeting's facts (icon + value) on the right. */
+.ledger-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 24px;
+}
+.ledger-head .ledger-title {
+  flex: 1 1 18ch;
+  min-width: 0;
+}
 .ledger-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 16px;
+  justify-content: flex-end;
+  gap: 4px 14px;
+  margin: 0 0 0 auto;
+  padding: 0;
+  list-style: none;
   font-size: var(--step--1);
   color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.ledger-meta span {
+.ledger-meta li {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -314,6 +322,8 @@
 .ledger-meta svg {
   width: 13px;
   height: 13px;
+  color: var(--ink-3);
+  flex: none;
 }
 .ledger-preview {
   color: var(--ink);
@@ -329,6 +339,7 @@
 .ledger-preview.muted-preview {
   color: var(--ink-2);
 }
+/* "Found at 12:03" before a search hit. */
 .ledger-preview-label {
   display: inline-block;
   margin-right: 8px;
@@ -436,6 +447,10 @@
   }
   .ledger-day {
     font-size: 1.35rem;
+  }
+  .ledger-meta {
+    justify-content: flex-start;
+    margin-left: 0;
   }
   .library-search {
     width: 100%;
@@ -1617,13 +1632,6 @@
 .link-btn:hover {
   color: var(--ink);
   text-decoration-color: currentColor;
-}
-
-.library-count {
-  font-size: var(--step--1);
-  font-weight: 600;
-  color: var(--ink-2);
-  margin-bottom: 8px;
 }
 
 .auth-help {

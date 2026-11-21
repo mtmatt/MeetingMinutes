@@ -37,6 +37,8 @@ export function SettingsPage() {
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
+  const [leftNew, setLeftNew] = useState(false);
+  const newTooShort = next.length > 0 && next.length < 10 && leftNew;
   const [busy, setBusy] = useState(false);
   const sessions = useQuery({ queryKey: ["sessions"], queryFn: api.sessions });
 
@@ -92,7 +94,6 @@ export function SettingsPage() {
     <div className="settings">
       <div className="page-head">
         <div>
-          <div className="smallcaps eyebrow">@{user?.username}</div>
           <h1>{t("settings.title")}</h1>
         </div>
       </div>
@@ -155,8 +156,23 @@ export function SettingsPage() {
             </div>
             <div className="field">
               <label htmlFor="new">{t("settings.newPassword")}</label>
-              <input id="new" className="input" type="password" autoComplete="new-password" minLength={10} value={next} onChange={(e) => setNext(e.target.value)} />
-              <span className="field-hint">{t("auth.passwordHint")}</span>
+              <input
+                id="new"
+                className="input"
+                type="password"
+                autoComplete="new-password"
+                minLength={10}
+                value={next}
+                onChange={(e) => setNext(e.target.value)}
+                onBlur={() => setLeftNew(true)}
+                aria-invalid={newTooShort || undefined}
+                aria-describedby={newTooShort ? "new-rule" : undefined}
+              />
+              {newTooShort && (
+                <span id="new-rule" className="field-error">
+                  {t("apiError.weakPassword")}
+                </span>
+              )}
             </div>
           </div>
           <div>

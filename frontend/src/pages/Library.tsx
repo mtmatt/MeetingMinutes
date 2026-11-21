@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Clock, FileVideo, Languages, Mic, RefreshCw, Search, Trash2, Upload, Users, X } from "lucide-react";
+import { AlertTriangle, Clock, FileVideo, Hourglass, Languages, Mic, RefreshCw, Search, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 import { api } from "../api/client";
@@ -85,20 +85,20 @@ function Row({ m, query }: { m: MeetingSummary; query: string }) {
       </p>
     );
   } else if (m.summaryExcerpt) {
-    preview = (
-      <p className="ledger-preview">
-        <span className="ledger-preview-label">{t("library.fromSummary")}</span>
-        {m.summaryExcerpt}
-      </p>
-    );
+    preview = <p className="ledger-preview">{m.summaryExcerpt}</p>;
   } else if (m.preview) {
-    preview = (
-      <p className="ledger-preview muted-preview">
-        <span className="ledger-preview-label">{t("library.fromTranscript")}</span>
-        {m.preview}
-      </p>
-    );
+    preview = <p className="ledger-preview muted-preview">{m.preview}</p>;
   }
+
+  // Icons and values only; the words are kept for hover and screen readers.
+  const speakers = m.speakerCount === 1 ? t("library.speakerOne") : t("library.speakers", { n: m.speakerCount });
+  const meta = [
+    { key: "time", icon: <Clock />, value: time(when, locale), label: t("library.metaTime") },
+    m.durationSec != null && { key: "length", icon: <Hourglass />, value: clock(m.durationSec), label: duration(m.durationSec, locale) },
+    m.speakerCount > 0 && { key: "speakers", icon: <Users />, value: String(m.speakerCount), label: speakers },
+    lang && { key: "lang", icon: <Languages />, value: lang, label: t("library.metaLanguage") },
+    m.media.hasVideo && { key: "video", icon: <FileVideo />, value: null, label: t("library.video") },
+  ].filter((x) => !!x);
 
   return (
     <Link to={m.match ? `/m/${m.id}?t=${Math.ceil(m.match.start * 10) / 10}` : `/m/${m.id}`} className={`ledger-row ${failure ? "is-failed" : ""}`}>
@@ -107,27 +107,23 @@ function Row({ m, query }: { m: MeetingSummary; query: string }) {
         <span className="ledger-weekday">{weekday}</span>
       </div>
       <div className="ledger-main">
-        <h3 className="ledger-title">{m.title}</h3>
-        <div className="ledger-meta">
-          <span>
-            <Clock /> {time(when, locale)}
-          </span>
-          {m.durationSec != null && <span>{duration(m.durationSec, locale)}</span>}
-          {m.speakerCount > 0 && (
-            <span>
-              <Users /> {m.speakerCount === 1 ? t("library.speakerOne") : t("library.speakers", { n: m.speakerCount })}
-            </span>
-          )}
-          {lang && (
-            <span>
-              <Languages /> {lang}
-            </span>
-          )}
-          {m.media.hasVideo && (
-            <span>
-              <FileVideo /> {t("library.video")}
-            </span>
-          )}
+        <div className="ledger-head">
+          <h3 className="ledger-title">{m.title}</h3>
+          <ul className="ledger-meta">
+            {meta.map((x) => (
+              <li key={x.key} title={x.value ? `${x.label}: ${x.value}` : x.label}>
+                {x.icon}
+                {x.value ? (
+                  <>
+                    <span className="visually-hidden">{x.label}: </span>
+                    {x.value}
+                  </>
+                ) : (
+                  <span className="visually-hidden">{x.label}</span>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
         {failure ? (
           <div className="ledger-failure">
@@ -217,10 +213,7 @@ export function LibraryPage() {
       onDrop={onDrop}
     >
       <div className="page-head library-head">
-        <div>
-          <div className="eyebrow library-count">{query ? t("library.searchResults", { q: query, n: total }) : total === 1 ? t("library.countOne") : t("library.count", { n: total })}</div>
-          <h1>{t("library.title")}</h1>
-        </div>
+        <h1>{t("library.title")}</h1>
         <div className="library-tools">
           <label className="search-field library-search">
             <Search />
@@ -272,10 +265,7 @@ export function LibraryPage() {
         <div className="ledger">
           {groups.map((g) => (
             <section key={g.label} className="ledger-group">
-              <h2 className="ledger-month">
-                <span>{g.label}</span>
-                <span className="ledger-month-count mono">{String(g.items.length).padStart(2, "0")}</span>
-              </h2>
+              <h2 className="ledger-month">{g.label}</h2>
               {g.items.map((m) => (
                 <Row key={m.id} m={m} query={query} />
               ))}
