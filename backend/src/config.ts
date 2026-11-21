@@ -109,6 +109,31 @@ function tlsFiles(): { cert: string; key: string } | null {
 const tls = tlsFiles();
 
 /**
+ * Host names the site answers to. A request naming any other host (the bare IP
+ * address, a scanner's guess) is refused, so the site is only reachable by its
+ * name. ALLOWED_HOSTS lists them; otherwise it is PUBLIC_URL's host name, and
+ * with neither every host is accepted.
+ */
+function allowedHosts(): string[] {
+  const raw = str("ALLOWED_HOSTS", "").trim();
+  const names = raw ? raw.split(/[\s,]+/).filter(Boolean) : publicUrl ? [publicUrl] : [];
+  return names.map((n) => {
+    let host: string;
+    try {
+      host = new URL(n.includes("://") ? n : `http://${n}`).hostname;
+    } catch {
+      throw new Error(`ALLOWED_HOSTS entries must be host names such as minutes.example.com, got "${n}"`);
+    }
+    return normalizeHost(host);
+  });
+}
+
+/** Lower case, no IPv6 brackets, no trailing dot: "Minutes.Example.com." and "minutes.example.com" are one host. */
+export function normalizeHost(host: string): string {
+  return host.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+}
+
+/**
  * OAuth client ID for exporting summaries straight into Google Docs: a "Web
  * application" client from Google Cloud whose authorised JavaScript origin is
  * this site. Only the public ID is needed; Google gives the access token to the
@@ -153,6 +178,8 @@ export const config = {
   adminContact: str("ADMIN_CONTACT", "").trim(),
   /** Google OAuth client ID; empty turns direct export to Google Docs off (summaries can still be copied into one). */
   googleClientId: googleClientId(),
+  /** Host names requests must name; empty accepts any. See allowedHosts(). */
+  allowedHosts: allowedHosts(),
   cookieSecure: bool("COOKIE_SECURE", tls !== null || publicUrl.startsWith("https://")),
   sessionTtlDays: int("SESSION_TTL_DAYS", 30),
   maxUploadBytes: int("MAX_UPLOAD_MB", 4096) * 1024 * 1024,

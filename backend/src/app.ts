@@ -4,7 +4,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { existsSync, statSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
 import { config } from "./config";
-import { csrfGuard, withClientIp } from "./auth/middleware";
+import { csrfGuard, hostGuard, withClientIp } from "./auth/middleware";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes, meRoutes } from "./routes/auth";
 import { eventRoutes } from "./routes/events";
@@ -62,6 +62,8 @@ export function securityHeaders({ google }: { google: boolean }) {
 export function createApp() {
   const app = new Hono<AppEnv>();
 
+  // First, so a request for another host learns nothing about the site.
+  app.use(hostGuard);
   app.use(securityHeaders({ google: !!config.googleClientId }));
   app.use(withClientIp);
 

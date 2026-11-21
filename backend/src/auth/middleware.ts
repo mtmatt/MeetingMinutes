@@ -1,7 +1,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { getConnInfo } from "hono/bun";
-import { config } from "../config";
+import { config, normalizeHost } from "../config";
 import { httpError, safeEqual } from "../lib/util";
 import type { AppEnv } from "../types";
 import { SESSION_COOKIE, resolveSession } from "./service";
@@ -19,6 +19,54 @@ export function clientIp(c: Context): string {
     return "unknown";
   }
 }
+
+const LOOPBACK_NAMES = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function isLoopbackAddress(addr: string | undefined): boolean {
+  if (!addr) return false;
+  const a = addr.toLowerCase();
+  return a === "::1" || /^(::ffff:)?127(\.\d{1,3}){3}$/.test(a);
+}
+
+/** The host name a request names (Host header, or X-Forwarded-Host behind a trusted proxy), or null. */
+function requestedHost(c: Context): string | null {
+  const raw = (config.trustProxy && c.req.header("x-forwarded-host")?.split(",")[0]?.trim()) || c.req.header("host");
+  if (!raw) return null;
+  try {
+    return normalizeHost(new URL(`http://${raw}`).hostname);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Answer only to the site's own name (config.allowedHosts). Someone typing the
+ * server's IP address, or a scanner sweeping addresses, gets a bare refusal
+ * instead of the sign-in page. Programs on this machine (GPU workers, health
+ * checks, the dev server) may still use localhost / 127.0.0.1.
+ *
+ * This keeps casual and automated visitors out; it is not access control: the
+ * name is in the TLS certificate, and anyone who knows it can send it.
+ */
+export const hostGuard: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const allowed = config.allowedHosts;
+  if (allowed.length === 0) return next();
+  const host = requestedHost(c);
+  if (host && allowed.includes(host)) return next();
+  if (host && LOOPBACK_NAMES.has(host)) {
+    let peer: string | undefined;
+    try {
+      peer = getConnInfo(c).remote.address;
+    } catch {
+      peer = undefined;
+    }
+    if (isLoopbackAddress(peer)) return next();
+  }
+  return new Response("Misdirected request.\n", {
+    status: 421,
+    headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", Connection: "close" },
+  });
+};
 
 export const withClientIp: MiddlewareHandler<AppEnv> = async (c, next) => {
   c.set("clientIp", clientIp(c));
