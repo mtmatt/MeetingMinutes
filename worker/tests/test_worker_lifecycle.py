@@ -285,3 +285,68 @@ def test_cpu_worker_ignores_gpu_memory():
     sup = Supervisor(replace(multi_gpu_cfg(["0"]), asr_backend="transformers", device="cpu"))
     assert sup.query is None and sup.pick(sup.workers) is sup.workers[0]
     assert Supervisor(replace(multi_gpu_cfg(["0"]), asr_backend="transformers", device="cuda:0")).query is not None
+
+
+# ------------------------------------------------- transcription through an API
+
+
+def test_api_job_skips_the_local_asr_model(two_speaker_wav, tmp_path, monkeypatch):
+    """With engine "api" the session loads only diarization and sends the segments to the API."""
+    from mm_worker import worker as worker_mod
+    from test_asr_api import FakeSttServer  # pytest puts tests/ on sys.path
+
+    def no_local_model(cfg):
+        raise AssertionError("the local ASR model must not load for an API job")
+
+    monkeypatch.setattr(worker_mod, "load_transcriber", no_local_model)
+    monkeypatch.setattr(worker_mod.signal, "signal", lambda *a: None)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    monkeypatch.setenv("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    stt = FakeSttServer()
+    asr = {"engine": "api", "provider": "openrouter", "model": "qwen/qwen3-asr-1.7b", "baseUrl": stt.url}
+    job = {"jobId": "a1", "meetingId": "m1", "attempt": 1, "mediaPath": str(two_speaker_wav), "outDir": str(tmp_path / "m1"),
+           "options": {"diarize": True, "language": "Chinese", "vocabulary": "Minutes"}, "title": "t", "asr": asr}
+    # A second job, queued while the first ran, has no key for its provider: it fails for good, with what to set.
+    job2 = {**job, "jobId": "a2", "asr": {**asr, "provider": "openai", "baseUrl": stt.url}}
+    monkeypatch.delenv("ASR_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    backend = FakeBackend([job2])
+
+    class Events:
+        def put(self, item):
+            pass
+
+    try:
+        worker_mod.gpu_session(cfg(backend.url), job, Events())
+    finally:
+        stt.close()
+    result = next(b for p, b in backend.events if p == "/jobs/a1/complete")["result"]
+    assert result["speakers"] == ["SPEAKER_00", "SPEAKER_01"]
+    assert all(s["text"].endswith("秒的語音") for s in result["segments"]) and result["language"] == "Chinese"
+    assert {r["fields"]["model"] for r in stt.requests} == {"qwen/qwen3-asr-1.7b"}
+    assert all(r["auth"] == "Bearer sk-or-test" and r["fields"]["prompt"] == "Minutes" for r in stt.requests)
+    fail = next(b for p, b in backend.events if p == "/jobs/a2/fail")
+    assert fail["retryable"] is False and "ASR_API_KEY or OPENAI_API_KEY" in fail["error"]
+
+
+def test_api_transcription_needs_less_free_gpu_memory():
+    # 5.9 GB free is too little for both local models (8 GB) but enough for diarization alone (3 GB).
+    smi = "0, GPU-a, NVIDIA GeForce RTX 4090, 24564, 18534\n"
+    sup = Supervisor(multi_gpu_cfg(["0"]), query=lambda: parse_gpus(smi))
+    assert sup.pick(sup.workers) is None
+    sup.note_backend({"transcriber": {"engine": "api"}})
+    assert sup.pick(sup.workers) is sup.workers[0]
+    sup.note_backend({"ok": True})  # an older backend says nothing: keep what we know
+    assert sup.asr_engine == "api"
+    sup.note_backend({"transcriber": {"engine": "local"}})
+    assert sup.pick(sup.workers) is None
+
+
+def test_worker_reports_which_api_keys_it_has(monkeypatch):
+    for k in ("OPENROUTER_API_KEY", "ASR_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-secret")
+    info = Supervisor(multi_gpu_cfg(["0"])).workers[0].info()
+    assert info["asrApiKeys"] == {"openrouter": True, "openai": False}
+    assert "sk-or-secret" not in json.dumps(info)

@@ -239,6 +239,7 @@ export interface SystemInfo {
   /** Transcriptions; voiceprints are the background voice fingerprint jobs. */
   jobs: { queued: number; running: number; voiceprints?: { queued: number; running: number } };
   summaries: { running: number; queued: number; concurrency: number; provider: SummaryProvider };
+  transcriber?: TranscriberInfo;
   /** isolationError: summaries are paused because Codex tools cannot be verified as disabled. */
   codex: { available: boolean; loggedIn: boolean; version: string | null; detail: string; isolationError?: string | null };
   disk: { freeBytes: number; totalBytes: number } | null;
@@ -262,6 +263,44 @@ export interface SummarizerInfo {
   onServer: boolean;
   /** Host of a model server on another machine. */
   host: string | null;
+}
+
+export type AsrEngine = "local" | "api";
+export type AsrProvider = "openrouter" | "openai";
+
+/** Where recordings are transcribed, as everyone signed in is told. */
+export interface TranscriberInfo {
+  engine: AsrEngine;
+  provider: AsrProvider | null;
+  model: string | null;
+  /** The recording stays on this machine (the local model, or an API server on this machine). */
+  onServer: boolean;
+  /** Host speech is sent to; null when it stays on this machine. */
+  host: string | null;
+}
+
+export interface TranscriberSettings {
+  engine: AsrEngine;
+  api: {
+    provider: AsrProvider;
+    /** OpenAI-compatible servers only; empty means api.openai.com. */
+    baseUrl: string;
+    model: string;
+  };
+}
+
+export interface TranscriberState {
+  settings: TranscriberSettings;
+  /** What .env says; in force while nothing is saved. */
+  defaults: TranscriberSettings;
+  saved: boolean;
+  updatedAt: number | null;
+  updatedBy: string | null;
+  /** Online workers and which providers each has a key for; null keys: a worker too old for API transcription. */
+  workers: { id: string; name: string; keys: Record<AsrProvider, boolean> | null }[];
+  /** Environment variables a worker reads the key from, per provider. */
+  keyVariables: Record<AsrProvider, string[]>;
+  addresses: Record<AsrProvider, string>;
 }
 
 export type LocalModelApi = "ollama" | "openai";

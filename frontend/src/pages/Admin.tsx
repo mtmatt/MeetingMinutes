@@ -12,6 +12,7 @@ import { diarizationReason } from "../lib/errors";
 import { bytes, initials, relative, until } from "../lib/format";
 import { useSummaryEngine } from "../lib/summaryEngine";
 import { SummaryModel } from "./AdminSummaryModel";
+import { Transcription } from "./AdminTranscription";
 
 function CopyLink({ url }: { url: string }) {
   const { t } = useI18n();
@@ -429,6 +430,21 @@ function System() {
                 <dd className="mono">{t("admin.runningQueued", { running: data.jobs.voiceprints.running, queued: data.jobs.voiceprints.queued })}</dd>
               </>
             )}
+            {data.transcriber && (
+              <>
+                <dt>{t("admin.asrEngine")}</dt>
+                <dd>
+                  {data.transcriber.engine === "api" ? (
+                    <>
+                      <span className="mono">{data.transcriber.model}</span>
+                      <span className="faint"> · {data.transcriber.provider === "openrouter" ? "OpenRouter" : (data.transcriber.host ?? t("admin.summaryModelLocal"))}</span>
+                    </>
+                  ) : (
+                    t("admin.asrLocal")
+                  )}
+                </dd>
+              </>
+            )}
             <dt>{t("admin.summaryJobs")}</dt>
             <dd className="mono">{t("admin.runningQueued", { running: data.summaries.running, queued: data.summaries.queued })}</dd>
             <dt>{t("admin.summaryModel")}</dt>
@@ -484,7 +500,7 @@ function System() {
 
 export function AdminPage() {
   const { t } = useI18n();
-  const [tab, setTab] = useState<"users" | "invites" | "model" | "system">("users");
+  const [tab, setTab] = useState<"users" | "invites" | "asr" | "model" | "system">("users");
   return (
     <div className="admin">
       <div className="page-head">
@@ -498,7 +514,7 @@ export function AdminPage() {
         )}
       </div>
       <div className="tabs admin-tabs" role="tablist">
-        {(["users", "invites", "model", "system"] as const).map((k) => (
+        {(["users", "invites", "asr", "model", "system"] as const).map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
             {t(`admin.${k}`)}
           </button>
@@ -507,6 +523,7 @@ export function AdminPage() {
       <div className="admin-body">
         {tab === "users" && <Users />}
         {tab === "invites" && <Invites />}
+        {tab === "asr" && <Transcription />}
         {tab === "model" && <SummaryModel />}
         {tab === "system" && <System />}
       </div>

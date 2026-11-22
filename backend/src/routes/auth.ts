@@ -27,6 +27,7 @@ import { checkSetupToken, clearSetupToken } from "../auth/setup";
 import { consumeInvite, findInvite } from "../auth/invites";
 import { httpError } from "../lib/util";
 import { publicSummarizerInfo } from "../services/summarySettings";
+import { publicTranscriberInfo } from "../services/transcriberSettings";
 import type { AppEnv, SessionRow } from "../types";
 import { body } from "./validate";
 
@@ -74,6 +75,8 @@ authRoutes.get("/state", (c) => {
     googleClientId: config.googleClientId || null,
     // Which model writes summaries, so people are told where a transcript goes.
     summarizer: resolved ? publicSummarizerInfo() : null,
+    // Where recordings are transcribed, for the same reason.
+    transcriber: resolved ? publicTranscriberInfo() : null,
   });
 });
 

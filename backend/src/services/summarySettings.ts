@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { config } from "../config";
-import { db, now } from "../db";
 import { parseJson } from "../lib/util";
 import type { SummaryProvider } from "../types";
+import { deleteSetting, readSetting, settingMeta, writeSetting } from "./settingsStore";
 
 /**
  * Which model writes summaries, as chosen by an administrator.
@@ -14,10 +14,10 @@ import type { SummaryProvider } from "../types";
  */
 
 /** Model names as Ollama, vLLM and Codex spell them: "batiai/qwen3.8-27b:q3", "Qwen/Qwen3-14B-AWQ", "gpt-5.1-codex". */
-const MODEL_NAME = /^[\w][\w.:/@+-]{0,199}$/;
+export const MODEL_NAME = /^[\w][\w.:/@+-]{0,199}$/;
 export const REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const;
 
-const baseUrl = z
+export const baseUrl = z
   .string()
   .trim()
   .max(300)
@@ -76,25 +76,15 @@ export function defaultSummarySettings(): SummarySettings {
   };
 }
 
-interface StoredRow {
-  value: string;
-  updated_at: number;
-  updated_by: string | null;
-}
-
-function storedRow(): StoredRow | null {
-  return db.query<StoredRow, { k: string }>("SELECT value, updated_at, updated_by FROM settings WHERE key = $k").get({ k: KEY });
-}
-
 /**
  * The settings in force. Saved settings are merged over the defaults field by
  * field, so a setting added in a later version starts at its default.
  */
 export function summarySettings(): SummarySettings {
   const defaults = defaultSummarySettings();
-  const row = storedRow();
-  if (!row) return defaults;
-  const saved = parseJson<Partial<SummarySettings>>(row.value, {});
+  const value = readSetting(KEY);
+  if (value === null) return defaults;
+  const saved = parseJson<Partial<SummarySettings>>(value, {});
   const merged = {
     provider: saved.provider ?? defaults.provider,
     local: { ...defaults.local, ...(saved.local ?? {}) },
@@ -104,27 +94,18 @@ export function summarySettings(): SummarySettings {
   return parsed.success ? parsed.data : defaults;
 }
 
-export function summarySettingsMeta(): { saved: boolean; updatedAt: number | null; updatedBy: string | null } {
-  const row = storedRow();
-  if (!row) return { saved: false, updatedAt: null, updatedBy: null };
-  const by = row.updated_by
-    ? db.query<{ display_name: string }, { id: string }>("SELECT display_name FROM users WHERE id = $id").get({ id: row.updated_by })
-    : null;
-  return { saved: true, updatedAt: row.updated_at, updatedBy: by?.display_name ?? null };
+export function summarySettingsMeta() {
+  return settingMeta(KEY);
 }
 
 export function saveSummarySettings(settings: SummarySettings, userId: string): SummarySettings {
-  const value = summarySettingsSchema.parse(settings);
-  db.query(
-    `INSERT INTO settings (key, value, updated_at, updated_by) VALUES ($k, $v, $t, $u)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
-  ).run({ k: KEY, v: JSON.stringify(value), t: now(), u: userId });
+  writeSetting(KEY, summarySettingsSchema.parse(settings), userId);
   return summarySettings();
 }
 
 /** Forget what was saved: the .env defaults apply again. */
 export function resetSummarySettings(): SummarySettings {
-  db.query("DELETE FROM settings WHERE key = $k").run({ k: KEY });
+  deleteSetting(KEY);
   return summarySettings();
 }
 

@@ -446,14 +446,9 @@ export function UploadPage() {
             <span className="switch-track" />
             <span className="switch-label">{t("upload.autoSummary")}</span>
           </label>
-          {autoSummary ? (
-            <>
-              <SummaryComposer value={summary} onChange={setSummary} />
-              <DataFlowNote />
-            </>
-          ) : (
-            <p className="muted">{t("upload.noAutoSummary")}</p>
-          )}
+          {autoSummary ? <SummaryComposer value={summary} onChange={setSummary} /> : <p className="muted">{t("upload.noAutoSummary")}</p>}
+          {/* Also without a summary: a transcription API receives the speech either way. */}
+          <DataFlowNote />
         </Step>
 
         <section className="advanced">

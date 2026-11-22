@@ -9,6 +9,8 @@ Decided 2026-11-03.
 1. **Now: an RTX 4090 at school**, a Linux machine with an NVIDIA GPU. This is the setup the worker already supports, so nothing needs to be built. Running on a Mac was considered and dropped.
 2. **Later, as an option: in the cloud on [Modal](https://modal.com/pricing), billed per second.** We will not rent a GPU machine that runs around the clock.
 
+Built since (2026-11-22): speech recognition can already go to a transcription API (OpenRouter, or any OpenAI-compatible server), chosen in Admin → Transcription; see the README, "Transcribing through an API". Speaker diarization still runs on the worker, so that option needs much less GPU memory (about 3 GB) but not no GPU. Modal remains the plan for running the whole pipeline, diarization included, without the school 4090.
+
 ### When to move to Modal
 
 Move when either of these holds:

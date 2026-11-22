@@ -23,6 +23,7 @@ import traceback
 from typing import Callable, Optional
 
 from . import __version__
+from .asr_api import ApiError, ApiTranscriber, api_key, keys_present, settings_from_job
 from .audio import MediaError
 from .client import BackendClient
 from .config import WorkerConfig
@@ -101,9 +102,16 @@ def build_models(cfg: WorkerConfig):
     return transcriber, diarizer, status
 
 
+def asr_engine(job: dict) -> str:
+    """Where the backend wants this job transcribed: "local" (the GPU) or "api".
+    Backends from before the choice existed send nothing, which means local."""
+    return "api" if (job.get("asr") or {}).get("engine") == "api" else "local"
+
+
 class Models:
     """The models of one GPU session. The ASR model, the larger one, loads on
-    first use: a session that only makes voice fingerprints never needs it."""
+    first use: a session that only makes voice fingerprints, or that sends
+    speech to a transcription API, never needs it."""
 
     def __init__(self, cfg: WorkerConfig):
         self.cfg = cfg
@@ -118,6 +126,21 @@ class Models:
             log.info("ASR model ready in %.1fs", time.monotonic() - t0)
         return self._transcriber
 
+    def transcriber_for(self, job: dict):
+        """The local model, or a client for the API the job names (cheap to make,
+        so made per job: an administrator may change it between jobs)."""
+        if asr_engine(job) == "local":
+            return self.transcriber
+        settings = settings_from_job(job.get("asr") or {})
+        api = ApiTranscriber(
+            settings,
+            api_key(settings.provider),
+            concurrency=self.cfg.asr_api_concurrency,
+            timeout=self.cfg.asr_api_timeout,
+        ).load()
+        log.info("transcribing with %s", api.label)
+        return api
+
 
 def job_kind(job: dict) -> str:
     return job.get("kind") or "transcribe"
@@ -130,6 +153,8 @@ class ModelsUnavailable(Exception):
 def is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, MediaError):
         return False
+    if isinstance(exc, ApiError):
+        return exc.retryable
     text = f"{type(exc).__name__}: {exc}".lower()
     return any(k in text for k in ("out of memory", "cuda", "connection", "timeout", "temporarily"))
 
@@ -198,12 +223,20 @@ class _JobRunner:
         log.info("job %s (%s): meeting %s (%s), attempt %s", job_id, kind, job["meetingId"], job.get("title"), job.get("attempt"))
         started = time.monotonic()
         spec = JobSpec(media_path=job["mediaPath"], out_dir=job["outDir"], options=job.get("options") or {})
+        transcriber = None
         if kind == "transcribe":
-            # Loaded on first use when the session began with a voiceprint. A failure
-            # here is the session's, not the recording's: retry it elsewhere or later.
             try:
-                models.transcriber  # noqa: B018
+                transcriber = models.transcriber_for(job)
+            except ApiError as e:
+                # No key, or settings this worker cannot use: the same for every
+                # worker and every retry, so say so instead of retrying.
+                log.error("cannot use the transcription API: %s", e)
+                self.fail(job_id, str(e), e.retryable)
+                return
             except Exception as e:
+                # The local model, loaded on first use when the session began with a voiceprint
+                # or an API job. A failure here is the session's, not the recording's: retry it
+                # elsewhere or later.
                 log.error("could not load the ASR model: %s\n%s", e, traceback.format_exc())
                 self.fail(job_id, f"Could not load models: {type(e).__name__}: {e}", True)
                 raise ModelsUnavailable() from e
@@ -221,7 +254,7 @@ class _JobRunner:
                 result = run_job(
                     spec,
                     report=self.report,
-                    transcriber=models.transcriber,
+                    transcriber=transcriber,
                     diarizer=models.diarizer,
                     max_segment_sec=self.cfg.max_segment_sec,
                     diarizer_unavailable=models.diarization.get("reason"),
@@ -244,7 +277,7 @@ class _JobRunner:
                 self.fail(job_id, "The worker was shut down.", True)
         except Exception as e:
             log.error("job %s failed: %s\n%s", job_id, e, traceback.format_exc())
-            self.fail(job_id, str(e) if isinstance(e, MediaError) else f"{type(e).__name__}: {e}", is_retryable(e))
+            self.fail(job_id, str(e) if isinstance(e, (MediaError, ApiError)) else f"{type(e).__name__}: {e}", is_retryable(e))
             try:
                 import torch
 
@@ -278,7 +311,7 @@ def gpu_session(cfg: WorkerConfig, first_job: dict, events) -> None:
             log.info("using fake models (ASR_BACKEND=fake)")
         t0 = time.monotonic()
         models = Models(cfg)
-        if job_kind(job) == "transcribe":
+        if job_kind(job) == "transcribe" and asr_engine(job) == "local":
             models.transcriber  # noqa: B018 - load it now, while the job shows "Loading models"
         log.info("models ready in %.1fs", time.monotonic() - t0)
     except Exception as e:
@@ -335,6 +368,8 @@ class GpuWorker:
             "version": __version__,
             "asrModel": self.cfg.asr_model,
             "asrBackend": self.cfg.asr_backend,
+            # Which transcription APIs this worker has a key for; never the keys themselves.
+            "asrApiKeys": keys_present(),
             "diarization": self.diarization["state"],
             "diarizationError": self.diarization.get("reason"),
             "state": "busy" if self.child is not None else "idle",
@@ -344,11 +379,12 @@ class GpuWorker:
             **gpu_info(self.gpu),
         }
 
-    def heartbeat(self):
+    def heartbeat(self) -> Optional[dict]:
         try:
-            self.client.heartbeat(self.cfg.worker_name, self.info())
+            return self.client.heartbeat(self.cfg.worker_name, self.info())
         except Exception as e:
             log.debug("heartbeat failed: %s", e)
+            return None
 
     def start_session(self, job: dict):
         """Starts a GPU session for `job`; this GPU is busy until the session exits."""
@@ -409,11 +445,23 @@ class Supervisor:
         # Stand-in models and CPU workers use no GPU memory, so there is nothing to check.
         self.query = query or (query_gpus if cfg.uses_gpu else None)
         self._waiting: Optional[str] = None
+        # Where the backend says transcription runs; decides how much GPU memory a session needs.
+        self.asr_engine = "local"
+
+    def note_backend(self, answer: Optional[dict]):
+        engine = ((answer or {}).get("transcriber") or {}).get("engine")
+        if engine in ("local", "api") and engine != self.asr_engine:
+            log.info("transcription now runs %s", "through an API" if engine == "api" else "on the GPU")
+            self.asr_engine = engine
+
+    @property
+    def min_free_vram_gb(self) -> float:
+        return self.cfg.min_free_vram_api_gb if self.asr_engine == "api" else self.cfg.min_free_vram_gb
 
     def heartbeat_loop(self):
         while not self.stop.wait(20):
             for worker in self.workers:
-                worker.heartbeat()
+                self.note_backend(worker.heartbeat())
 
     def _note(self, reason: Optional[str], message: str = ""):
         """Logs why no GPU can be used, once each time the reason changes."""
@@ -436,7 +484,8 @@ class Supervisor:
         if gpus is None:
             self._note("no-smi", "nvidia-smi not found: GPUs are used without checking their free memory")
             return idle[0]
-        gpu = pick_gpu([w.gpu for w in idle], gpus, self.cfg.min_free_vram_gb)
+        need = self.min_free_vram_gb
+        gpu = pick_gpu([w.gpu for w in idle], gpus, need)
         if gpu is None:
             free = ", ".join(
                 f"GPU {w.gpu} {mem.free_gb:.1f} GB" if (mem := find_gpu(gpus, w.gpu)) else f"GPU {w.gpu} not found"
@@ -444,7 +493,8 @@ class Supervisor:
             )
             self._note(
                 "full",
-                f"waiting for GPU memory: no idle GPU has {self.cfg.min_free_vram_gb:g} GB free (MIN_FREE_VRAM_GB); free: {free}",
+                f"waiting for GPU memory: no idle GPU has {need:g} GB free "
+                f"({'MIN_FREE_VRAM_API_GB' if self.asr_engine == 'api' else 'MIN_FREE_VRAM_GB'}); free: {free}",
             )
             return None
         self._note(None)
@@ -454,7 +504,7 @@ class Supervisor:
         threading.Thread(target=self.heartbeat_loop, daemon=True).start()
         for worker in self.workers:
             try:
-                worker.client.heartbeat(worker.cfg.worker_name, worker.info())
+                self.note_backend(worker.client.heartbeat(worker.cfg.worker_name, worker.info()))
             except Exception as e:
                 log.warning("backend not reachable yet: %s", e)
                 break
@@ -479,6 +529,8 @@ class Supervisor:
             if not job:
                 self.stop.wait(self.cfg.poll_interval)
                 continue
+            if job_kind(job) == "transcribe":
+                self.note_backend({"transcriber": {"engine": asr_engine(job)}})
             # The GPU is busy from here, so the next pick chooses among the others.
             worker.start_session(job)
 

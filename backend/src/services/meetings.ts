@@ -17,6 +17,7 @@ import {
   voiceprintSpans,
   type Voice,
 } from "./voices";
+import { type JobAsrSettings, jobAsrSettings } from "./transcriberSettings";
 
 export const SPEAKER_COLORS = 10;
 
@@ -245,6 +246,8 @@ export interface ClaimedJob {
   /** Transcription options, or for a voiceprint `{ speakers: { key: [[start, end], …] } }`. */
   options: TranscribeOptions | { speakers: Record<string, [number, number][]> };
   title: string;
+  /** Transcriptions only: where speech is recognised, as the admin has it set when the job is claimed. */
+  asr?: JobAsrSettings;
 }
 
 /**
@@ -282,7 +285,11 @@ export function claimJob(workerId: string, kinds: JobKind[] = ["transcribe"]): C
       t,
     });
     touchMeeting(m);
-    return { ...base, options: { ...DEFAULT_OPTIONS, ...parseJson<Partial<TranscribeOptions>>(m.options, {}) } };
+    return {
+      ...base,
+      options: { ...DEFAULT_OPTIONS, ...parseJson<Partial<TranscribeOptions>>(m.options, {}) },
+      asr: jobAsrSettings(),
+    };
   })();
 }
 

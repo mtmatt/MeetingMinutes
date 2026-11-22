@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireWorker } from "../auth/middleware";
 import { db, now } from "../db";
 import { claimJob, completeJob, completeVoiceprintJob, failJob, reportProgress } from "../services/meetings";
+import { transcriberSettings } from "../services/transcriberSettings";
 import type { JobKind } from "../types";
 import { body } from "./validate";
 
@@ -31,7 +32,8 @@ function seen(id: string, name?: string, info?: unknown) {
 internalRoutes.post("/worker/heartbeat", async (c) => {
   const input = await body(c, z.object({ workerId, name: z.string().max(128).optional(), info: z.record(z.string(), z.unknown()).optional() }));
   seen(input.workerId, input.name, input.info);
-  return c.json({ ok: true });
+  // Where transcription runs decides how much free GPU memory a worker waits for before claiming.
+  return c.json({ ok: true, transcriber: { engine: transcriberSettings().engine } });
 });
 
 internalRoutes.post("/jobs/claim", async (c) => {
