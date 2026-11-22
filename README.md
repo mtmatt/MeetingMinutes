@@ -134,18 +134,25 @@ Things to know:
 - **Vocabulary**: the upload page's vocabulary list is sent as the request's `prompt`. Whisper uses it; whether another model's provider forwards it varies, so names and jargon may help less than with the local model.
 - **Language**: the upload page's language becomes an ISO code (`zh`, `en`, `yue`, `ja`, `ko`); "auto" lets the service detect it. The detected language is shown when the service reports it (`verbose_json`); a service that refuses `verbose_json` is asked for plain `json`.
 - **Failures**: a rejected key (401), no credit (402) or an unknown model (404) fails the recording at once with the reason, without retrying; rate limits (429, honouring `Retry-After`), server errors and network errors are retried up to five times per segment, and then the whole job is retried later like any other failure. A worker without a key for the chosen service fails the recording with which variable to set.
-- **No GPU at all**: choose pyannoteAI for speaker separation too (next section); the worker then needs no GPU, CUDA or torch.
+- **No GPU at all**: separate speakers on the CPU, or with pyannoteAI (next sections); the worker then needs no GPU, CUDA or torch.
 - The key is read by the worker from its own environment and never passes through the web server, the database or a browser; workers report only whether they have one.
 
-### Speaker separation by pyannoteAI, and a worker without a GPU
+### Speaker separation on the CPU, and a worker without a GPU
 
-**Admin → Transcription → Who separates speakers** can send speaker separation to [pyannoteAI](https://www.pyannote.ai), the hosted service of the team behind pyannote (model `precision-2`), instead of running pyannote on the worker's GPU. With the transcription API as well, a worker needs **no GPU, CUDA or torch**:
+**Admin → Transcription → Who separates speakers** offers three choices: pyannote on the worker's **GPU** (the default), the worker's **CPU**, or **pyannoteAI** (below). The CPU option is free and uploads nothing, and with the transcription API a worker needs no GPU, CUDA or torch:
 
 ```
 scripts/install.sh --no-gpu        # Python packages without torch, Qwen3-ASR or pyannote
+scripts/worker.sh check            # downloads the two CPU models (about 45 MB) into data/models/
 ```
 
-and in that machine's `.env`:
+- It runs [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (onnxruntime): pyannote's segmentation-3.0 model (ONNX, MIT licence) finds who speaks when in short windows, and a Mandarin-trained 3D-Speaker ERes2Net model embeds each piece. The pieces are then clustered into speakers. The same ERes2Net model makes the voice fingerprints. Both files come from sherpa-onnx's GitHub releases and are checked against pinned SHA-256 sums.
+- Speed: on a 4-core test machine, about 8 minutes of CPU time per hour of audio with 4 threads (17 with one). `DIARIZATION_CPU_THREADS` sets the threads; the default is the number of cores, at most 8.
+- Accuracy: lower than pyannote community-1 on a GPU or pyannoteAI precision-2. On sherpa-onnx's 4-speaker Mandarin sample it found the 4 speakers. With an automatic count it can split one person into two (on that sample repeated five times it found 6), so the speaker count or a range on the upload page helps most here. With a range, a count outside it is redone at the nearest allowed count. `DIARIZATION_CPU_THRESHOLD` (default 0.5; larger means fewer speakers) tunes automatic counting.
+
+### Speaker separation by pyannoteAI
+
+Speaker separation can also go to [pyannoteAI](https://www.pyannote.ai), the hosted service of the team behind pyannote (model `precision-2`). It is more accurate than the CPU option, but it is a paid subscription and the whole recording is uploaded. A worker set up for it needs, in its `.env`:
 
 ```
 OPENROUTER_API_KEY=sk-or-v1-...
@@ -155,9 +162,9 @@ PYANNOTEAI_API_KEY=...             # from dashboard.pyannote.ai
 How it works:
 
 - The worker uploads the whole recording, as 48 kbit/s mono Opus, to pyannoteAI's temporary storage (its documentation says files are deleted within 48 hours, and results kept for 24), starts a diarization job with the speaker count from the upload page, and polls it. The answer is who spoke when; the worker then cuts the speech segments and transcribes them as before.
-- Voice fingerprints, for recognising people across meetings, are computed on the worker's CPU with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) and a Mandarin-trained 3D-Speaker ERes2Net model (about 40 MB, downloaded once into `data/models/` and checked against a pinned SHA-256). Nothing extra is uploaded for them. On a 4-speaker Mandarin sample, fingerprints of the same person scored 0.42 to 0.76 cosine similarity on 2 to 4 second clips and of different people at most 0.26, so the usual thresholds apply.
+- Voice fingerprints, for recognising people across meetings, are computed on the worker's CPU with the same ERes2Net model as the CPU option, so switching between the two keeps everyone's voices. Nothing extra is uploaded for them. On a 4-speaker Mandarin sample, fingerprints of the same person scored 0.42 to 0.76 cosine similarity on 2 to 4 second clips and of different people at most 0.26, so the usual thresholds apply.
 - Fingerprints from different models are never compared. After switching, **Voices → Find voices in past recordings** redoes the fingerprints of earlier meetings with the new model and relearns the people you named.
-- Each worker reports what it can run. One installed with `--no-gpu` is handed transcriptions only while both steps are set to cloud services; the admin page warns if no connected worker can run the chosen combination.
+- Each worker reports what it can run. A worker installed with `--no-gpu` is handed transcriptions only while recognition is set to the API and speaker separation to the CPU or pyannoteAI. The admin page warns if no connected worker can run the chosen combination.
 - The upload page tells people that the whole recording goes to pyannoteAI.
 - Errors: a rejected key (401) or no credit (402) fails the recording with the reason; rate limits, server errors and network errors are retried, then the whole job is retried later rather than keeping a transcript without speakers.
 - Price: third-party comparisons list precision-2 at about €0.10 per hour of audio; check pyannoteAI's pricing page.
@@ -364,7 +371,7 @@ All settings are environment variables. Put them in `.env` at the repository roo
 | `MIN_FREE_VRAM_GB`                                  | `8`                                    | Free GPU memory a GPU needs before a GPU session starts on it. Raise it if sessions run out of memory with a larger `ASR_BATCH_SIZE`.                                                                                                                                                                                              |
 | `MEDIA_COMPACT` / `MEDIA_COMPACT_AFTER_DAYS` / `MEDIA_COMPACT_KBPS` | `false` / `7` / `32` | Replace originals with mono Opus audio this many days after transcription, dropping any video (see Operations, "Disk space"). The first two are defaults: Admin → System overrides them. |
 | `ASR_ENGINE` / `ASR_API_PROVIDER` / `ASR_API_MODEL` | `local` / `openrouter` / `qwen/qwen3-asr-1.7b` | Where speech is recognised: `local` (the GPU) or `api`, and with `api` the service (`openrouter` or `openai`) and model. Defaults: Admin → Transcription overrides them. `ASR_API_BASE_URL` is the address of an OpenAI-compatible server (empty: OpenAI). |
-| `DIARIZATION_ENGINE` / `PYANNOTEAI_API_KEY`         | `local` / –                            | Who separates speakers: `local` (pyannote on the GPU) or `pyannoteai`; a default that Admin → Transcription overrides. The key is read by workers only. |
+| `DIARIZATION_ENGINE` / `PYANNOTEAI_API_KEY`         | `local` / –                            | Who separates speakers: `local` (pyannote on the GPU), `cpu` (sherpa-onnx) or `pyannoteai`. This is a default that Admin → Transcription overrides. The key is read by workers only. `DIARIZATION_CPU_THREADS` / `DIARIZATION_CPU_THRESHOLD` tune the CPU option. |
 | `OPENROUTER_API_KEY` / `ASR_API_KEY`                | –                                      | Worker only: the key for OpenRouter, or for an OpenAI-compatible server (`ASR_API_KEY` also serves OpenRouter; `OPENAI_API_KEY` also serves OpenAI). Never sent to the web server or browsers.                                                                                                                                   |
 | `MIN_FREE_VRAM_API_GB` / `ASR_API_CONCURRENCY`      | `3` / `4`                              | With an API: free GPU memory a session needs (pyannote only), and segments sent at the same time. `ASR_API_TIMEOUT_SEC` (120) limits one request.                                                                                                                                                                                |
 | `MODEL_KEEPALIVE_SEC`                               | `0`                                    | Seconds a GPU session waits for more work before releasing the GPU.                                                                                                                                                                                                                                                                |

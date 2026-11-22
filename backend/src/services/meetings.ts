@@ -269,7 +269,7 @@ export interface ClaimedJob {
   /** Transcriptions only: where speech is recognised, as the admin has it set when the job is claimed. */
   asr?: JobAsrSettings;
   /** Transcriptions and voiceprints: who separates speakers (and so which model makes voice fingerprints). */
-  diarization?: { engine: "local" | "pyannoteai" };
+  diarization?: { engine: "local" | "cpu" | "pyannoteai" };
 }
 
 /**

@@ -233,12 +233,13 @@ export const config = {
     apiBaseUrl: str("ASR_API_BASE_URL", "").replace(/\/+$/, ""),
     apiModel: str("ASR_API_MODEL", "qwen/qwen3-asr-1.7b"),
     /**
-     * Who separates speakers: "local" (pyannote on the worker's GPU) or
-     * "pyannoteai" (the pyannote team's hosted service; the worker's
-     * PYANNOTEAI_API_KEY). With pyannoteAI and the transcription API, a worker
-     * needs no GPU, CUDA or torch.
+     * Who separates speakers: "local" (pyannote on the worker's GPU), "cpu"
+     * (sherpa-onnx on the worker's CPU, free, nothing uploaded) or "pyannoteai"
+     * (the pyannote team's hosted service; the worker's PYANNOTEAI_API_KEY).
+     * With "cpu" or "pyannoteai" and the transcription API, a worker needs no
+     * GPU, CUDA or torch.
      */
-    diarization: oneOf("DIARIZATION_ENGINE", ["local", "pyannoteai"] as const, "local"),
+    diarization: oneOf("DIARIZATION_ENGINE", ["local", "cpu", "pyannoteai"] as const, "local"),
   },
   /**
    * A model served on this machine (or the local network): Ollama's own API, or

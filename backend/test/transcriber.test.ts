@@ -215,3 +215,32 @@ describe("speaker separation by pyannoteAI", () => {
     expect(vp.diarization).toEqual({ engine: "pyannoteai" });
   });
 });
+
+describe("speaker separation on the CPU", () => {
+  afterAll(async () => {
+    await (await adminClient()).del("/api/admin/transcriber");
+  });
+
+  test("a GPU-free worker takes jobs with CPU separation and the transcription API; nothing is uploaded", async () => {
+    const admin = await adminClient();
+    const cpuWorker = { asr: ["api"], diarization: ["cpu", "pyannoteai"] };
+    const settings = { engine: "api", diarization: "cpu", api: { provider: "openrouter", baseUrl: "", model: "qwen/qwen3-asr-1.7b" } };
+    expect((await admin.req("PUT", "/api/admin/transcriber", { json: settings })).status).toBe(200);
+    const id = await upload(admin);
+    let job = null;
+    for (let i = 0; i < 30 && !job; i++) {
+      const res = await worker.call("/jobs/claim", { workerId: "cpu-1", capabilities: cpuWorker });
+      if (res.status === 204) break;
+      const got = ((await res.json()) as any).job;
+      if (got.meetingId === id) job = got;
+      else await worker.call(`/jobs/${got.jobId}/fail`, { workerId: "cpu-1", error: "not this test", retryable: false });
+    }
+    expect(job.diarization).toEqual({ engine: "cpu" });
+    // A worker from before CPU separation is not handed it.
+    const id2 = await upload(admin);
+    const legacy = await worker.call("/jobs/claim", { workerId: "old-1", capabilities: { asr: ["local", "api"], diarization: ["local", "pyannoteai"] } });
+    if (legacy.status === 200) expect(((await legacy.json()) as any).job.meetingId).not.toBe(id2);
+    const state = (await (await (await memberClient("cpu-reader")).get("/api/auth/state")).json()) as any;
+    expect(state.transcriber.diarization).toBe("cpu");
+  });
+});

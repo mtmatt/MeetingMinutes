@@ -33,16 +33,21 @@ def cmd_check(cfg: WorkerConfig):
     caps = capabilities(cfg)
     keys = api_keys()
     print(json.dumps({"serverUrl": cfg.server_url, "workerId": cfg.worker_id, "capabilities": caps, "apiKeys": keys, **gpu_info(cfg.gpus[0])}, indent=2))
-    # The CPU voice model, used with pyannoteAI: download it now rather than during the first job.
+    # The CPU models (speaker separation and voice fingerprints): download them now rather than during the first job.
     try:
-        Models(cfg).embedder().load()
-        print("Voice fingerprints on the CPU (for pyannoteAI): ready")
+        models = Models(cfg)
+        models.embedder().load()
+        from .onnx_diarize import OnnxDiarizer
+
+        if cfg.asr_backend != "fake":
+            OnnxDiarizer(cfg.model_dir, models.embedder()).load()
+        print("Speaker separation and voice fingerprints on the CPU: ready")
     except Exception as e:
-        print(f"Voice fingerprints on the CPU (for pyannoteAI): UNAVAILABLE ({e})")
+        print(f"Speaker separation and voice fingerprints on the CPU: UNAVAILABLE ({e})")
     if "local" not in caps["asr"] or "local" not in caps["diarization"]:
-        print("Local models: not installed (this worker runs the transcription API with pyannoteAI only)")
-        for name, ok in (("OPENROUTER_API_KEY or ASR_API_KEY", keys["openrouter"]), ("PYANNOTEAI_API_KEY", keys["pyannoteai"])):
-            print(f"  {name}: {'set' if ok else 'MISSING'}")
+        print("GPU models: not installed (this worker runs the transcription API, with speakers separated on the CPU or by pyannoteAI)")
+        for name, ok in (("OPENROUTER_API_KEY or ASR_API_KEY", keys["openrouter"]), ("PYANNOTEAI_API_KEY (only for pyannoteAI)", keys["pyannoteai"])):
+            print(f"  {name}: {'set' if ok else 'missing'}")
         return
     t0 = time.monotonic()
     _, _, diarization = build_models(cfg)

@@ -20,13 +20,13 @@ import { isLoopbackUrl, MODEL_NAME } from "./summarySettings";
  */
 
 export const ASR_ENGINES = ["local", "api"] as const;
-export const DIARIZATION_ENGINES = ["local", "pyannoteai"] as const;
+export const DIARIZATION_ENGINES = ["local", "cpu", "pyannoteai"] as const;
 export type DiarizationEngine = (typeof DIARIZATION_ENGINES)[number];
 
 /**
- * The voice fingerprint model a worker uses when pyannoteAI separates speakers
- * (sherpa-onnx on the CPU; worker/mm_worker/onnx_voice.py). Known here so
- * "find voices in past recordings" can redo fingerprints made by another model.
+ * The voice fingerprint model a worker uses when speakers are separated on the
+ * CPU or by pyannoteAI (sherpa-onnx; worker/mm_worker/onnx_voice.py). Known here
+ * so "find voices in past recordings" can redo fingerprints made by another model.
  */
 export const CLOUD_VOICE_MODEL = "sherpa-onnx/3dspeaker-eres2net-base-zh-cn";
 export const ASR_PROVIDERS = ["openrouter", "openai"] as const;
@@ -139,9 +139,9 @@ export function jobDiarizationSettings(s: TranscriberSettings = transcriberSetti
   return { engine: s.diarization };
 }
 
-/** The voice model fingerprints are made with now, when the backend knows it (pyannoteAI: the CPU model). */
+/** The voice model fingerprints are made with now, when the backend knows it (CPU or pyannoteAI: the CPU model). */
 export function currentVoiceModel(s: TranscriberSettings = transcriberSettings()): string | null {
-  return s.diarization === "pyannoteai" ? CLOUD_VOICE_MODEL : null;
+  return s.diarization === "local" ? null : CLOUD_VOICE_MODEL;
 }
 
 /** What a worker says it can run; workers from before this say nothing. */
@@ -162,7 +162,7 @@ export function canRun(caps: WorkerCapabilities | undefined, s: TranscriberSetti
 /** What people uploading a recording are told about where it is transcribed. */
 export function publicTranscriberInfo(s: TranscriberSettings = transcriberSettings()): {
   engine: AsrEngine;
-  /** Who separates speakers; with pyannoteAI the whole recording is uploaded there. */
+  /** Who separates speakers; with pyannoteAI the whole recording is uploaded there (local and cpu: nothing leaves). */
   diarization: DiarizationEngine;
   provider: AsrProvider | null;
   model: string | null;
