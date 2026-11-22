@@ -1,7 +1,7 @@
 """Voice fingerprints on the CPU, without torch: sherpa-onnx with a 3D-Speaker model.
 
-Used when speakers are separated by pyannoteAI (in the cloud), so a worker
-without a GPU, CUDA or torch still recognises people by voice. The model is
+Used when speakers are separated on the CPU (onnx_diarize) or by pyannoteAI,
+so a worker without a GPU, CUDA or torch still recognises people by voice. The model is
 ERes2Net-base, trained on Mandarin (3D-Speaker, zh-cn), 512 dimensions; it is
 downloaded once (about 40 MB) and checked against a pinned SHA-256.
 
@@ -44,14 +44,26 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def ensure_model(model_dir: Path, url: str = MODEL_URL, sha256: str = MODEL_SHA256, opener=urllib.request.urlopen) -> Path:
-    """The model file, downloaded into ``model_dir`` the first time and verified."""
-    path = model_dir / MODEL_FILE
+def ensure_model(
+    model_dir: Path,
+    url: str = MODEL_URL,
+    sha256: str = MODEL_SHA256,
+    opener=urllib.request.urlopen,
+    filename: str = MODEL_FILE,
+    member: Optional[str] = None,
+    member_sha256: Optional[str] = None,
+) -> Path:
+    """A model file in ``model_dir``, downloaded the first time and verified.
+
+    ``member``: the download is a .tar.bz2 archive and the model is this file in it
+    (checked against ``member_sha256``); nothing else is extracted.
+    """
+    path = model_dir / filename
     if path.exists():
         return path
     model_dir.mkdir(parents=True, exist_ok=True)
     part = path.with_suffix(".part")
-    log.info("downloading the voice fingerprint model (%s, about 40 MB)", MODEL_FILE)
+    log.info("downloading %s", url.rsplit("/", 1)[-1])
     try:
         with opener(url, timeout=120) as res, open(part, "wb") as out:
             while True:
@@ -61,12 +73,23 @@ def ensure_model(model_dir: Path, url: str = MODEL_URL, sha256: str = MODEL_SHA2
                 out.write(buf)
         got = _sha256(part)
         if got != sha256:
-            raise VoiceModelUnavailable(f"The downloaded voice model does not match its checksum ({got[:12]}…); not using it.")
+            raise VoiceModelUnavailable(f"The downloaded model {url.rsplit('/', 1)[-1]} does not match its checksum ({got[:12]}…); not using it.")
+        if member:
+            import tarfile
+
+            with tarfile.open(part, "r:bz2") as tar:
+                info = tar.getmember(member)
+                if not info.isfile():
+                    raise VoiceModelUnavailable(f"{member} is not a file in {url}.")
+                data = tar.extractfile(info).read()  # type: ignore[union-attr]
+            if member_sha256 and hashlib.sha256(data).hexdigest() != member_sha256:
+                raise VoiceModelUnavailable(f"{member} does not match its checksum; not using it.")
+            part.write_bytes(data)
         os.replace(part, path)
     except VoiceModelUnavailable:
         raise
     except Exception as e:
-        raise VoiceModelUnavailable(f"Could not download the voice fingerprint model from {url}: {e}") from e
+        raise VoiceModelUnavailable(f"Could not download the model from {url}: {e}") from e
     finally:
         if part.exists():
             part.unlink()

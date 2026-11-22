@@ -2470,3 +2470,11 @@
   border-top: 0;
   padding-top: 0;
 }
+.source-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 900px) {
+  .source-grid-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -493,8 +493,8 @@ def test_capabilities_follow_what_is_installed(monkeypatch):
     from mm_worker import worker as worker_mod
 
     # The fake backend stands in for every model.
-    assert worker_mod.capabilities(cfg("http://unused")) == {"asr": ["local", "api"], "diarization": ["local", "pyannoteai"]}
-    # Without qwen-asr and pyannote installed (as in this test environment), only the APIs.
+    assert worker_mod.capabilities(cfg("http://unused")) == {"asr": ["local", "api"], "diarization": ["local", "cpu", "pyannoteai"]}
+    # Without qwen-asr, pyannote or sherpa-onnx installed, only the APIs.
     real = replace(cfg("http://unused"), asr_backend="transformers")
     import importlib.util
 
@@ -512,3 +512,10 @@ def test_everything_through_apis_needs_no_free_gpu_memory():
     assert sup.pick(sup.workers) is None
     sup.note_backend({"transcriber": {"engine": "api", "diarization": "pyannoteai"}})
     assert sup.pick(sup.workers) is sup.workers[0]
+
+
+def test_cpu_separation_with_the_api_needs_no_gpu_memory():
+    smi = "0, GPU-a, NVIDIA GeForce RTX 4090, 24564, 24000\n"  # nearly full
+    sup = Supervisor(multi_gpu_cfg(["0"]), query=lambda: parse_gpus(smi))
+    sup.note_backend({"transcriber": {"engine": "api", "diarization": "cpu"}})
+    assert sup.diarization_engine == "cpu" and sup.pick(sup.workers) is sup.workers[0]

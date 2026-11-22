@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AudioLines, Cloud, Cpu, KeyRound, RotateCcw, Users } from "lucide-react";
+import { AudioLines, Cloud, Cpu, KeyRound, MemoryStick, RotateCcw, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { ApiKeyName, AsrProvider, TranscriberSettings, TranscriberState } from "../api/types";
@@ -119,7 +119,8 @@ export function Transcription() {
     const c = w.capabilities ?? { asr: ["local", "api"], diarization: ["local"] };
     return c.asr.includes(form.engine) && c.diarization.includes(form.diarization);
   });
-  const allCloud = form.engine === "api" && form.diarization === "pyannoteai";
+  // Nothing on the GPU: a worker installed without GPU packages can run it.
+  const noGpu = form.engine === "api" && form.diarization !== "local";
 
   return (
     <div className="model-admin">
@@ -222,7 +223,7 @@ export function Transcription() {
           </h3>
           <p className="muted">{t("asr.diarizationLede")}</p>
         </div>
-        <div className="source-grid" role="radiogroup" aria-label={t("asr.diarization")}>
+        <div className="source-grid source-grid-3" role="radiogroup" aria-label={t("asr.diarization")}>
           <button
             type="button"
             role="radio"
@@ -237,6 +238,17 @@ export function Transcription() {
           <button
             type="button"
             role="radio"
+            aria-checked={form.diarization === "cpu"}
+            className="source-option"
+            onClick={() => setForm({ ...form, diarization: "cpu" })}
+          >
+            <MemoryStick />
+            <span className="source-option-name">{t("asr.diarizationCpu")}</span>
+            <span className="source-option-desc">{t("asr.diarizationCpuDesc")}</span>
+          </button>
+          <button
+            type="button"
+            role="radio"
             aria-checked={form.diarization === "pyannoteai"}
             className="source-option"
             onClick={() => setForm({ ...form, diarization: "pyannoteai" })}
@@ -246,6 +258,7 @@ export function Transcription() {
             <span className="source-option-desc">{t("asr.diarizationCloudDesc")}</span>
           </button>
         </div>
+        {form.diarization === "cpu" && <p className="field-hint asr-flow">{t("asr.diarizationCpuFlow")}</p>}
         {form.diarization === "pyannoteai" && (
           <div className="model-section card model-card asr-key-card">
             <KeyStatus data={data} provider="pyannoteai" />
@@ -254,7 +267,7 @@ export function Transcription() {
         )}
       </section>
 
-      {allCloud && <p className="callout asr-callout">{t("asr.noGpuNeeded")}</p>}
+      {noGpu && <p className="callout asr-callout">{t("asr.noGpuNeeded")}</p>}
       {online.length > 0 && capable.length === 0 && (
         <div className="callout warn asr-callout" role="alert">
           <div>

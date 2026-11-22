@@ -119,7 +119,11 @@ def capabilities(cfg: WorkerConfig) -> dict:
 
     fake = cfg.asr_backend == "fake"
     asr = (["local"] if fake or installed("qwen_asr") else []) + ["api"]
-    diarization = (["local"] if fake or installed("pyannote.audio") else []) + ["pyannoteai"]
+    diarization = (
+        (["local"] if fake or installed("pyannote.audio") else [])
+        + (["cpu"] if fake or installed("sherpa_onnx") else [])
+        + ["pyannoteai"]
+    )
     return {"asr": asr, "diarization": diarization}
 
 
@@ -128,9 +132,14 @@ def api_keys() -> dict:
     return {**keys_present(), "pyannoteai": bool(os.environ.get(PYANNOTEAI_KEY, "").strip())}
 
 
+DIARIZATION_ENGINES = ("local", "cpu", "pyannoteai")
+
+
 def diarization_engine(job: dict) -> str:
-    """Who separates speakers for this job: "local" (pyannote on this machine) or "pyannoteai"."""
-    return "pyannoteai" if (job.get("diarization") or {}).get("engine") == "pyannoteai" else "local"
+    """Who separates speakers for this job: "local" (pyannote on the GPU), "cpu"
+    (sherpa-onnx on this machine's CPU) or "pyannoteai". Older backends send nothing: local."""
+    engine = (job.get("diarization") or {}).get("engine")
+    return engine if engine in DIARIZATION_ENGINES else "local"
 
 
 def asr_engine(job: dict) -> str:
@@ -175,7 +184,17 @@ class Models:
 
     def diarizer_for(self, job: dict):
         """(diarizer or None, why there is none) for this job's speaker separation."""
-        if diarization_engine(job) == "pyannoteai":
+        engine = diarization_engine(job)
+        if engine == "cpu":
+            if self.cfg.asr_backend == "fake":
+                from .fakes import FakeDiarizer
+
+                return FakeDiarizer(), None
+            from .onnx_diarize import OnnxDiarizer
+            from .onnx_voice import default_model_dir
+
+            return OnnxDiarizer(self.cfg.model_dir or default_model_dir(None), self.embedder()), None
+        if engine == "pyannoteai":
             diarizer = PyannoteAIDiarizer(
                 os.environ.get(PYANNOTEAI_KEY, "").strip() or None,
                 self.embedder(),
@@ -637,13 +656,14 @@ class Supervisor:
         if engine in ("local", "api") and engine != self.asr_engine:
             log.info("transcription now runs %s", "through an API" if engine == "api" else "on the GPU")
             self.asr_engine = engine
-        if diarization in ("local", "pyannoteai") and diarization != self.diarization_engine:
-            log.info("speakers are now separated %s", "by pyannoteAI" if diarization == "pyannoteai" else "on the GPU")
+        if diarization in DIARIZATION_ENGINES and diarization != self.diarization_engine:
+            where = {"pyannoteai": "by pyannoteAI", "cpu": "on the CPU", "local": "on the GPU"}[diarization]
+            log.info("speakers are now separated %s", where)
             self.diarization_engine = diarization
 
     @property
     def min_free_vram_gb(self) -> float:
-        if self.asr_engine == "api" and self.diarization_engine == "pyannoteai":
+        if self.asr_engine == "api" and self.diarization_engine != "local":
             return 0.0  # nothing is loaded on the GPU
         if self.asr_engine == "api":
             return self.cfg.min_free_vram_api_gb
@@ -711,10 +731,7 @@ class Supervisor:
         )
         caps = self.workers[0].client.capabilities or {}
         if "local" not in caps.get("asr", []) or "local" not in caps.get("diarization", []):
-            log.info(
-                "local models not installed: this worker takes only transcriptions set to %s",
-                " and ".join(x for x in ("the transcription API" if "local" not in caps.get("asr", []) else "", "pyannoteAI" if "local" not in caps.get("diarization", []) else "") if x),
-            )
+            log.info("GPU models not installed: this worker takes only transcriptions set to the transcription API with CPU or pyannoteAI speaker separation")
         while not self.stop.is_set():
             idle = [w for w in self.workers if w.child is None]
             worker = self.pick(idle) if idle else None

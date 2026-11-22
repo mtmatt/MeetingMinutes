@@ -276,7 +276,7 @@ export interface SummarizerInfo {
 
 export type AsrEngine = "local" | "api";
 export type AsrProvider = "openrouter" | "openai";
-export type DiarizationEngine = "local" | "pyannoteai";
+export type DiarizationEngine = "local" | "cpu" | "pyannoteai";
 export type ApiKeyName = AsrProvider | "pyannoteai";
 
 /** Where recordings are transcribed, as everyone signed in is told. */
