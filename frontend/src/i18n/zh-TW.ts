@@ -319,7 +319,6 @@ export const zhTW: Dict = {
   },
   summary: {
     engineFallback: "摘要模型",
-    export: "匯出",
     exportSummaryOnly: "摘要",
     exportSummaryOnlyDesc: "目前顯示的版本，附會議名稱、日期與發言者。",
     exportWithTranscript: "摘要＋逐字稿",

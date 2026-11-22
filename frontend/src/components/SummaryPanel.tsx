@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, ChevronDown, ClipboardCopy, Copy, Download, ExternalLink, FileText, MoreHorizontal, Pencil, RefreshCw, ScrollText, Sparkles, Square, Trash2, Users } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ClipboardCopy, Copy, ExternalLink, FileText, MoreHorizontal, Pencil, RefreshCw, ScrollText, Sparkles, Square, Trash2, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -372,7 +372,7 @@ export function useSummaryInfo(meeting: MeetingDetail) {
   return { versionOf, labelOf, exportMarkdown, exportGoogleDoc };
 }
 
-/** Export choices for one summary version, used by the summary header and the page's Export menu. */
+/** Export choices for one summary version, used by the page's Export menu. */
 export function SummaryExportItems({
   onExport,
   onGoogleDoc,
@@ -432,7 +432,7 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
   const [copied, setCopied] = useState(false);
 
   const { current, select: setSelectedId } = selection;
-  const { versionOf, labelOf, exportMarkdown, exportGoogleDoc } = useSummaryInfo(meeting);
+  const { versionOf, labelOf } = useSummaryInfo(meeting);
   const invalidate = () => qc.invalidateQueries({ queryKey: ["meeting", meeting.id] });
 
   const cancel = async (s: Summary) => {
@@ -557,31 +557,9 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
         {meeting.status === "ready" && (
           <div className="summary-actions">
             {current?.status === "done" && editing !== current.id && (
-              <>
-                <button className="icon-btn" onClick={() => copy(current)} title={t("summary.copyMarkdown")} aria-label={t("summary.copyMarkdown")}>
-                  {copied ? <Check /> : <Copy />}
-                </button>
-                <Menu
-                  trigger={({ toggle, open }) => (
-                    <button className="btn btn-sm" onClick={toggle} aria-expanded={open} aria-haspopup="menu">
-                      <Download /> {t("summary.export")}
-                    </button>
-                  )}
-                >
-                  {(close) => (
-                    <SummaryExportItems
-                      onExport={(withTranscript) => {
-                        exportMarkdown(current, withTranscript);
-                        close();
-                      }}
-                      onGoogleDoc={(withTranscript) => {
-                        exportGoogleDoc(current, withTranscript);
-                        close();
-                      }}
-                    />
-                  )}
-                </Menu>
-              </>
+              <button className="icon-btn" onClick={() => copy(current)} title={t("summary.copyMarkdown")} aria-label={t("summary.copyMarkdown")}>
+                {copied ? <Check /> : <Copy />}
+              </button>
             )}
             {current && (
               <Menu

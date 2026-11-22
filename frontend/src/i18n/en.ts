@@ -317,7 +317,6 @@ export const en = {
   },
   summary: {
     engineFallback: "The summary model",
-    export: "Export",
     exportSummaryOnly: "Summary",
     exportSummaryOnlyDesc: "The version shown, with meeting title, date and speakers.",
     exportWithTranscript: "Summary + transcript",
