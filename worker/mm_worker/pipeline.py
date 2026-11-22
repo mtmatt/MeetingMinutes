@@ -184,6 +184,10 @@ def run_job(
         except Canceled:
             raise
         except Exception as e:  # Fall back to plain transcription rather than failing the job.
+            if getattr(e, "retryable", False):
+                # A busy or unreachable diarization service: retry the job later rather
+                # than keep a transcript without speakers.
+                raise
             log.warning("diarization failed, continuing without speakers: %s", e)
             turns = None
             diarization = {"status": "failed", "reason": f"{type(e).__name__}: {e}"[:500]}

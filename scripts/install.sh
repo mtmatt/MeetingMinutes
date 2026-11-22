@@ -3,7 +3,8 @@
 # everything else stays inside this repository.
 #
 #   scripts/install.sh            backend + frontend + GPU worker + Ollama (summary model)
-#   scripts/install.sh --no-gpu   skip the worker's GPU dependencies and Ollama (web host only)
+#   scripts/install.sh --no-gpu   skip the worker's GPU dependencies (torch, Qwen3-ASR, pyannote) and Ollama:
+#                                 a web host only, or a worker that uses the transcription API and pyannoteAI
 #   scripts/install.sh --no-llm   skip Ollama (summaries by Codex, or a model server elsewhere)
 #   scripts/install.sh --vllm     also install the vLLM backend for faster ASR
 set -euo pipefail

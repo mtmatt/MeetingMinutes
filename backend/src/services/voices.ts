@@ -17,6 +17,7 @@ import { newId } from "../lib/util";
 import type { JobRow, MeetingRow, SpeakerRow, VoiceProfileRow, VoiceSampleRow, VoiceStatus } from "../types";
 import { publish } from "./events";
 import { renameSpeaker } from "./speakerNames";
+import { currentVoiceModel } from "./transcriberSettings";
 
 /** A fingerprint as the worker reports it. */
 export interface Voice {
@@ -555,10 +556,20 @@ export function enqueueVoiceprint(m: MeetingRow, learn: boolean): boolean {
   return true;
 }
 
-/** A speaker has enough speech in the transcript but no fingerprint yet, and was never tried. */
+/**
+ * A speaker has enough speech in the transcript but no fingerprint yet (and was
+ * never tried), or one made by another model than workers use now: after
+ * switching speaker separation to pyannoteAI, fingerprints come from the CPU
+ * model, and only fingerprints of the same model are compared.
+ */
 function needsFingerprint(m: MeetingRow): boolean {
   const talk = speechByKey(m.id);
-  return speakersOf(m.id).some((s) => !s.voice && s.speech_sec == null && (talk.get(s.key) ?? 0) >= config.voice.minSpeechSec);
+  const current = currentVoiceModel();
+  return speakersOf(m.id).some((s) => {
+    const enough = (talk.get(s.key) ?? 0) >= config.voice.minSpeechSec;
+    if (!s.voice) return s.speech_sec == null && enough;
+    return current != null && s.voice_model !== current && enough;
+  });
 }
 
 export interface ScanOutcome {

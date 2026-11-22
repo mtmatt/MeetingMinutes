@@ -19,7 +19,7 @@ from typing import Optional
 
 from .config import WorkerConfig, load_config
 from .pipeline import JobSpec, run_job
-from .worker import Supervisor, build_models, gpu_info
+from .worker import Models, Supervisor, api_keys, build_models, capabilities, gpu_info
 
 
 def cmd_run(cfg: WorkerConfig):
@@ -30,7 +30,20 @@ def cmd_run(cfg: WorkerConfig):
 
 
 def cmd_check(cfg: WorkerConfig):
-    print(json.dumps({"serverUrl": cfg.server_url, "workerId": cfg.worker_id, **gpu_info(cfg.gpus[0])}, indent=2))
+    caps = capabilities(cfg)
+    keys = api_keys()
+    print(json.dumps({"serverUrl": cfg.server_url, "workerId": cfg.worker_id, "capabilities": caps, "apiKeys": keys, **gpu_info(cfg.gpus[0])}, indent=2))
+    # The CPU voice model, used with pyannoteAI: download it now rather than during the first job.
+    try:
+        Models(cfg).embedder().load()
+        print("Voice fingerprints on the CPU (for pyannoteAI): ready")
+    except Exception as e:
+        print(f"Voice fingerprints on the CPU (for pyannoteAI): UNAVAILABLE ({e})")
+    if "local" not in caps["asr"] or "local" not in caps["diarization"]:
+        print("Local models: not installed (this worker runs the transcription API with pyannoteAI only)")
+        for name, ok in (("OPENROUTER_API_KEY or ASR_API_KEY", keys["openrouter"]), ("PYANNOTEAI_API_KEY", keys["pyannoteai"])):
+            print(f"  {name}: {'set' if ok else 'MISSING'}")
+        return
     t0 = time.monotonic()
     _, _, diarization = build_models(cfg)
     print(f"ASR model loaded: {cfg.asr_model} ({time.monotonic() - t0:.1f}s including diarization)")

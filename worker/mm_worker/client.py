@@ -19,11 +19,14 @@ class ServerError(Exception):
 
 
 class BackendClient:
-    def __init__(self, base_url: str, token: str, worker_id: str, timeout: float = 60.0):
+    def __init__(self, base_url: str, token: str, worker_id: str, timeout: float = 60.0, capabilities: Optional[dict] = None):
         self.base_url = base_url.rstrip("/")
         self.token = token
         self.worker_id = worker_id
         self.timeout = timeout
+        # What this worker can run ({"asr": [...], "diarization": [...]}), so the backend
+        # hands it only transcriptions it can do with the current settings.
+        self.capabilities = capabilities
 
     def _post(self, path: str, payload: dict, retries: int = 5) -> tuple[int, Any]:
         data = json.dumps({"workerId": self.worker_id, **payload}).encode()
@@ -65,7 +68,10 @@ class BackendClient:
     KINDS = ["transcribe", "voiceprint"]
 
     def claim(self, kinds: Optional[list] = None) -> Optional[dict]:
-        status, body = self._post("/jobs/claim", {"kinds": kinds or self.KINDS})
+        payload: dict = {"kinds": kinds or self.KINDS}
+        if self.capabilities:
+            payload["capabilities"] = self.capabilities
+        status, body = self._post("/jobs/claim", payload)
         return body["job"] if status == 200 and body else None
 
     def progress(self, job_id: str, stage: str, progress: float) -> bool:

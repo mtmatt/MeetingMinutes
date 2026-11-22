@@ -31,6 +31,15 @@ class FakeTranscriber:
         return out
 
 
+class FakeEmbedder:
+    """Stand-in for the CPU voice model (onnx_voice), with FakeDiarizer's crude fingerprints."""
+
+    voice_model = "fake-onnx"
+
+    def embed(self, clips, sr):
+        return FakeDiarizer().embed(clips, sr)
+
+
 class FakeDiarizer:
     voice_model = "fake"
 

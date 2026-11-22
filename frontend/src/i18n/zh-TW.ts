@@ -494,6 +494,7 @@ export const zhTW: Dict = {
     asr: "語音辨識",
     asrEngine: "語音辨識",
     asrLocal: "這台伺服器的 GPU（Qwen3-ASR）",
+    apisOnly: "只用雲端 API（未安裝本機模型）",
     system: "系統狀態",
     role: "角色",
     admin: "管理員",
@@ -682,7 +683,16 @@ export const zhTW: Dict = {
   },
   asr: {
     engine: "由誰轉錄錄音",
-    engineLede: "套用到所有人，從 worker 開始處理的下一段錄音起生效，包括已在排隊的錄音。發言者辨識與聲紋比對一律在 worker 的 GPU 上執行。",
+    engineLede: "套用到所有人，從 worker 開始處理的下一段錄音起生效，包括已在排隊的錄音。",
+    diarization: "由誰區分發言者",
+    diarizationLede: "分出誰在什麼時候說話。聲紋比對一律在 worker 上計算。",
+    diarizationLocal: "這台伺服器的 GPU",
+    diarizationLocalDesc: "在 worker 的 GPU 上執行 pyannote。錄音不會離開伺服器；需要 Hugging Face 權杖。",
+    diarizationCloudDesc: "pyannote 團隊的雲端服務。整份錄音會上傳，依其說明 48 小時內刪除。搭配語音辨識 API 時，worker 完全不需要 GPU。",
+    diarizationFlow: "整份錄音會壓縮成 48 kbps 音訊上傳；聲紋改用 worker CPU 上的 sherpa-onnx 計算，不會送出。切換後，到「聲紋 → 從過去的錄音找出聲紋」可以用新模型重新建立聲紋。",
+    noGpuNeeded: "語音辨識和區分發言者都走雲端：worker 不需要 GPU、CUDA 或 torch，用 scripts/install.sh --no-gpu 安裝即可。",
+    noCapableTitle: "沒有 worker 能處理這個設定",
+    noCapableBody: "連線中的 worker 都沒有安裝本機模型，只能處理語音辨識 API 加 pyannoteAI 的組合。錄音會一直排隊，直到有裝 GPU 套件的 worker 連線，或改選雲端服務。",
     local: "這台伺服器的 GPU",
     localDesc: "在 worker 的 GPU 上執行 Qwen3-ASR。錄音不會離開伺服器；需要約 8 GB 可用顯示記憶體。",
     api: "語音辨識 API",
@@ -782,6 +792,8 @@ export const zhTW: Dict = {
   privacy: {
     title: "資料流向",
     asr: "語音辨識：在這台伺服器的 GPU 上完成，錄音檔不會離開伺服器。",
+    asrHere: "語音辨識：在這台伺服器的 GPU 上完成。",
+    diarizeCloud: "區分發言者：整份錄音會上傳到 pyannoteAI（pyannote.ai），依其說明 48 小時內刪除。",
     asrOpenRouter: "語音辨識：錄音中有人說話的片段會透過 OpenRouter 送到 {asrModel} 轉成文字。",
     asrApi: "語音辨識：錄音中有人說話的片段會送到 {asrHost} 上的 {asrModel} 轉成文字。",
     summary: "產生摘要：逐字稿、發言者名稱與會議標題會送到 OpenAI Codex。",
@@ -790,11 +802,14 @@ export const zhTW: Dict = {
     more: "詳細說明",
     detailsBrowser:
       "直接錄音時，錄音會先分段暫存在你的瀏覽器（IndexedDB），上傳成功後即刪除這份本機副本；尚未上傳的錄音會保留到你上傳或捨棄為止。私密瀏覽模式結束時，瀏覽器可能會清除暫存。",
-    detailsAsr: "語音辨識與發言者辨識都在這台伺服器上執行，錄音不會為此送往其他地方。",
+    detailsDiarizeLocal: "區分發言者與聲紋比對都在這台伺服器上執行，錄音不會為此送往其他地方。",
+    detailsDiarizeCloud:
+      "區分發言者時，整份錄音會壓縮成音訊，上傳到 pyannoteAI（pyannote.ai）的暫存空間，依其說明在 48 小時內刪除；pyannoteAI 只回傳誰在什麼時候說話，這段音訊適用 pyannoteAI 的條款。聲紋在這台伺服器上計算，不會送出。",
+    detailsAsr: "語音辨識在這台伺服器上執行，錄音不會為此送往其他地方。",
     detailsAsrOpenRouter:
-      "發言者辨識在這台伺服器上執行。語音辨識時，錄音中有人說話的片段（每段最長 30 秒）會送到 OpenRouter（openrouter.ai），再由它轉給執行 {asrModel} 的公司轉成文字；整份錄音不會一次送出，你填寫的專有名詞會隨每個片段一起送出。這些音訊適用 OpenRouter 與該公司的條款。",
+      "語音辨識時，錄音中有人說話的片段（每段最長 30 秒）會送到 OpenRouter（openrouter.ai），再由它轉給執行 {asrModel} 的公司轉成文字；整份錄音不會一次送出，你填寫的專有名詞會隨每個片段一起送出。這些音訊適用 OpenRouter 與該公司的條款。",
     detailsAsrApi:
-      "發言者辨識在這台伺服器上執行。語音辨識時，錄音中有人說話的片段（每段最長 30 秒）會送到 {asrHost}，由 {asrModel} 轉成文字；整份錄音不會一次送出，你填寫的專有名詞會隨每個片段一起送出。",
+      "語音辨識時，錄音中有人說話的片段（每段最長 30 秒）會送到 {asrHost}，由 {asrModel} 轉成文字；整份錄音不會一次送出，你填寫的專有名詞會隨每個片段一起送出。",
     detailsSummary:
       "摘要透過伺服器管理員設定的 ChatGPT 帳號（Codex）產生，資料依該帳號適用的 OpenAI 政策處理；Codex 在唯讀、無工具的環境中執行，只會收到這一場會議的文字內容。不產生摘要時，逐字稿不會離開伺服器。",
     detailsSummaryLocal: "摘要由在這台伺服器上執行的語言模型（{engine}）撰寫，逐字稿不會送往其他地方；模型沒有任何工具可用，只會收到這一場會議的文字內容。",

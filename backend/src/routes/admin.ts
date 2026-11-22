@@ -307,8 +307,9 @@ adminRoutes.get("/transcriber", (c) => c.json(transcriberState()));
 
 // Applies to every transcription a worker claims from now on, including those already queued.
 adminRoutes.put("/transcriber", async (c) => {
-  const input = await body(c, transcriberSettingsSchema);
-  saveTranscriberSettings(input, c.get("user").id);
+  // A page loaded before speaker separation was a setting does not send it: keep what is set.
+  const input = await body(c, transcriberSettingsSchema.partial({ diarization: true }));
+  saveTranscriberSettings({ ...input, diarization: input.diarization ?? transcriberSettings().diarization }, c.get("user").id);
   return c.json(transcriberState());
 });
 

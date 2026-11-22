@@ -2458,3 +2458,15 @@
     margin-top: 0;
   }
 }
+.asr-callout {
+  margin: 0;
+  max-width: 900px;
+}
+.asr-callout p {
+  margin: 4px 0 0;
+}
+/* The key status opens this card: no rule above it. */
+.asr-key-card > .model-status:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
