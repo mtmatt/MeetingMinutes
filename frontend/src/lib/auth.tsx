@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, type ReactNode } from "react";
 import { api, setUnauthorizedHandler } from "../api/client";
-import type { SummarizerInfo, TranscriberInfo, User } from "../api/types";
+import type { MediaPolicy, SummarizerInfo, TranscriberInfo, User } from "../api/types";
 import { useI18n } from "../i18n";
 
 interface AuthValue {
@@ -18,11 +18,13 @@ interface AuthValue {
   summarizer: SummarizerInfo | null;
   /** Where recordings are transcribed (this server, or a transcription API); null until signed in. */
   transcriber: TranscriberInfo | null;
+  /** Whether originals are later kept as audio only; null until signed in. */
+  mediaPolicy: MediaPolicy | null;
   setUser: (u: User | null) => void;
 }
 
 type AuthState = Awaited<ReturnType<typeof api.authState>>;
-const emptyState: AuthState = { needsSetup: false, user: null, helpContact: null, uploadLimitBytes: null, googleClientId: null, summarizer: null, transcriber: null };
+const emptyState: AuthState = { needsSetup: false, user: null, helpContact: null, uploadLimitBytes: null, googleClientId: null, summarizer: null, transcriber: null, mediaPolicy: null };
 
 const AuthContext = createContext<AuthValue | null>(null);
 
@@ -51,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     googleClientId: q.data?.googleClientId ?? null,
     summarizer: q.data?.summarizer ?? null,
     transcriber: q.data?.transcriber ?? null,
+    mediaPolicy: q.data?.mediaPolicy ?? null,
     setUser: (u) => {
       qc.setQueryData(["auth"], (old: AuthState | undefined) => ({ ...emptyState, ...old, needsSetup: false, user: u }));
       if (!u) qc.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });

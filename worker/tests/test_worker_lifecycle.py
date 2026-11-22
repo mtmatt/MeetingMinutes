@@ -31,8 +31,11 @@ class FakeBackend:
                 with backend.lock:
                     backend.events.append((path, body))
                     if path == "/jobs/claim":
-                        if backend.jobs:
-                            return self._send(200, {"job": backend.jobs.pop(0)})
+                        # Like the real backend: only jobs of the kinds the worker asks for.
+                        kinds = body.get("kinds") or ["transcribe"]
+                        i = next((i for i, j in enumerate(backend.jobs) if (j.get("kind") or "transcribe") in kinds), None)
+                        if i is not None:
+                            return self._send(200, {"job": backend.jobs.pop(i)})
                         return self._send(204, None)
                     if path.endswith("/progress"):
                         return self._send(200, {"continue": True})
@@ -127,7 +130,9 @@ def test_voiceprint_and_transcription_jobs_share_a_session(two_speaker_wav, tmp_
 
     # The worker says which kinds of job it can run, so older workers are never handed a voiceprint.
     claims = [b for p, b in backend.events if p == "/jobs/claim"]
-    assert claims and all(b["kinds"] == ["transcribe", "voiceprint"] for b in claims)
+    # (The compaction loop claims separately, for compactions only.)
+    gpu_claims = [b for b in claims if b["kinds"] != ["compact"]]
+    assert gpu_claims and all(b["kinds"] == ["transcribe", "voiceprint"] for b in gpu_claims)
     voiceprint = next(b for p, b in backend.events if p == "/jobs/v0/complete")["result"]
     assert set(voiceprint) == {"voiceModel", "voices"} and set(voiceprint["voices"]) == {"SPEAKER_00", "SPEAKER_01"}
     # The transcription that followed in the same session loaded the ASR model on demand.
@@ -350,3 +355,68 @@ def test_worker_reports_which_api_keys_it_has(monkeypatch):
     info = Supervisor(multi_gpu_cfg(["0"])).workers[0].info()
     assert info["asrApiKeys"] == {"openrouter": True, "openai": False}
     assert "sk-or-secret" not in json.dumps(info)
+
+
+# ------------------------------------------------- compacting originals to audio only
+
+
+def test_compaction_runs_outside_gpu_sessions(two_speaker_wav, video_file, tmp_path):
+    """A compact job is ffmpeg in the supervisor: no GPU session, and the copy is audio-only Opus."""
+    from mm_worker import audio
+
+    out_dir = tmp_path / "m1"
+    out_dir.mkdir()
+    job = {"jobId": "c1", "kind": "compact", "meetingId": "m1", "attempt": 1, "mediaPath": str(video_file), "outDir": str(out_dir),
+           "options": {"bitrateKbps": 32, "output": str(out_dir / "original.compact.opus")}, "title": "t"}
+    backend = FakeBackend([job])
+    sup = Supervisor(cfg(backend.url))
+    t = threading.Thread(target=sup.run, daemon=True)
+    t.start()
+    deadline = time.time() + 30
+    while time.time() < deadline and "/jobs/c1/complete" not in backend.paths():
+        time.sleep(0.1)
+    sup.stop.set()
+    t.join(timeout=5)
+    complete = next(b for p, b in backend.events if p == "/jobs/c1/complete")
+    out = out_dir / "original.compact.opus"
+    info = audio.probe(str(out))
+    assert info.has_audio and not info.has_video
+    assert abs(complete["result"]["durationSec"] - audio.probe(str(video_file)).duration) < 0.5
+    assert sup.workers[0].child is None  # never started a GPU session
+    assert not list(out_dir.glob("*.part"))
+
+
+def test_compaction_refuses_paths_outside_the_meeting(tmp_path):
+    from mm_worker.worker import MediaJobs
+
+    class Client:
+        def __init__(self):
+            self.failed = []
+
+        def fail(self, job_id, message, retryable):
+            self.failed.append((job_id, message, retryable))
+
+    client = Client()
+    media = MediaJobs(cfg("http://unused"), "w", threading.Event(), client=client)
+    media.process({"jobId": "c2", "meetingId": "m", "mediaPath": "/dev/null", "outDir": str(tmp_path / "m"),
+                   "options": {"output": str(tmp_path / "elsewhere" / "x.opus")}})
+    assert client.failed and client.failed[0][2] is False and "Refusing" in client.failed[0][1]
+
+
+def test_canceled_compaction_leaves_no_file(two_speaker_wav, tmp_path, monkeypatch):
+    from mm_worker import audio
+    from mm_worker.audio import CompactCanceled
+
+    out = tmp_path / "original.compact.opus"
+    # Pretend ffmpeg is slow, so the cancellation check runs.
+    real_wait = audio.subprocess.Popen.wait
+
+    def slow_wait(self, timeout=None):
+        if timeout:
+            raise audio.subprocess.TimeoutExpired("ffmpeg", timeout)
+        return real_wait(self)
+
+    monkeypatch.setattr(audio.subprocess.Popen, "wait", slow_wait)
+    with pytest.raises(CompactCanceled):
+        audio.compact_audio(str(two_speaker_wav), str(out), keep_going=lambda: False)
+    assert not out.exists() and not list(tmp_path.glob("*.part"))

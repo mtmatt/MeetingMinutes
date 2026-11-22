@@ -169,6 +169,83 @@ def write_playback(src: str, dest: Path, bitrate: str = "64k") -> bool:
     return True
 
 
+class CompactCanceled(Exception):
+    """The backend no longer wants this compaction."""
+
+
+def compact_audio(
+    src: str,
+    dest: str,
+    kbps: int = 32,
+    keep_going: Optional[Callable[[], bool]] = None,
+    max_seconds: Optional[float] = None,
+) -> float:
+    """Re-encode the first audio stream of ``src`` as mono Ogg Opus at ``kbps``,
+    dropping any video, into ``dest``. Returns the copy's duration in seconds.
+
+    ``keep_going`` is called every few seconds while ffmpeg runs; returning
+    False stops it (CompactCanceled). The copy appears at ``dest`` only once it
+    is complete.
+    """
+    part = dest + ".part"
+    cmd = [
+        ffmpeg_bin(),
+        "-hide_banner",
+        "-nostdin",
+        "-loglevel",
+        "error",
+        "-y",
+        *SAFE_INPUT,
+        "-i",
+        src,
+        "-map",
+        "0:a:0",
+        "-vn",
+        "-sn",
+        "-dn",
+        "-ac",
+        "1",
+        "-c:a",
+        "libopus",
+        "-b:a",
+        f"{int(kbps)}k",
+        "-vbr",
+        "on",
+        # Tuned for speech, which is what meetings are.
+        "-application",
+        "voip",
+        *(["-t", str(max_seconds)] if max_seconds else []),
+        "-f",
+        "ogg",
+        part,
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    try:
+        while True:
+            try:
+                proc.wait(timeout=5)
+                break
+            except subprocess.TimeoutExpired:
+                if keep_going is not None and keep_going() is False:
+                    proc.kill()
+                    proc.wait()
+                    raise CompactCanceled()
+        stderr = proc.stderr.read().decode(errors="replace") if proc.stderr else ""
+        if proc.returncode != 0 or not os.path.exists(part) or os.path.getsize(part) == 0:
+            raise MediaError(f"Could not compact the audio: {stderr.strip()[-500:] or 'no audio stream'}")
+        info = probe(part)
+        if not info.has_audio or not info.duration:
+            raise MediaError("The compact copy has no readable audio.")
+        os.replace(part, dest)
+        return info.duration
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        if os.path.exists(part):
+            os.unlink(part)
+
+
 def compute_peaks(wav: np.ndarray, sr: int = SAMPLE_RATE, max_points: int = 40000, per_second: int = 20) -> dict:
     """Downsampled absolute-peak envelope for drawing a waveform (values 0-255)."""
     duration = len(wav) / sr if sr else 0.0

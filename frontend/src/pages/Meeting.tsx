@@ -335,7 +335,7 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
                     ))}
                     <div className="menu-sep" />
                     <a className="menu-item" href={mediaUrl.original(meeting.id, true)} download>
-                      {meeting.media.hasVideo ? <FileVideo /> : <FileAudio />} {t("meeting.exportMedia")}
+                      {meeting.media.hasVideo ? <FileVideo /> : <FileAudio />} {meeting.media.compacted ? t("meeting.exportMediaCompact") : t("meeting.exportMedia")}
                       <span className="end mono">{bytes(meeting.media.size)}</span>
                     </a>
                   </>

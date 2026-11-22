@@ -64,8 +64,8 @@ class BackendClient:
     # Job kinds this worker can run; the backend hands older workers transcriptions only.
     KINDS = ["transcribe", "voiceprint"]
 
-    def claim(self) -> Optional[dict]:
-        status, body = self._post("/jobs/claim", {"kinds": self.KINDS})
+    def claim(self, kinds: Optional[list] = None) -> Optional[dict]:
+        status, body = self._post("/jobs/claim", {"kinds": kinds or self.KINDS})
         return body["job"] if status == 200 and body else None
 
     def progress(self, job_id: str, stage: str, progress: float) -> bool:

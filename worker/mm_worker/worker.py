@@ -24,7 +24,7 @@ from typing import Callable, Optional
 
 from . import __version__
 from .asr_api import ApiError, ApiTranscriber, api_key, keys_present, settings_from_job
-from .audio import MediaError
+from .audio import CompactCanceled, MediaError, compact_audio
 from .client import BackendClient
 from .config import WorkerConfig
 from .gpus import GpuMemory, find_gpu, pick_gpu, query_gpus
@@ -346,6 +346,103 @@ def gpu_session(cfg: WorkerConfig, first_job: dict, events) -> None:
     log.info("no more work; releasing the GPU")
 
 
+# ------------------------------------------------------------- compaction
+
+
+class MediaJobs:
+    """Compacts originals to audio only, one at a time, in the supervisor.
+
+    This is ffmpeg on the CPU: no GPU session, no models, and it never waits
+    for GPU memory. It claims under the first GPU's worker ID, so the backend
+    lists no extra worker.
+    """
+
+    KINDS = ["compact"]
+    # How often a running compaction tells the backend it is alive (and learns whether it was canceled).
+    HEARTBEAT_SEC = 15.0
+
+    def __init__(self, cfg: WorkerConfig, worker_id: str, stop: threading.Event, client: Optional[BackendClient] = None):
+        self.cfg = cfg
+        self.stop = stop
+        self.client = client or BackendClient(cfg.server_url, cfg.token, worker_id)
+
+    def run(self):
+        while not self.stop.is_set():
+            try:
+                job = self.client.claim(self.KINDS)
+            except Exception as e:
+                log.debug("compaction claim failed: %s", e)
+                job = None
+            if not job:
+                self.stop.wait(self.cfg.media_poll_interval)
+                continue
+            self.process(job)
+
+    def process(self, job: dict) -> None:
+        job_id = job["jobId"]
+        opts = job.get("options") or {}
+        out = str(opts.get("output") or "")
+        out_dir = os.path.realpath(job.get("outDir") or "")
+        # Written only where the backend keeps this meeting's files, as an .opus file.
+        if not out.endswith(".opus") or os.path.dirname(os.path.realpath(out)) != out_dir:
+            self._fail(job_id, f"Refusing to write the compact copy to {out!r}.", False)
+            return
+        kbps = max(12, min(256, int(opts.get("bitrateKbps") or 32)))
+        last = [time.monotonic()]
+
+        def keep_going() -> bool:
+            if self.stop.is_set():
+                return False
+            if time.monotonic() - last[0] < self.HEARTBEAT_SEC:
+                return True
+            last[0] = time.monotonic()
+            try:
+                return self.client.progress(job_id, "compacting", 0.5)
+            except Exception as e:
+                log.debug("compaction heartbeat failed: %s", e)
+                return True
+
+        started = time.monotonic()
+        try:
+            if not self.client.progress(job_id, "compacting", 0.0):
+                return
+            duration = compact_audio(job["mediaPath"], out, kbps, keep_going=keep_going, max_seconds=self.cfg.max_audio_sec)
+            accepted = self.client.complete(job_id, {"durationSec": round(duration, 3)})
+            if not accepted:
+                _unlink(out)
+            log.info(
+                "compacted meeting %s to %d kbit/s Opus in %.0fs%s",
+                job["meetingId"],
+                kbps,
+                time.monotonic() - started,
+                "" if accepted else " but the server no longer wanted it",
+            )
+        except CompactCanceled:
+            _unlink(out)
+            log.info("compaction of meeting %s canceled", job["meetingId"])
+            if self.stop.is_set():
+                self._fail(job_id, "The worker was shut down.", True)
+        except Exception as e:
+            _unlink(out)
+            log.error("compaction of meeting %s failed: %s", job["meetingId"], e)
+            self._fail(job_id, str(e) if isinstance(e, MediaError) else f"{type(e).__name__}: {e}", is_retryable(e))
+
+    def _fail(self, job_id: str, message: str, retryable: bool):
+        try:
+            self.client.fail(job_id, message, retryable)
+        except Exception as e:
+            log.error("could not report failure: %s", e)
+
+
+def _unlink(path: str) -> None:
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        log.warning("could not remove %s: %s", path, e)
+
+
 # ------------------------------------------------------------- supervisor
 
 
@@ -502,6 +599,9 @@ class Supervisor:
 
     def run(self):
         threading.Thread(target=self.heartbeat_loop, daemon=True).start()
+        if self.cfg.media_jobs:
+            media = MediaJobs(self.cfg, self.workers[0].cfg.worker_id, self.stop)
+            threading.Thread(target=media.run, name="mm-media", daemon=True).start()
         for worker in self.workers:
             try:
                 self.note_backend(worker.client.heartbeat(worker.cfg.worker_name, worker.info()))

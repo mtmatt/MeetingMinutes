@@ -75,6 +75,10 @@ export interface MeetingRow {
   transcribed_at: number | null;
   /** JSON DiarizationOutcome of the latest transcription; null before this was recorded. */
   diarization: string | null;
+  /** When the original was replaced by a compact audio-only copy (Opus); null while it is as uploaded. */
+  compacted_at: number | null;
+  /** Size of the original as uploaded, once it has been compacted. */
+  original_size: number | null;
 }
 
 export type VoiceStatus = "confirmed" | "auto" | "suggested" | "rejected" | "ignored";
@@ -163,7 +167,7 @@ export interface TemplateRow {
   updated_at: number;
 }
 
-export type JobKind = "transcribe" | "voiceprint";
+export type JobKind = "transcribe" | "voiceprint" | "compact";
 
 export interface JobRow {
   id: string;

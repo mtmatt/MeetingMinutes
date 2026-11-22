@@ -8,6 +8,16 @@ import { deleteUserSessions, findUserById, publicUser } from "../auth/service";
 import { db, now } from "../db";
 import { httpError, parseJson } from "../lib/util";
 import { codexStatus } from "../services/codex";
+import {
+  compactionStats,
+  defaultMediaSettings,
+  enqueueCompactions,
+  mediaSettings,
+  mediaSettingsMeta,
+  mediaSettingsSchema,
+  resetMediaSettings,
+  saveMediaSettings,
+} from "../services/mediaCompaction";
 import { deleteMeeting, queueStats } from "../services/meetings";
 import { kick, summarizerStats } from "../services/summarizer";
 import { LlmError, localModelStatus, pullState, startPull } from "../services/llm";
@@ -305,4 +315,25 @@ adminRoutes.put("/transcriber", async (c) => {
 adminRoutes.delete("/transcriber", (c) => {
   resetTranscriberSettings();
   return c.json(transcriberState());
+});
+
+// ------------------------------------------------------- storage
+
+function mediaState() {
+  return { settings: mediaSettings(), defaults: defaultMediaSettings(), ...mediaSettingsMeta(), stats: compactionStats() };
+}
+
+adminRoutes.get("/media", (c) => c.json(mediaState()));
+
+adminRoutes.put("/media", async (c) => {
+  const input = await body(c, mediaSettingsSchema);
+  saveMediaSettings(input, c.get("user").id);
+  // Start on what is already due rather than at the next sweep.
+  enqueueCompactions();
+  return c.json(mediaState());
+});
+
+adminRoutes.delete("/media", (c) => {
+  resetMediaSettings();
+  return c.json(mediaState());
 });

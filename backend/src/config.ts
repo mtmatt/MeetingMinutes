@@ -214,6 +214,18 @@ export const config = {
    * transcription API. The API key is the worker's (OPENROUTER_API_KEY or
    * ASR_API_KEY in its environment); the backend never handles it.
    */
+  /**
+   * Compacting originals: once a meeting has been transcribed and
+   * `compactAfterDays` have passed, a worker replaces its original with a mono
+   * Opus copy at `compactKbps` (32 kbit/s is about 14 MB per hour), dropping
+   * any video. Defaults: an administrator can change the first two in
+   * Admin → System, and what is saved there wins until it is reset.
+   */
+  media: {
+    compact: bool("MEDIA_COMPACT", false),
+    compactAfterDays: Math.round(num("MEDIA_COMPACT_AFTER_DAYS", 7, 0, 3650)),
+    compactKbps: Math.round(num("MEDIA_COMPACT_KBPS", 32, 12, 256)),
+  },
   asr: {
     engine: oneOf("ASR_ENGINE", ["local", "api"] as const, "local"),
     apiProvider: oneOf("ASR_API_PROVIDER", ["openrouter", "openai"] as const, "openrouter"),

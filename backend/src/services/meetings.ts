@@ -60,6 +60,14 @@ export function originalPath(m: Pick<MeetingRow, "id" | "media_ext">): string {
 }
 
 export const PLAYBACK_FILE = "playback.m4a";
+
+/** Extension of a compacted original (Ogg Opus). */
+export const COMPACT_EXT = "opus";
+
+/** Where a worker writes the compact copy; the backend moves it into place once it checks out. */
+export function compactTempPath(id: string): string {
+  return join(meetingDir(id), `original.compact.${COMPACT_EXT}`);
+}
 export const PEAKS_FILE = "peaks.json";
 
 export function ensureMeetingDir(id: string) {
@@ -163,6 +171,8 @@ export function meetingSummary(m: MeetingRow) {
       hasVideo: !!m.has_video,
       hasPlayback: !!m.has_playback,
       hasPeaks: !!m.has_peaks,
+      /** The original was replaced by an audio-only copy (any video is gone). */
+      compacted: m.compacted_at != null,
     },
     durationSec: m.duration_sec,
     language: m.language,
@@ -243,8 +253,11 @@ export interface ClaimedJob {
   attempt: number;
   mediaPath: string;
   outDir: string;
-  /** Transcription options, or for a voiceprint `{ speakers: { key: [[start, end], …] } }`. */
-  options: TranscribeOptions | { speakers: Record<string, [number, number][]> };
+  /**
+   * Transcription options; for a voiceprint `{ speakers: { key: [[start, end], …] } }`;
+   * for a compaction the bitrate and the file to write.
+   */
+  options: TranscribeOptions | { speakers: Record<string, [number, number][]> } | { bitrateKbps: number; output: string };
   title: string;
   /** Transcriptions only: where speech is recognised, as the admin has it set when the job is claimed. */
   asr?: JobAsrSettings;
@@ -258,11 +271,12 @@ export interface ClaimedJob {
 export function claimJob(workerId: string, kinds: JobKind[] = ["transcribe"]): ClaimedJob | null {
   return db.transaction((): ClaimedJob | null => {
     const job = db
-      .query<JobRow, { t: number; v: number }>(
-        `SELECT * FROM jobs WHERE status = 'queued' AND ((kind = 'transcribe' AND $t) OR (kind = 'voiceprint' AND $v))
-         ORDER BY kind = 'voiceprint', created_at ASC LIMIT 1`,
+      .query<JobRow, { t: number; v: number; c: number }>(
+        `SELECT * FROM jobs WHERE status = 'queued'
+           AND ((kind = 'transcribe' AND $t) OR (kind = 'voiceprint' AND $v) OR (kind = 'compact' AND $c))
+         ORDER BY kind = 'compact', kind = 'voiceprint', created_at ASC LIMIT 1`,
       )
-      .get({ t: kinds.includes("transcribe") ? 1 : 0, v: kinds.includes("voiceprint") ? 1 : 0 });
+      .get({ t: kinds.includes("transcribe") ? 1 : 0, v: kinds.includes("voiceprint") ? 1 : 0, c: kinds.includes("compact") ? 1 : 0 });
     if (!job) return null;
     const t = now();
     db.query(
@@ -280,6 +294,8 @@ export function claimJob(workerId: string, kinds: JobKind[] = ["transcribe"]): C
     };
     // A voiceprint leaves the meeting as it is: it stays ready and readable.
     if (job.kind === "voiceprint") return { ...base, options: { speakers: voiceprintSpans(m.id) } };
+    // So does a compaction: the meeting is swapped to the copy only when it is done.
+    if (job.kind === "compact") return { ...base, options: { bitrateKbps: config.media.compactKbps, output: compactTempPath(m.id) } };
     db.query("UPDATE meetings SET status = 'processing', stage = 'starting', progress = 0, updated_at = $t WHERE id = $id").run({
       id: m.id,
       t,
@@ -293,7 +309,7 @@ export function claimJob(workerId: string, kinds: JobKind[] = ["transcribe"]): C
   })();
 }
 
-function getRunningJob(jobId: string, workerId: string): JobRow | null {
+export function getRunningJob(jobId: string, workerId: string): JobRow | null {
   return db
     .query<JobRow, { id: string; w: string }>("SELECT * FROM jobs WHERE id = $id AND worker_id = $w AND status = 'running'")
     .get({ id: jobId, w: workerId });
@@ -305,7 +321,8 @@ export function reportProgress(jobId: string, workerId: string, stage: string, p
   if (!job) return false;
   const t = now();
   db.query("UPDATE jobs SET heartbeat_at = $t WHERE id = $id").run({ id: jobId, t });
-  if (job.kind === "voiceprint") return true;
+  // Background jobs (voiceprints, compactions) leave the meeting's status alone.
+  if (job.kind !== "transcribe") return true;
   db.query("UPDATE meetings SET stage = $stage, progress = $p, updated_at = $t WHERE id = $id").run({
     id: job.meeting_id,
     stage: stage.slice(0, 64),
@@ -437,8 +454,9 @@ export function failJob(jobId: string, workerId: string, error: string, retryabl
 function finishFailedJob(job: JobRow, error: string, retryable: boolean) {
   const t = now();
   const retry = retryable && job.attempts < config.jobMaxAttempts;
-  if (job.kind === "voiceprint") {
-    // The meeting itself is unaffected; "find voices" shows what could not be done.
+  if (job.kind !== "transcribe") {
+    // The meeting itself is unaffected: "find voices" shows a voiceprint that could
+    // not be made, and the admin page a compaction (the original stays as it was).
     if (retry) db.query("UPDATE jobs SET status = 'queued', worker_id = NULL, error = $e WHERE id = $id").run({ id: job.id, e: error });
     else db.query("UPDATE jobs SET status = 'failed', error = $e, finished_at = $t WHERE id = $id").run({ id: job.id, e: error, t });
     return;
@@ -484,5 +502,6 @@ export function queueStats() {
     queued: count("transcribe", "queued"),
     running: count("transcribe", "running"),
     voiceprints: { queued: count("voiceprint", "queued"), running: count("voiceprint", "running") },
+    compactions: { queued: count("compact", "queued"), running: count("compact", "running") },
   };
 }

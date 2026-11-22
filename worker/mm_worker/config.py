@@ -66,6 +66,10 @@ class WorkerConfig:
     # Requests sent to a transcription API at the same time, and how long one may take.
     asr_api_concurrency: int = 4
     asr_api_timeout: float = 120.0
+    # Compacting originals to audio only (CPU work, outside GPU sessions). Off on
+    # a worker that should leave it to another (MM_MEDIA_JOBS=0).
+    media_jobs: bool = True
+    media_poll_interval: float = 30.0
     extra: dict = field(default_factory=dict)
 
     @property
@@ -152,4 +156,5 @@ def load_config() -> WorkerConfig:
         min_free_vram_api_gb=max(0.0, _float("MIN_FREE_VRAM_API_GB", 3.0)),
         asr_api_concurrency=max(1, min(32, _int("ASR_API_CONCURRENCY", 4) or 4)),
         asr_api_timeout=max(10.0, _float("ASR_API_TIMEOUT_SEC", 120.0)),
+        media_jobs=os.environ.get("MM_MEDIA_JOBS", "1").strip().lower() not in ("0", "false", "no", "off"),
     )

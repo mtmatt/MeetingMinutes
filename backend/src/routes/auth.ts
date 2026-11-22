@@ -27,6 +27,7 @@ import { checkSetupToken, clearSetupToken } from "../auth/setup";
 import { consumeInvite, findInvite } from "../auth/invites";
 import { httpError } from "../lib/util";
 import { publicSummarizerInfo } from "../services/summarySettings";
+import { publicMediaPolicy } from "../services/mediaCompaction";
 import { publicTranscriberInfo } from "../services/transcriberSettings";
 import type { AppEnv, SessionRow } from "../types";
 import { body } from "./validate";
@@ -77,6 +78,8 @@ authRoutes.get("/state", (c) => {
     summarizer: resolved ? publicSummarizerInfo() : null,
     // Where recordings are transcribed, for the same reason.
     transcriber: resolved ? publicTranscriberInfo() : null,
+    // Whether originals are later kept as audio only, so a video's uploader is told.
+    mediaPolicy: resolved ? publicMediaPolicy() : null,
   });
 });
 

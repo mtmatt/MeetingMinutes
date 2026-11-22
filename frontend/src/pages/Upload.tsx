@@ -52,7 +52,7 @@ export function UploadPage() {
   const { t, tMaybe, locale } = useI18n();
   const confirm = useConfirm();
   const navigate = useNavigate();
-  const { uploadLimitBytes: limit, helpContact } = useAuth();
+  const { uploadLimitBytes: limit, helpContact, mediaPolicy } = useAuth();
 
   const [file, setFile] = useState<File | null>(null);
   const [mediaDuration, setMediaDuration] = useState<number | null>(null);
@@ -414,6 +414,12 @@ export function UploadPage() {
                 </div>
               )}
             </div>
+          )}
+          {/* The video picture is not kept: say so before it is uploaded. */}
+          {file && isVideo && !recording && mediaPolicy?.compact && (
+            <p className="field-hint upload-compact-note">
+              {mediaPolicy.afterDays === 0 ? t("upload.compactVideoNow") : t("upload.compactVideo", { n: mediaPolicy.afterDays })}
+            </p>
           )}
         </Step>
 

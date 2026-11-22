@@ -2417,3 +2417,44 @@
     width: 100%;
   }
 }
+
+/* ---------------------------------------------------- admin: keeping recordings */
+.storage-card {
+  margin-top: 18px;
+  display: grid;
+  gap: 14px;
+}
+.storage-card .system-h {
+  margin-bottom: 0;
+}
+.storage-lede {
+  margin: 0;
+  font-size: var(--step--1);
+  max-width: 80ch;
+}
+.storage-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 14px 32px;
+}
+.storage-form > .switch {
+  margin-top: 26px;
+}
+.storage-days {
+  width: min(100%, 300px);
+}
+.storage-stats {
+  grid-template-columns: minmax(110px, max-content) 1fr;
+}
+.storage-stats dd {
+  text-align: left;
+}
+.upload-compact-note {
+  margin: 10px 0 0;
+}
+@media (max-width: 700px) {
+  .storage-form > .switch {
+    margin-top: 0;
+  }
+}
