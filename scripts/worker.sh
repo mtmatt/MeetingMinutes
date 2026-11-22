@@ -4,6 +4,7 @@
 #   scripts/worker.sh           one worker for the GPUs in WORKER_GPUS (.env), or all GPUs
 #   scripts/worker.sh check     load the models once (downloads them) and report
 #   scripts/worker.sh transcribe FILE [--language auto] [--no-diarize]
+#   scripts/worker.sh bench [FILE] [--threads 1,2,4]   time speaker separation on the CPU
 #
 # Idle workers hold no GPU memory: models are loaded in a child process only
 # while jobs are being processed.

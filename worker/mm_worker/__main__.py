@@ -3,6 +3,7 @@
     python -m mm_worker run            poll the backend; load models on demand per job (default)
     python -m mm_worker check          load both models once and print environment info
     python -m mm_worker transcribe F   transcribe a local file and print the transcript
+    python -m mm_worker bench [F]      time speaker separation on the CPU (sherpa-onnx)
 """
 
 from __future__ import annotations
@@ -100,6 +101,10 @@ def main(argv: Optional[list[str]] = None):
     t.add_argument("--vocabulary", default="")
     t.add_argument("--no-diarize", action="store_true")
     t.add_argument("--script", default="zh-TW", choices=["zh-TW", "zh-CN", "none"])
+    b = sub.add_parser("bench", help="time speaker separation on the CPU")
+    b.add_argument("path", nargs="?", help="a recording to use (default: a 4-speaker sample)")
+    b.add_argument("--threads", default="1", help="thread counts to try, e.g. 1,2,4 (default: 1)")
+    b.add_argument("--minutes", type=float, default=5.0, help="length of sample audio to use (default: 5)")
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -107,6 +112,14 @@ def main(argv: Optional[list[str]] = None):
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
+    if args.cmd == "bench":
+        from .bench import parse_threads, run_bench
+        from .onnx_voice import default_model_dir
+
+        os.environ.setdefault("WORKER_TOKEN", "unused")
+        cfg = load_config()
+        run_bench(cfg.model_dir or default_model_dir(None), args.path, parse_threads(args.threads), args.minutes)
+        return
     if args.cmd == "transcribe":
         os.environ.setdefault("WORKER_TOKEN", "unused")
         cfg = load_config()

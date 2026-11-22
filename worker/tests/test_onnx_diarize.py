@@ -129,3 +129,15 @@ def test_real_models_on_four_speakers():
     d = OnnxDiarizer(Path(MODEL_DIR), onnx_voice.OnnxVoiceEmbedder(Path(MODEL_DIR)))
     assert len({t[2] for t in d.run(x, 16000)}) == 4
     assert len({t[2] for t in d.run(x, 16000, num_speakers=3)}) == 3
+
+
+def test_bench_reports_each_thread_count(sherpa, two_speaker_wav):
+    from mm_worker.bench import parse_threads, run_bench
+
+    _, d = sherpa
+    lines = []
+    results = run_bench(d, str(two_speaker_wav), parse_threads("1,2"), 5, printer=lines.append)
+    assert [r["threads"] for r in results] == [1, 2] and all(r["speakers"] == 3 for r in results)
+    assert any("one-hour meeting" in line for line in lines)
+    with pytest.raises(ValueError):
+        parse_threads("0")

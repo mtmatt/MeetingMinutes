@@ -147,7 +147,7 @@ scripts/worker.sh check            # downloads the two CPU models (about 45 MB) 
 ```
 
 - It runs [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (onnxruntime): pyannote's segmentation-3.0 model (ONNX, MIT licence) finds who speaks when in short windows, and a Mandarin-trained 3D-Speaker ERes2Net model embeds each piece. The pieces are then clustered into speakers. The same ERes2Net model makes the voice fingerprints. Both files come from sherpa-onnx's GitHub releases and are checked against pinned SHA-256 sums.
-- Speed: on a 4-core test machine, about 8 minutes of CPU time per hour of audio with 4 threads (17 with one). `DIARIZATION_CPU_THREADS` sets the threads; the default is the number of cores, at most 8.
+- Speed: on a 4-core test machine (Xeon 2.1 GHz), about 8 minutes per hour of audio with 4 threads and 16 pinned to a single core. Measure your machine with `scripts/worker.sh bench` (one thread; `--threads 1,2,4` compares counts, and `taskset -c 0 scripts/worker.sh bench` pins it to one core). Pass a file to time your own recording and see how many speakers it finds. `DIARIZATION_CPU_THREADS` sets the threads; the default is the number of cores, at most 8.
 - Accuracy: lower than pyannote community-1 on a GPU or pyannoteAI precision-2. On sherpa-onnx's 4-speaker Mandarin sample it found the 4 speakers. With an automatic count it can split one person into two (on that sample repeated five times it found 6), so the speaker count or a range on the upload page helps most here. With a range, a count outside it is redone at the nearest allowed count. `DIARIZATION_CPU_THRESHOLD` (default 0.5; larger means fewer speakers) tunes automatic counting.
 
 ### Speaker separation by pyannoteAI
