@@ -52,7 +52,7 @@ export function UploadPage() {
   const { t, tMaybe, locale } = useI18n();
   const confirm = useConfirm();
   const navigate = useNavigate();
-  const { uploadLimitBytes: limit, helpContact } = useAuth();
+  const { uploadLimitBytes: limit, helpContact, mediaPolicy } = useAuth();
 
   const [file, setFile] = useState<File | null>(null);
   const [mediaDuration, setMediaDuration] = useState<number | null>(null);
@@ -415,6 +415,12 @@ export function UploadPage() {
               )}
             </div>
           )}
+          {/* The video picture is not kept: say so before it is uploaded. */}
+          {file && isVideo && !recording && mediaPolicy?.compact && (
+            <p className="field-hint upload-compact-note">
+              {mediaPolicy.afterDays === 0 ? t("upload.compactVideoNow") : t("upload.compactVideo", { n: mediaPolicy.afterDays })}
+            </p>
+          )}
         </Step>
 
         <Step n="2" title={t("upload.step2")}>
@@ -446,14 +452,9 @@ export function UploadPage() {
             <span className="switch-track" />
             <span className="switch-label">{t("upload.autoSummary")}</span>
           </label>
-          {autoSummary ? (
-            <>
-              <SummaryComposer value={summary} onChange={setSummary} />
-              <DataFlowNote />
-            </>
-          ) : (
-            <p className="muted">{t("upload.noAutoSummary")}</p>
-          )}
+          {autoSummary ? <SummaryComposer value={summary} onChange={setSummary} /> : <p className="muted">{t("upload.noAutoSummary")}</p>}
+          {/* Also without a summary: a transcription API receives the speech either way. */}
+          <DataFlowNote />
         </Step>
 
         <section className="advanced">

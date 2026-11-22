@@ -8,6 +8,16 @@ import { deleteUserSessions, findUserById, publicUser } from "../auth/service";
 import { db, now } from "../db";
 import { httpError, parseJson } from "../lib/util";
 import { codexStatus } from "../services/codex";
+import {
+  compactionStats,
+  defaultMediaSettings,
+  enqueueCompactions,
+  mediaSettings,
+  mediaSettingsMeta,
+  mediaSettingsSchema,
+  resetMediaSettings,
+  saveMediaSettings,
+} from "../services/mediaCompaction";
 import { deleteMeeting, queueStats } from "../services/meetings";
 import { kick, summarizerStats } from "../services/summarizer";
 import { LlmError, localModelStatus, pullState, startPull } from "../services/llm";
@@ -20,6 +30,19 @@ import {
   summarySettingsMeta,
   summarySettingsSchema,
 } from "../services/summarySettings";
+import {
+  ASR_KEY_VARIABLES,
+  OPENAI_BASE_URL,
+  OPENROUTER_BASE_URL,
+  defaultTranscriberSettings,
+  publicTranscriberInfo,
+  resetTranscriberSettings,
+  saveTranscriberSettings,
+  transcriberSettings,
+  transcriberSettingsMeta,
+  transcriberSettingsSchema,
+  workerApiKeys,
+} from "../services/transcriberSettings";
 import type { AppEnv, MeetingRow, UserRow } from "../types";
 import { body } from "./validate";
 
@@ -199,6 +222,7 @@ adminRoutes.get("/system", async (c) => {
     })),
     jobs: queueStats(),
     summaries: summarizerStats(),
+    transcriber: publicTranscriberInfo(),
     codex: await codexStatus(),
     disk,
     stats: {
@@ -263,4 +287,53 @@ adminRoutes.post("/summarizer/pull", async (c) => {
     if (e instanceof LlmError) httpError(409, e.message, "cannot_pull");
     throw e;
   }
+});
+
+// ------------------------------------------------------- transcription
+
+function transcriberState() {
+  return {
+    settings: transcriberSettings(),
+    defaults: defaultTranscriberSettings(),
+    ...transcriberSettingsMeta(),
+    // Each online worker says which providers it has a key for (never the key).
+    workers: workerApiKeys(),
+    keyVariables: ASR_KEY_VARIABLES,
+    addresses: { openrouter: OPENROUTER_BASE_URL, openai: OPENAI_BASE_URL },
+  };
+}
+
+adminRoutes.get("/transcriber", (c) => c.json(transcriberState()));
+
+// Applies to every transcription a worker claims from now on, including those already queued.
+adminRoutes.put("/transcriber", async (c) => {
+  const input = await body(c, transcriberSettingsSchema);
+  saveTranscriberSettings(input, c.get("user").id);
+  return c.json(transcriberState());
+});
+
+adminRoutes.delete("/transcriber", (c) => {
+  resetTranscriberSettings();
+  return c.json(transcriberState());
+});
+
+// ------------------------------------------------------- storage
+
+function mediaState() {
+  return { settings: mediaSettings(), defaults: defaultMediaSettings(), ...mediaSettingsMeta(), stats: compactionStats() };
+}
+
+adminRoutes.get("/media", (c) => c.json(mediaState()));
+
+adminRoutes.put("/media", async (c) => {
+  const input = await body(c, mediaSettingsSchema);
+  saveMediaSettings(input, c.get("user").id);
+  // Start on what is already due rather than at the next sweep.
+  enqueueCompactions();
+  return c.json(mediaState());
+});
+
+adminRoutes.delete("/media", (c) => {
+  resetMediaSettings();
+  return c.json(mediaState());
 });

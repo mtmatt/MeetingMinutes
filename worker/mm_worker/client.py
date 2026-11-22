@@ -55,14 +55,17 @@ class BackendClient:
             delay = min(delay * 2, 30.0)
         raise RuntimeError("unreachable")
 
-    def heartbeat(self, name: str, info: dict) -> None:
-        self._post("/worker/heartbeat", {"name": name, "info": info}, retries=0)
+    def heartbeat(self, name: str, info: dict) -> dict:
+        """The backend answers with what workers should know, such as where
+        transcription runs: {"transcriber": {"engine": "local" | "api"}}."""
+        _, body = self._post("/worker/heartbeat", {"name": name, "info": info}, retries=0)
+        return body if isinstance(body, dict) else {}
 
     # Job kinds this worker can run; the backend hands older workers transcriptions only.
     KINDS = ["transcribe", "voiceprint"]
 
-    def claim(self) -> Optional[dict]:
-        status, body = self._post("/jobs/claim", {"kinds": self.KINDS})
+    def claim(self, kinds: Optional[list] = None) -> Optional[dict]:
+        status, body = self._post("/jobs/claim", {"kinds": kinds or self.KINDS})
         return body["job"] if status == 200 and body else None
 
     def progress(self, job_id: str, stage: str, progress: float) -> bool:

@@ -2,6 +2,7 @@ import { config } from "./config";
 import { createApp } from "./app";
 import { ensureSetupToken } from "./auth/setup";
 import { purgeExpiredSessions } from "./auth/service";
+import { enqueueCompactions } from "./services/mediaCompaction";
 import { reapStaleJobs } from "./services/meetings";
 import { kick, recoverSummaries } from "./services/summarizer";
 import { seedBuiltinTemplates } from "./services/templates";
@@ -40,6 +41,17 @@ const internal = config.tls
 
 setInterval(reapStaleJobs, 30_000);
 setInterval(purgeExpiredSessions, 60 * 60 * 1000);
+// Compactions become due as days pass; the admin page also starts them when saved.
+const sweepCompactions = () => {
+  try {
+    const n = enqueueCompactions();
+    if (n) console.log(`[media] queued ${n} original(s) for compaction to audio only`);
+  } catch (e) {
+    console.error("[media] could not queue compactions:", e);
+  }
+};
+setInterval(sweepCompactions, 10 * 60 * 1000);
+sweepCompactions();
 kick();
 
 const scheme = config.tls ? "https" : "http";

@@ -2,7 +2,9 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { requireWorker } from "../auth/middleware";
 import { db, now } from "../db";
+import { completeCompactJob } from "../services/mediaCompaction";
 import { claimJob, completeJob, completeVoiceprintJob, failJob, reportProgress } from "../services/meetings";
+import { transcriberSettings } from "../services/transcriberSettings";
 import type { JobKind } from "../types";
 import { body } from "./validate";
 
@@ -31,14 +33,15 @@ function seen(id: string, name?: string, info?: unknown) {
 internalRoutes.post("/worker/heartbeat", async (c) => {
   const input = await body(c, z.object({ workerId, name: z.string().max(128).optional(), info: z.record(z.string(), z.unknown()).optional() }));
   seen(input.workerId, input.name, input.info);
-  return c.json({ ok: true });
+  // Where transcription runs decides how much free GPU memory a worker waits for before claiming.
+  return c.json({ ok: true, transcriber: { engine: transcriberSettings().engine } });
 });
 
 internalRoutes.post("/jobs/claim", async (c) => {
   // Workers list the job kinds they can run; older ones send nothing and get transcriptions.
   const input = await body(c, z.object({ workerId, kinds: z.array(z.string().max(32)).max(16).optional() }));
   seen(input.workerId);
-  const kinds = (input.kinds ?? ["transcribe"]).filter((k): k is "transcribe" | "voiceprint" => k === "transcribe" || k === "voiceprint");
+  const kinds = (input.kinds ?? ["transcribe"]).filter((k): k is JobKind => k === "transcribe" || k === "voiceprint" || k === "compact");
   const job = claimJob(input.workerId, kinds);
   if (!job) return c.body(null, 204);
   return c.json({ job });
@@ -98,6 +101,12 @@ internalRoutes.post("/jobs/:id/complete", async (c) => {
   const id = c.req.param("id");
   // The result is validated as what the job is, so a malformed result gets the real error (422).
   const job = db.query<{ kind: JobKind }, { id: string }>("SELECT kind FROM jobs WHERE id = $id").get({ id });
+  if (job?.kind === "compact") {
+    const input = await body(c, z.object({ workerId, result: z.object({ durationSec: z.number().nonnegative() }) }));
+    seen(input.workerId);
+    const ok = completeCompactJob(id, input.workerId, input.result);
+    return c.json({ accepted: ok }, ok ? 200 : 409);
+  }
   if (job?.kind === "voiceprint") {
     const input = await body(c, z.object({ workerId, result: voiceprintSchema }));
     seen(input.workerId);

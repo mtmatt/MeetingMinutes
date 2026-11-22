@@ -10,6 +10,11 @@ import type {
   SessionInfo,
   Summary,
   SummarizerInfo,
+  MediaPolicy,
+  MediaState,
+  TranscriberInfo,
+  TranscriberSettings,
+  TranscriberState,
   SummarizerState,
   SummaryRequest,
   SummarySettings,
@@ -86,6 +91,8 @@ export const api = {
       uploadLimitBytes: number | null;
       googleClientId: string | null;
       summarizer: SummarizerInfo | null;
+      transcriber?: TranscriberInfo | null;
+      mediaPolicy?: MediaPolicy | null;
     }>("/auth/state"),
   login: (username: string, password: string) => post<{ user: User }>("/auth/login", { username, password }),
   logout: () => post<{ ok: true }>("/auth/logout"),
@@ -175,6 +182,12 @@ export const api = {
   adminSummarizer: () => get<SummarizerState>("/admin/summarizer"),
   adminSaveSummarizer: (b: SummarySettings) => request<SummarizerState>("PUT", "/admin/summarizer", b),
   adminResetSummarizer: () => del<SummarizerState>("/admin/summarizer"),
+  adminTranscriber: () => get<TranscriberState>("/admin/transcriber"),
+  adminSaveTranscriber: (b: TranscriberSettings) => request<TranscriberState>("PUT", "/admin/transcriber", b),
+  adminResetTranscriber: () => del<TranscriberState>("/admin/transcriber"),
+  adminMedia: () => get<MediaState>("/admin/media"),
+  adminSaveMedia: (b: MediaPolicy) => request<MediaState>("PUT", "/admin/media", b),
+  adminResetMedia: () => del<MediaState>("/admin/media"),
   /** Look at a model server with the form's values, before they are saved. */
   adminProbeModel: (b: Pick<LocalModelSettings, "api" | "baseUrl" | "model">) =>
     post<{ status: LocalModelStatus; pull: ModelPull | null }>("/admin/summarizer/probe", b),

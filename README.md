@@ -1,12 +1,12 @@
 # Minutes
 
-A self-hosted meeting-minutes service. Upload a recording (audio or video). It is transcribed **locally on your own GPUs**, with speaker separation and Taiwan Traditional Chinese output, and then summarised with a prompt you choose: by default by a **local model on your GPU** (Qwen3.8 27B through Ollama), so nothing leaves the server, or by **Codex**, billed to your ChatGPT plan. Administrators choose which on the admin page.
+A self-hosted meeting-minutes service. Upload a recording (audio or video). It is transcribed **locally on your own GPUs** (or, if an administrator chooses, through a **transcription API** such as OpenRouter), with speaker separation and Taiwan Traditional Chinese output, and then summarised with a prompt you choose: by default by a **local model on your GPU** (Qwen3.8 27B through Ollama), so nothing leaves the server, or by **Codex**, billed to your ChatGPT plan. Administrators choose which on the admin page.
 
 Planned changes, including where transcription will run, are in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 - **Backend**: TypeScript on Bun, with Hono and SQLite (`bun:sqlite`).
 - **Frontend**: React and Vite with a custom design system, in English and 繁體中文, with light and dark themes.
-- **GPU worker**: Python, running Qwen3-ASR-1.7B for recognition and pyannote community-1 for speaker diarization.
+- **GPU worker**: Python, running Qwen3-ASR-1.7B for recognition and pyannote community-1 for speaker diarization. Recognition can instead go to a transcription API (OpenRouter, or any OpenAI-compatible server).
 - **Summary model**: Ollama with Qwen3.8 27B (3-bit) by default, any OpenAI-compatible server (vLLM, llama.cpp, LM Studio), or Codex.
 - **No root required** anywhere: install, run, and update all happen as a normal user.
 
@@ -19,6 +19,8 @@ Planned changes, including where transcription will run, are in [docs/ROADMAP.md
      or codex exec → ChatGPT (read-only, tools off)     │ spawns on demand
                                                         ▼
                                                   GPU session: Qwen3-ASR + pyannote → exits, VRAM freed
+                                                  (or pyannote only, with speech segments sent to
+                                                   OpenRouter / an OpenAI-compatible API for recognition)
 ```
 
 ## Features
@@ -48,6 +50,7 @@ Planned changes, including where transcription will run, are in [docs/ROADMAP.md
   - password reset links;
   - roles, disabling users, and a per-user session list with remote sign-out.
 - **Admin system page**: GPU workers (model state, VRAM), queue, Codex login status, and disk usage.
+- **Admin transcription page**: transcribe on the worker's GPU, or through a transcription API (OpenRouter first; any OpenAI-compatible server too), with the model, and which workers have an API key.
 - **Admin summary model page**: choose the local model or Codex, the model server and model, its context window and thinking; see whether the server is up and the model downloaded, and download it from there.
 - **Live updates** over Server-Sent Events: progress, stages, and summaries appear without reloading.
 
@@ -99,7 +102,40 @@ The worker supervisor that runs all the time never imports PyTorch or creates a 
 
 Process exit is what guarantees all VRAM is returned, including the CUDA context that `torch.cuda.empty_cache()` cannot release. The cost is model-loading latency at the start of each busy period (typically tens of seconds from a warm disk cache). `MODEL_KEEPALIVE_SEC` (default `0`) can keep a session warm for a few seconds if you ever want to trade that off. GPU status on the admin page comes from `nvidia-smi`, which does not allocate VRAM.
 
-One supervisor serves all the GPUs in `WORKER_GPUS`, and the admin page still lists each GPU as a worker. Before it claims a job, it asks `nvidia-smi` how much memory each idle GPU has free, including memory used by other programs, and starts the session on the GPU with the most. A GPU with less than `MIN_FREE_VRAM_GB` (default `8`, enough for both models) free is skipped; if every idle GPU is short of memory, jobs stay queued until one has room.
+One supervisor serves all the GPUs in `WORKER_GPUS`, and the admin page still lists each GPU as a worker. Before it claims a job, it asks `nvidia-smi` how much memory each idle GPU has free, including memory used by other programs, and starts the session on the GPU with the most. A GPU with less than `MIN_FREE_VRAM_GB` (default `8`, enough for both models) free is skipped; if every idle GPU is short of memory, jobs stay queued until one has room. When transcription goes through an API, only pyannote is loaded, and `MIN_FREE_VRAM_API_GB` (default `3`) applies instead.
+
+## Transcribing through an API (OpenRouter)
+
+Speech recognition can run on a hosted model instead of the worker's GPU. **Admin → Transcription** chooses, for everyone:
+
+- **This server's GPU** (the default): Qwen3-ASR on the worker, as described above. Recordings never leave the server.
+- **Transcription API**: the worker still decodes the recording, separates the speakers with pyannote and plans the segments exactly as before, then sends each segment (at most `MAX_SEGMENT_SEC`, 30 s, as a 16 kHz mono WAV) to the API, four at a time (`ASR_API_CONCURRENCY`). The recording is never sent as a whole, and speaker separation and voice recognition stay on the worker. Text comes back through the same Taiwan Traditional conversion, so Whisper's Simplified output is converted too.
+
+Two kinds of service work, both through the OpenAI-style `POST …/audio/transcriptions` endpoint:
+
+| Service                  | Address                                       | Models (examples)                                                                 | Key on the worker                       |
+| ------------------------ | --------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------- |
+| **OpenRouter** (default) | `https://openrouter.ai/api/v1` (fixed)        | `qwen/qwen3-asr-1.7b` (the same model as on the GPU), `qwen/qwen3-asr-0.6b`, `openai/whisper-large-v3` | `OPENROUTER_API_KEY` (or `ASR_API_KEY`) |
+| **OpenAI-compatible**    | any, ending in `/v1`; empty means OpenAI      | OpenAI `whisper-1`, `gpt-4o-transcribe`; Groq `whisper-large-v3`; a vLLM serving `Qwen/Qwen3-ASR-1.7B` on your own machine | `ASR_API_KEY` (or `OPENAI_API_KEY`)     |
+
+To set it up:
+
+1. Create a key at [openrouter.ai](https://openrouter.ai) and add it to the `.env` of every machine that runs a worker:
+   ```
+   OPENROUTER_API_KEY=sk-or-v1-...
+   ```
+2. Restart the worker (`scripts/restart.sh worker`).
+3. In **Admin → Transcription**, choose **Transcription API**, OpenRouter, and a model, then save. The page shows, for each connected worker, whether it has a key; recordings already waiting are transcribed the new way.
+
+Things to know:
+
+- **Where the audio goes**: OpenRouter passes each segment to a company that runs the chosen model (for `qwen/qwen3-asr-1.7b`, providers such as DeepInfra), under OpenRouter's and that company's terms. The upload page tells people this before they upload; with the GPU option it says the recording stays on the server.
+- **Price**: OpenRouter bills per second of audio. Its model pages listed `qwen/qwen3-asr-1.7b` at US$0.000008 per second (about US$0.03 per hour of recording) and `qwen/qwen3-asr-0.6b` at US$0.000003 per second, as found on 2026-11-22; check the model page before relying on it. Only speech is sent, so silence costs nothing.
+- **Vocabulary**: the upload page's vocabulary list is sent as the request's `prompt`. Whisper uses it; whether another model's provider forwards it varies, so names and jargon may help less than with the local model.
+- **Language**: the upload page's language becomes an ISO code (`zh`, `en`, `yue`, `ja`, `ko`); "auto" lets the service detect it. The detected language is shown when the service reports it (`verbose_json`); a service that refuses `verbose_json` is asked for plain `json`.
+- **Failures**: a rejected key (401), no credit (402) or an unknown model (404) fails the recording at once with the reason, without retrying; rate limits (429, honouring `Retry-After`), server errors and network errors are retried up to five times per segment, and then the whole job is retried later like any other failure. A worker without a key for the chosen service fails the recording with which variable to set.
+- **No GPU at all**: speaker separation still needs pyannote. `MM_DEVICE=cpu` runs it on the CPU, which works but is much slower; its speed here has not been measured.
+- The key is read by the worker from its own environment and never passes through the web server, the database or a browser; workers report only whether they have one.
 
 ## Choosing the summary model
 
@@ -300,6 +336,10 @@ All settings are environment variables. Put them in `.env` at the repository roo
 | `ASR_MODEL` / `ASR_BACKEND`                         | `Qwen/Qwen3-ASR-1.7B` / `transformers` | Recognition model and engine (`vllm` for speed).                                                                                                                                                                                                                                                                                   |
 | `WORKER_GPUS`                                       | all                                    | GPUs to run workers on, as `nvidia-smi` numbers them, e.g. `0,1`.                                                                                                                                                                                                                                                                  |
 | `MIN_FREE_VRAM_GB`                                  | `8`                                    | Free GPU memory a GPU needs before a GPU session starts on it. Raise it if sessions run out of memory with a larger `ASR_BATCH_SIZE`.                                                                                                                                                                                              |
+| `MEDIA_COMPACT` / `MEDIA_COMPACT_AFTER_DAYS` / `MEDIA_COMPACT_KBPS` | `false` / `7` / `32` | Replace originals with mono Opus audio this many days after transcription, dropping any video (see Operations, "Disk space"). The first two are defaults: Admin → System overrides them. |
+| `ASR_ENGINE` / `ASR_API_PROVIDER` / `ASR_API_MODEL` | `local` / `openrouter` / `qwen/qwen3-asr-1.7b` | Where speech is recognised: `local` (the GPU) or `api`, and with `api` the service (`openrouter` or `openai`) and model. Defaults: Admin → Transcription overrides them. `ASR_API_BASE_URL` is the address of an OpenAI-compatible server (empty: OpenAI). |
+| `OPENROUTER_API_KEY` / `ASR_API_KEY`                | –                                      | Worker only: the key for OpenRouter, or for an OpenAI-compatible server (`ASR_API_KEY` also serves OpenRouter; `OPENAI_API_KEY` also serves OpenAI). Never sent to the web server or browsers.                                                                                                                                   |
+| `MIN_FREE_VRAM_API_GB` / `ASR_API_CONCURRENCY`      | `3` / `4`                              | With an API: free GPU memory a session needs (pyannote only), and segments sent at the same time. `ASR_API_TIMEOUT_SEC` (120) limits one request.                                                                                                                                                                                |
 | `MODEL_KEEPALIVE_SEC`                               | `0`                                    | Seconds a GPU session waits for more work before releasing the GPU.                                                                                                                                                                                                                                                                |
 | `SUMMARY_PROVIDER`                                  | `local`                                | Who writes summaries: `local` or `codex`. A default: Admin → Summary model overrides it.                                                                                                                                                                                                                                           |
 | `LLM_API` / `LLM_BASE_URL` / `LLM_MODEL`            | `ollama` / `http://127.0.0.1:11434` / `batiai/qwen3.8-27b:q3` | The local model server and model (`openai` for vLLM, llama.cpp, LM Studio).                                                                                                                                                                                                                                       |
@@ -373,6 +413,7 @@ What this changes, and what it does not:
 - **Browser recordings**: unsent recordings kept in the browser (IndexedDB) are tagged with the account that made them and are shown only to that account on a shared computer.
 - **Quotas**: at most 3 summaries queued or running per person, so one account cannot drain the shared Codex plan or occupy the summary GPU.
 - **Local model server**: Ollama listens on `127.0.0.1` only (`scripts/llm.sh` refuses anything else), so other machines cannot use it; the web server is its only client, and the web server's port is the only one that needs to be open.
+- **Transcription API**: only administrators can choose it. Its key lives in each worker's environment and is never sent to the web server, stored in the database, or shown in the browser; workers report only whether they have one. Only speech segments are sent, never the whole recording, and the upload page says where they go before anything is uploaded.
 - **Summary model settings**: only administrators can see or change them. The server address must be `http(s)://` without credentials, and model names are checked before they reach a command line or a request. People starting a summary are told where it goes: on this server, to the model server's host, or to OpenAI.
 - **Files on disk**: the server and worker create everything with mode `0600`/`0700` (`umask 077`), and the data directory is restricted to its owner at every start. The scripts make `.env` readable by its owner only.
 - **Headers**: a strict Content-Security-Policy (no third-party origins, except Google's sign-in and Drive when Google Docs export is set up; fonts are self-hosted), `frame-ancestors 'none'`, HSTS over HTTPS, and a Permissions-Policy that allows only the microphone and tab capture (for recording) and only on this site.
@@ -424,6 +465,11 @@ deploy/    Caddyfile, nginx.conf, systemd user units
 
   If pyannote runs but still merges people, give the number of speakers: automatic detection can merge similar voices into one, while a given count (or range) splits into exactly that many.
 
+- **Disk space: keeping only compact audio**: **Admin → System → Keeping recordings** can replace each original, some days after it was transcribed (`MEDIA_COMPACT_AFTER_DAYS`, default 7), with a mono Opus copy at `MEDIA_COMPACT_KBPS` (default 32 kbit/s, about 14 MB per hour), dropping any video. A one-hour 1080p meeting recording of 0.5 to 2 GB becomes about 14 MB, next to the 29 MB playback copy that every meeting already has. Off by default.
+  - Transcribing again, **Separate speakers again** and voice fingerprints read only the audio, so they keep working on the copy. The video pane and downloading the file as uploaded are given up; **Export → Audio (compacted)** downloads the copy.
+  - It applies to meetings already on the server as well as new ones. Only originals that shrink are touched (any video, or audio above 1.5 times the target bitrate: WAV, FLAC, 128 kbit/s MP3 or M4A). Already small audio, such as recordings made in the browser, is left alone.
+  - A worker does the work with ffmpeg on the CPU, one recording at a time, outside GPU sessions (`MM_MEDIA_JOBS=0` turns this off on a worker). The backend swaps the copy in only if its length matches the recording, and keeps the original if the meeting is being transcribed again meanwhile. A copy that fails is reported on the admin page and not retried; its original stays as it was.
+  - The upload page tells people who choose a video that the picture will not be kept. Compacting cannot be undone, so the admin page asks before it starts on meetings that are already due.
 - **Backups**: copy `data/`. SQLite runs in WAL mode; use `sqlite3 data/meetingminutes.sqlite ".backup backup.sqlite"` for a consistent snapshot while the server is running.
 - **Workers after an update**: a worker from before voice recognition still runs transcriptions; it is never given the background voice-fingerprint jobs, which wait until an updated worker claims them. Restart `scripts/worker.sh` after `git pull` to process them.
 - **Stuck jobs**: if a worker dies mid-job, the backend notices the missing heartbeat within 3 minutes and requeues the job (up to 3 attempts).

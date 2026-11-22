@@ -234,4 +234,32 @@ export const migrations: string[] = [
   ALTER TABLE summaries ADD COLUMN provider TEXT CHECK (provider IN ('local', 'codex'));
   UPDATE summaries SET provider = 'codex' WHERE status IN ('running', 'done', 'failed');
   `,
+  // Compact originals: once a meeting has been transcribed (and some days have
+  // passed), its original can be replaced by an audio-only Opus copy, which
+  // drops any video. jobs.kind gains 'compact'; SQLite cannot change a CHECK
+  // constraint, so the jobs table is rebuilt (nothing references it).
+  `
+  CREATE TABLE jobs_new (
+    id           TEXT PRIMARY KEY,
+    meeting_id   TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    status       TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed', 'canceled')),
+    worker_id    TEXT,
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    error        TEXT,
+    created_at   INTEGER NOT NULL,
+    claimed_at   INTEGER,
+    heartbeat_at INTEGER,
+    finished_at  INTEGER,
+    kind         TEXT NOT NULL DEFAULT 'transcribe' CHECK (kind IN ('transcribe', 'voiceprint', 'compact')),
+    learn        INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO jobs_new (id, meeting_id, status, worker_id, attempts, error, created_at, claimed_at, heartbeat_at, finished_at, kind, learn)
+    SELECT id, meeting_id, status, worker_id, attempts, error, created_at, claimed_at, heartbeat_at, finished_at, kind, learn FROM jobs;
+  DROP TABLE jobs;
+  ALTER TABLE jobs_new RENAME TO jobs;
+  CREATE INDEX jobs_status ON jobs(status, created_at);
+  CREATE INDEX jobs_meeting ON jobs(meeting_id, status);
+  ALTER TABLE meetings ADD COLUMN compacted_at INTEGER;
+  ALTER TABLE meetings ADD COLUMN original_size INTEGER;
+  `,
 ];

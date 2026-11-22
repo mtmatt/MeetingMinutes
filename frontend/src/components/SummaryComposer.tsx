@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { OutputLanguage, SummaryRequest, Template } from "../api/types";
 import { useI18n } from "../i18n";
+import { useAuth } from "../lib/auth";
 import { useSummaryEngine } from "../lib/summaryEngine";
 
 export function useTemplates() {
@@ -37,21 +38,26 @@ export function normalizeRequest(req: SummaryRequest, templates: Template[]): Su
 export function DataFlowNote() {
   const { t } = useI18n();
   const { name, info } = useSummaryEngine();
+  const { transcriber } = useAuth();
   // Codex sends the transcript to OpenAI; a local model keeps it on this server (or the one the admin named).
   const where = info?.provider === "local" ? (info.onServer ? "Local" : "Remote") : "";
-  const vars = { engine: name, host: info?.host ?? "" };
+  // A transcription API on another machine receives the speech in the recording.
+  const asrApi = transcriber?.engine === "api" && !transcriber.onServer;
+  const vars = { engine: name, host: info?.host ?? "", asrModel: transcriber?.model ?? "", asrHost: transcriber?.host ?? "" };
   return (
     <div className="dataflow">
       <ShieldCheck />
       <div className="dataflow-body">
         <strong>{t("privacy.title")}</strong>
         <ul>
-          <li>{t("privacy.asr")}</li>
+          <li>{t(asrApi ? (transcriber?.provider === "openrouter" ? "privacy.asrOpenRouter" : "privacy.asrApi") : "privacy.asr", vars)}</li>
           <li>{t(`privacy.summary${where}`, vars)}</li>
         </ul>
         <details>
           <summary>{t("privacy.more")}</summary>
-          <p>{t(`privacy.details${where}`, vars)}</p>
+          <p>{t("privacy.detailsBrowser")}</p>
+          <p>{t(asrApi ? (transcriber?.provider === "openrouter" ? "privacy.detailsAsrOpenRouter" : "privacy.detailsAsrApi") : "privacy.detailsAsr", vars)}</p>
+          <p>{t(`privacy.detailsSummary${where}`, vars)}</p>
         </details>
       </div>
     </div>
