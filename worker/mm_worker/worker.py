@@ -25,6 +25,9 @@ from typing import Callable, Optional
 from . import __version__
 from .asr_api import ApiError, ApiTranscriber, api_key, keys_present, settings_from_job
 from .audio import CompactCanceled, MediaError, compact_audio
+from .cloud_diarize import API_URL as PYANNOTEAI_URL
+from .cloud_diarize import KEY_VARIABLE as PYANNOTEAI_KEY
+from .cloud_diarize import CloudDiarizationError, PyannoteAIDiarizer
 from .client import BackendClient
 from .config import WorkerConfig
 from .gpus import GpuMemory, find_gpu, pick_gpu, query_gpus
@@ -102,6 +105,34 @@ def build_models(cfg: WorkerConfig):
     return transcriber, diarizer, status
 
 
+def capabilities(cfg: WorkerConfig) -> dict:
+    """What this worker can run, from what is installed: the APIs always; the local
+    models only with their packages (a worker installed without GPU packages has
+    neither torch, Qwen3-ASR nor pyannote)."""
+    import importlib.util
+
+    def installed(name: str) -> bool:
+        try:
+            return importlib.util.find_spec(name) is not None
+        except (ImportError, ValueError):
+            return False
+
+    fake = cfg.asr_backend == "fake"
+    asr = (["local"] if fake or installed("qwen_asr") else []) + ["api"]
+    diarization = (["local"] if fake or installed("pyannote.audio") else []) + ["pyannoteai"]
+    return {"asr": asr, "diarization": diarization}
+
+
+def api_keys() -> dict:
+    """Which API keys this worker has (never the keys)."""
+    return {**keys_present(), "pyannoteai": bool(os.environ.get(PYANNOTEAI_KEY, "").strip())}
+
+
+def diarization_engine(job: dict) -> str:
+    """Who separates speakers for this job: "local" (pyannote on this machine) or "pyannoteai"."""
+    return "pyannoteai" if (job.get("diarization") or {}).get("engine") == "pyannoteai" else "local"
+
+
 def asr_engine(job: dict) -> str:
     """Where the backend wants this job transcribed: "local" (the GPU) or "api".
     Backends from before the choice existed send nothing, which means local."""
@@ -109,14 +140,50 @@ def asr_engine(job: dict) -> str:
 
 
 class Models:
-    """The models of one GPU session. The ASR model, the larger one, loads on
-    first use: a session that only makes voice fingerprints, or that sends
-    speech to a transcription API, never needs it."""
+    """The models of one GPU session, each loaded on first use: a session that
+    only makes voice fingerprints never loads the ASR model, and one that uses
+    the APIs loads neither local model."""
 
     def __init__(self, cfg: WorkerConfig):
         self.cfg = cfg
         self._transcriber = None
-        self.diarizer, self.diarization = load_diarizer(cfg)
+        self._local: Optional[tuple] = None
+        self._embedder = None
+
+    @property
+    def diarization(self) -> Optional[dict]:
+        """What loading the local diarization pipeline found; None if it was not needed."""
+        return self._local[1] if self._local else None
+
+    def local_diarizer(self):
+        if self._local is None:
+            self._local = load_diarizer(self.cfg)
+        return self._local
+
+    def embedder(self):
+        """Voice fingerprints on the CPU, for speakers separated by pyannoteAI."""
+        if self._embedder is None:
+            if self.cfg.asr_backend == "fake":
+                from .fakes import FakeEmbedder
+
+                self._embedder = FakeEmbedder()
+            else:
+                from .onnx_voice import OnnxVoiceEmbedder, default_model_dir
+
+                self._embedder = OnnxVoiceEmbedder(self.cfg.model_dir or default_model_dir(None))
+        return self._embedder
+
+    def diarizer_for(self, job: dict):
+        """(diarizer or None, why there is none) for this job's speaker separation."""
+        if diarization_engine(job) == "pyannoteai":
+            diarizer = PyannoteAIDiarizer(
+                os.environ.get(PYANNOTEAI_KEY, "").strip() or None,
+                self.embedder(),
+                api_url=os.environ.get("PYANNOTEAI_API_URL", "").strip() or PYANNOTEAI_URL,
+            )
+            return diarizer, None
+        diarizer, status = self.local_diarizer()
+        return diarizer, status.get("reason")
 
     @property
     def transcriber(self):
@@ -153,7 +220,7 @@ class ModelsUnavailable(Exception):
 def is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, MediaError):
         return False
-    if isinstance(exc, ApiError):
+    if isinstance(exc, (ApiError, CloudDiarizationError)):
         return exc.retryable
     text = f"{type(exc).__name__}: {exc}".lower()
     return any(k in text for k in ("out of memory", "cuda", "connection", "timeout", "temporarily"))
@@ -224,6 +291,15 @@ class _JobRunner:
         started = time.monotonic()
         spec = JobSpec(media_path=job["mediaPath"], out_dir=job["outDir"], options=job.get("options") or {})
         transcriber = None
+        diarizer, diarizer_unavailable = None, None
+        if kind in ("transcribe", "voiceprint"):
+            try:
+                diarizer, diarizer_unavailable = models.diarizer_for(job)
+            except CloudDiarizationError as e:
+                # No pyannoteAI key: the same for every retry, so say what to set.
+                log.error("cannot use pyannoteAI: %s", e)
+                self.fail(job_id, str(e), e.retryable)
+                return
         if kind == "transcribe":
             try:
                 transcriber = models.transcriber_for(job)
@@ -245,8 +321,8 @@ class _JobRunner:
                 result = run_voiceprint(
                     spec,
                     report=self.report,
-                    diarizer=models.diarizer,
-                    diarizer_unavailable=models.diarization.get("reason"),
+                    diarizer=diarizer,
+                    diarizer_unavailable=diarizer_unavailable,
                     max_audio_sec=self.cfg.max_audio_sec,
                 )
                 summary = f"{len(result['voices'])} voice fingerprints"
@@ -255,9 +331,9 @@ class _JobRunner:
                     spec,
                     report=self.report,
                     transcriber=transcriber,
-                    diarizer=models.diarizer,
+                    diarizer=diarizer,
                     max_segment_sec=self.cfg.max_segment_sec,
-                    diarizer_unavailable=models.diarization.get("reason"),
+                    diarizer_unavailable=diarizer_unavailable,
                     max_audio_sec=self.cfg.max_audio_sec,
                 )
                 summary = f"{len(result['segments'])} segments, {len(result['speakers'])} speakers"
@@ -277,7 +353,11 @@ class _JobRunner:
                 self.fail(job_id, "The worker was shut down.", True)
         except Exception as e:
             log.error("job %s failed: %s\n%s", job_id, e, traceback.format_exc())
-            self.fail(job_id, str(e) if isinstance(e, (MediaError, ApiError)) else f"{type(e).__name__}: {e}", is_retryable(e))
+            self.fail(
+                job_id,
+                str(e) if isinstance(e, (MediaError, ApiError, CloudDiarizationError)) else f"{type(e).__name__}: {e}",
+                is_retryable(e),
+            )
             try:
                 import torch
 
@@ -296,7 +376,7 @@ def gpu_session(cfg: WorkerConfig, first_job: dict, events) -> None:
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
 
-    client = BackendClient(cfg.server_url, cfg.token, cfg.worker_id)
+    client = BackendClient(cfg.server_url, cfg.token, cfg.worker_id, capabilities=capabilities(cfg))
     runner = _JobRunner(cfg, client, stop)
     job: Optional[dict] = first_job
 
@@ -311,8 +391,11 @@ def gpu_session(cfg: WorkerConfig, first_job: dict, events) -> None:
             log.info("using fake models (ASR_BACKEND=fake)")
         t0 = time.monotonic()
         models = Models(cfg)
+        # Load what the first job needs now, while it shows "Loading models".
+        if job_kind(job) in ("transcribe", "voiceprint") and diarization_engine(job) == "local":
+            models.local_diarizer()
         if job_kind(job) == "transcribe" and asr_engine(job) == "local":
-            models.transcriber  # noqa: B018 - load it now, while the job shows "Loading models"
+            models.transcriber  # noqa: B018
         log.info("models ready in %.1fs", time.monotonic() - t0)
     except Exception as e:
         log.error("could not load models: %s\n%s", e, traceback.format_exc())
@@ -452,7 +535,7 @@ class GpuWorker:
     def __init__(self, cfg: WorkerConfig):
         self.cfg = cfg
         self.gpu = cfg.gpus[0]
-        self.client = BackendClient(cfg.server_url, cfg.token, cfg.worker_id)
+        self.client = BackendClient(cfg.server_url, cfg.token, cfg.worker_id, capabilities=capabilities(cfg))
         self.child: Optional[mp.process.BaseProcess] = None
         self.models_loaded = False
         self.current_job: Optional[str] = None
@@ -465,8 +548,9 @@ class GpuWorker:
             "version": __version__,
             "asrModel": self.cfg.asr_model,
             "asrBackend": self.cfg.asr_backend,
-            # Which transcription APIs this worker has a key for; never the keys themselves.
-            "asrApiKeys": keys_present(),
+            # Which APIs this worker has a key for (never the keys), and what it can run.
+            "apiKeys": api_keys(),
+            "capabilities": self.client.capabilities,
             "diarization": self.diarization["state"],
             "diarizationError": self.diarization.get("reason"),
             "state": "busy" if self.child is not None else "idle",
@@ -542,18 +626,28 @@ class Supervisor:
         # Stand-in models and CPU workers use no GPU memory, so there is nothing to check.
         self.query = query or (query_gpus if cfg.uses_gpu else None)
         self._waiting: Optional[str] = None
-        # Where the backend says transcription runs; decides how much GPU memory a session needs.
+        # Where the backend says speech is recognised and speakers separated; decides
+        # how much GPU memory a session needs.
         self.asr_engine = "local"
+        self.diarization_engine = "local"
 
     def note_backend(self, answer: Optional[dict]):
-        engine = ((answer or {}).get("transcriber") or {}).get("engine")
+        told = (answer or {}).get("transcriber") or {}
+        engine, diarization = told.get("engine"), told.get("diarization")
         if engine in ("local", "api") and engine != self.asr_engine:
             log.info("transcription now runs %s", "through an API" if engine == "api" else "on the GPU")
             self.asr_engine = engine
+        if diarization in ("local", "pyannoteai") and diarization != self.diarization_engine:
+            log.info("speakers are now separated %s", "by pyannoteAI" if diarization == "pyannoteai" else "on the GPU")
+            self.diarization_engine = diarization
 
     @property
     def min_free_vram_gb(self) -> float:
-        return self.cfg.min_free_vram_api_gb if self.asr_engine == "api" else self.cfg.min_free_vram_gb
+        if self.asr_engine == "api" and self.diarization_engine == "pyannoteai":
+            return 0.0  # nothing is loaded on the GPU
+        if self.asr_engine == "api":
+            return self.cfg.min_free_vram_api_gb
+        return self.cfg.min_free_vram_gb
 
     def heartbeat_loop(self):
         while not self.stop.wait(20):
@@ -571,7 +665,8 @@ class Supervisor:
 
     def pick(self, idle: list[GpuWorker]) -> Optional[GpuWorker]:
         """The idle GPU to claim a job for, or None to leave jobs queued for now."""
-        if self.query is None:
+        if self.query is None or self.min_free_vram_gb <= 0:
+            # Nothing to check: a CPU worker, or everything runs through the APIs.
             return idle[0]
         try:
             gpus = self.query()
@@ -614,6 +709,12 @@ class Supervisor:
             ", ".join(self.cfg.gpus),
             self.cfg.server_url,
         )
+        caps = self.workers[0].client.capabilities or {}
+        if "local" not in caps.get("asr", []) or "local" not in caps.get("diarization", []):
+            log.info(
+                "local models not installed: this worker takes only transcriptions set to %s",
+                " and ".join(x for x in ("the transcription API" if "local" not in caps.get("asr", []) else "", "pyannoteAI" if "local" not in caps.get("diarization", []) else "") if x),
+            )
         while not self.stop.is_set():
             idle = [w for w in self.workers if w.child is None]
             worker = self.pick(idle) if idle else None
@@ -630,7 +731,7 @@ class Supervisor:
                 self.stop.wait(self.cfg.poll_interval)
                 continue
             if job_kind(job) == "transcribe":
-                self.note_backend({"transcriber": {"engine": asr_engine(job)}})
+                self.note_backend({"transcriber": {"engine": asr_engine(job), "diarization": diarization_engine(job)}})
             # The GPU is busy from here, so the next pick chooses among the others.
             worker.start_session(job)
 

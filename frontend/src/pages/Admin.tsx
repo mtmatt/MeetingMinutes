@@ -392,11 +392,13 @@ function System() {
                     {relative(w.lastSeenAt, t, locale)}
                   </span>
                 </div>
-                <div className="worker-gpu">{w.info.gpu ?? (w.info.cuda === false ? "CPU" : "GPU")}</div>
+                <div className="worker-gpu">
+                  {w.info.gpu ?? (w.info.cuda === false || (w.info.capabilities && !w.info.capabilities.asr.includes("local")) ? "CPU" : "GPU")}
+                </div>
                 <div className="worker-name mono faint">{w.name}</div>
                 {w.info.vramTotalGb != null && <VramBar info={w.info} />}
                 <div className="worker-model mono">
-                  {w.info.asrModel} · {w.info.asrBackend}
+                  {w.info.capabilities && !w.info.capabilities.asr.includes("local") ? t("admin.apisOnly") : `${w.info.asrModel} · ${w.info.asrBackend}`}
                 </div>
                 {w.online && w.info.modelsLoaded !== undefined && (
                   <div className="worker-load faint">

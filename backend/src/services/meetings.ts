@@ -17,7 +17,14 @@ import {
   voiceprintSpans,
   type Voice,
 } from "./voices";
-import { type JobAsrSettings, jobAsrSettings } from "./transcriberSettings";
+import {
+  type JobAsrSettings,
+  type WorkerCapabilities,
+  canRun,
+  jobAsrSettings,
+  jobDiarizationSettings,
+  transcriberSettings,
+} from "./transcriberSettings";
 
 export const SPEAKER_COLORS = 10;
 
@@ -261,6 +268,8 @@ export interface ClaimedJob {
   title: string;
   /** Transcriptions only: where speech is recognised, as the admin has it set when the job is claimed. */
   asr?: JobAsrSettings;
+  /** Transcriptions and voiceprints: who separates speakers (and so which model makes voice fingerprints). */
+  diarization?: { engine: "local" | "pyannoteai" };
 }
 
 /**
@@ -268,15 +277,22 @@ export interface ClaimedJob {
  * voiceprints did not say, and run transcriptions only). Transcriptions go
  * first: people wait for those, while voiceprints work in the background.
  */
-export function claimJob(workerId: string, kinds: JobKind[] = ["transcribe"]): ClaimedJob | null {
+export function claimJob(workerId: string, kinds: JobKind[] = ["transcribe"], capabilities?: WorkerCapabilities): ClaimedJob | null {
   return db.transaction((): ClaimedJob | null => {
+    // A worker without the local models (no GPU packages) gets only what it can do under the current settings.
+    const settings = transcriberSettings();
+    const can = canRun(capabilities, settings);
     const job = db
       .query<JobRow, { t: number; v: number; c: number }>(
         `SELECT * FROM jobs WHERE status = 'queued'
            AND ((kind = 'transcribe' AND $t) OR (kind = 'voiceprint' AND $v) OR (kind = 'compact' AND $c))
          ORDER BY kind = 'compact', kind = 'voiceprint', created_at ASC LIMIT 1`,
       )
-      .get({ t: kinds.includes("transcribe") ? 1 : 0, v: kinds.includes("voiceprint") ? 1 : 0, c: kinds.includes("compact") ? 1 : 0 });
+      .get({
+        t: kinds.includes("transcribe") && can.transcribe ? 1 : 0,
+        v: kinds.includes("voiceprint") && can.voiceprint ? 1 : 0,
+        c: kinds.includes("compact") ? 1 : 0,
+      });
     if (!job) return null;
     const t = now();
     db.query(
@@ -293,7 +309,7 @@ export function claimJob(workerId: string, kinds: JobKind[] = ["transcribe"]): C
       title: m.title,
     };
     // A voiceprint leaves the meeting as it is: it stays ready and readable.
-    if (job.kind === "voiceprint") return { ...base, options: { speakers: voiceprintSpans(m.id) } };
+    if (job.kind === "voiceprint") return { ...base, options: { speakers: voiceprintSpans(m.id) }, diarization: jobDiarizationSettings(settings) };
     // So does a compaction: the meeting is swapped to the copy only when it is done.
     if (job.kind === "compact") return { ...base, options: { bitrateKbps: config.media.compactKbps, output: compactTempPath(m.id) } };
     db.query("UPDATE meetings SET status = 'processing', stage = 'starting', progress = 0, updated_at = $t WHERE id = $id").run({
@@ -304,7 +320,8 @@ export function claimJob(workerId: string, kinds: JobKind[] = ["transcribe"]): C
     return {
       ...base,
       options: { ...DEFAULT_OPTIONS, ...parseJson<Partial<TranscribeOptions>>(m.options, {}) },
-      asr: jobAsrSettings(),
+      asr: jobAsrSettings(settings),
+      diarization: jobDiarizationSettings(settings),
     };
   })();
 }

@@ -28,12 +28,21 @@ fi
 cd "$ROOT/worker"
 # GPU numbers are nvidia-smi's, so CUDA has to count GPUs the same way.
 export CUDA_DEVICE_ORDER=${CUDA_DEVICE_ORDER:-PCI_BUS_ID}
+# The environment scripts/install.sh made; uv is needed only to create it.
+if [ -x .venv/bin/python ]; then
+  PY=(.venv/bin/python)
+elif command -v uv >/dev/null 2>&1; then
+  PY=(uv run --no-sync python)
+else
+  echo "worker/.venv is missing and uv is not installed: run scripts/install.sh first" >&2
+  exit 1
+fi
 if [ "${1:-run}" != "run" ]; then
   export CUDA_VISIBLE_DEVICES=${GPUS%%,*}
-  exec uv run --no-sync python -m mm_worker "$@"
+  exec "${PY[@]}" -m mm_worker "$@"
 fi
 
 # One process for all of them: before each GPU session it picks the GPU with the
 # most free memory (MIN_FREE_VRAM_GB), and each GPU still appears as its own worker.
 echo "starting worker on GPUs $GPUS"
-WORKER_GPUS=$(echo "$GPUS" | tr -d ' ') exec uv run --no-sync python -m mm_worker run
+WORKER_GPUS=$(echo "$GPUS" | tr -d ' ') exec "${PY[@]}" -m mm_worker run

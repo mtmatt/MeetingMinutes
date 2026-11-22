@@ -69,6 +69,8 @@ class WorkerConfig:
     # Compacting originals to audio only (CPU work, outside GPU sessions). Off on
     # a worker that should leave it to another (MM_MEDIA_JOBS=0).
     media_jobs: bool = True
+    # Where downloaded models live (the CPU voice fingerprint model): DATA_DIR/models, or MM_MODEL_DIR.
+    model_dir: Optional[Path] = None
     media_poll_interval: float = 30.0
     extra: dict = field(default_factory=dict)
 
@@ -157,4 +159,5 @@ def load_config() -> WorkerConfig:
         asr_api_concurrency=max(1, min(32, _int("ASR_API_CONCURRENCY", 4) or 4)),
         asr_api_timeout=max(10.0, _float("ASR_API_TIMEOUT_SEC", 120.0)),
         media_jobs=os.environ.get("MM_MEDIA_JOBS", "1").strip().lower() not in ("0", "false", "no", "off"),
+        model_dir=Path(os.environ["MM_MODEL_DIR"]).expanduser() if os.environ.get("MM_MODEL_DIR", "").strip() else data_dir / "models",
     )

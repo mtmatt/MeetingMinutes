@@ -43,6 +43,8 @@ export function DataFlowNote() {
   const where = info?.provider === "local" ? (info.onServer ? "Local" : "Remote") : "";
   // A transcription API on another machine receives the speech in the recording.
   const asrApi = transcriber?.engine === "api" && !transcriber.onServer;
+  // pyannoteAI receives the whole recording to separate speakers.
+  const diarizeCloud = transcriber?.diarization === "pyannoteai";
   const vars = { engine: name, host: info?.host ?? "", asrModel: transcriber?.model ?? "", asrHost: transcriber?.host ?? "" };
   return (
     <div className="dataflow">
@@ -50,12 +52,25 @@ export function DataFlowNote() {
       <div className="dataflow-body">
         <strong>{t("privacy.title")}</strong>
         <ul>
-          <li>{t(asrApi ? (transcriber?.provider === "openrouter" ? "privacy.asrOpenRouter" : "privacy.asrApi") : "privacy.asr", vars)}</li>
+          <li>
+            {t(
+              asrApi
+                ? transcriber?.provider === "openrouter"
+                  ? "privacy.asrOpenRouter"
+                  : "privacy.asrApi"
+                : diarizeCloud
+                  ? "privacy.asrHere"
+                  : "privacy.asr",
+              vars,
+            )}
+          </li>
+          {diarizeCloud && <li>{t("privacy.diarizeCloud")}</li>}
           <li>{t(`privacy.summary${where}`, vars)}</li>
         </ul>
         <details>
           <summary>{t("privacy.more")}</summary>
           <p>{t("privacy.detailsBrowser")}</p>
+          <p>{t(diarizeCloud ? "privacy.detailsDiarizeCloud" : "privacy.detailsDiarizeLocal")}</p>
           <p>{t(asrApi ? (transcriber?.provider === "openrouter" ? "privacy.detailsAsrOpenRouter" : "privacy.detailsAsrApi") : "privacy.detailsAsr", vars)}</p>
           <p>{t(`privacy.detailsSummary${where}`, vars)}</p>
         </details>

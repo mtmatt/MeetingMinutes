@@ -349,11 +349,11 @@ def test_api_transcription_needs_less_free_gpu_memory():
 
 
 def test_worker_reports_which_api_keys_it_has(monkeypatch):
-    for k in ("OPENROUTER_API_KEY", "ASR_API_KEY", "OPENAI_API_KEY"):
+    for k in ("OPENROUTER_API_KEY", "ASR_API_KEY", "OPENAI_API_KEY", "PYANNOTEAI_API_KEY"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-secret")
     info = Supervisor(multi_gpu_cfg(["0"])).workers[0].info()
-    assert info["asrApiKeys"] == {"openrouter": True, "openai": False}
+    assert info["apiKeys"] == {"openrouter": True, "openai": False, "pyannoteai": False}
     assert "sk-or-secret" not in json.dumps(info)
 
 
@@ -420,3 +420,95 @@ def test_canceled_compaction_leaves_no_file(two_speaker_wav, tmp_path, monkeypat
     with pytest.raises(CompactCanceled):
         audio.compact_audio(str(two_speaker_wav), str(out), keep_going=lambda: False)
     assert not out.exists() and not list(tmp_path.glob("*.part"))
+
+
+# ------------------------------------------------- no GPU at all: both APIs
+
+
+def test_cloud_only_job_loads_no_local_model(two_speaker_wav, tmp_path, monkeypatch):
+    """pyannoteAI separates speakers, a transcription API transcribes: neither local model is loaded."""
+    from mm_worker import worker as worker_mod
+    from test_asr_api import FakeSttServer  # pytest puts tests/ on sys.path
+    from test_cloud_diarize import FakePyannoteAI
+
+    def no_local(cfg):
+        raise AssertionError("no local model may load for a cloud-only job")
+
+    monkeypatch.setattr(worker_mod, "load_transcriber", no_local)
+    monkeypatch.setattr(worker_mod, "load_diarizer", no_local)
+    monkeypatch.setattr(worker_mod.signal, "signal", lambda *a: None)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    monkeypatch.setenv("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    monkeypatch.setenv("PYANNOTEAI_API_KEY", "pk-test")
+    stt, pya = FakeSttServer(), FakePyannoteAI()
+    monkeypatch.setenv("PYANNOTEAI_API_URL", pya.url)
+    job = {"jobId": "c1", "meetingId": "m1", "attempt": 1, "mediaPath": str(two_speaker_wav), "outDir": str(tmp_path / "m1"),
+           "options": {"diarize": True}, "title": "t",
+           "asr": {"engine": "api", "provider": "openrouter", "model": "qwen/qwen3-asr-1.7b", "baseUrl": stt.url},
+           "diarization": {"engine": "pyannoteai"}}
+    # A voiceprint job under the same setting fingerprints on the CPU, uploading nothing.
+    vp = {"jobId": "v1", "kind": "voiceprint", "meetingId": "m0", "attempt": 1, "mediaPath": str(two_speaker_wav),
+          "outDir": str(tmp_path / "m0"), "options": {"speakers": {"A": [[0, 3]], "B": [[4, 8]]}}, "title": "old",
+          "diarization": {"engine": "pyannoteai"}}
+    backend = FakeBackend([vp])
+
+    class Events:
+        def put(self, item):
+            pass
+
+    try:
+        worker_mod.gpu_session(cfg(backend.url), job, Events())
+    finally:
+        stt.close()
+        pya.close()
+    result = next(b for p, b in backend.events if p == "/jobs/c1/complete")["result"]
+    assert result["speakers"] == ["SPEAKER_00", "SPEAKER_01"] and result["voiceModel"] == "fake-onnx"
+    assert len(pya.uploads) == 1  # the transcription only
+    voiceprint = next(b for p, b in backend.events if p == "/jobs/v1/complete")["result"]
+    assert voiceprint["voiceModel"] == "fake-onnx" and set(voiceprint["voices"]) == {"A", "B"}
+
+
+def test_missing_pyannoteai_key_fails_the_job_with_what_to_set(two_speaker_wav, tmp_path, monkeypatch):
+    from mm_worker import worker as worker_mod
+
+    monkeypatch.setattr(worker_mod.signal, "signal", lambda *a: None)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    monkeypatch.setenv("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+    monkeypatch.delenv("PYANNOTEAI_API_KEY", raising=False)
+    job = {"jobId": "k1", "meetingId": "m1", "attempt": 1, "mediaPath": str(two_speaker_wav), "outDir": str(tmp_path / "m1"),
+           "options": {"diarize": True}, "title": "t", "diarization": {"engine": "pyannoteai"}}
+    backend = FakeBackend([])
+
+    class Events:
+        def put(self, item):
+            pass
+
+    worker_mod.gpu_session(cfg(backend.url), job, Events())
+    fail = next(b for p, b in backend.events if p == "/jobs/k1/fail")
+    assert fail["retryable"] is False and "PYANNOTEAI_API_KEY" in fail["error"]
+
+
+def test_capabilities_follow_what_is_installed(monkeypatch):
+    from mm_worker import worker as worker_mod
+
+    # The fake backend stands in for every model.
+    assert worker_mod.capabilities(cfg("http://unused")) == {"asr": ["local", "api"], "diarization": ["local", "pyannoteai"]}
+    # Without qwen-asr and pyannote installed (as in this test environment), only the APIs.
+    real = replace(cfg("http://unused"), asr_backend="transformers")
+    import importlib.util
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    assert worker_mod.capabilities(real) == {"asr": ["api"], "diarization": ["pyannoteai"]}
+    # Claims carry them, so the backend hands out only what this worker can do.
+    sup = Supervisor(replace(real, device="cpu"))
+    assert sup.workers[0].client.capabilities == {"asr": ["api"], "diarization": ["pyannoteai"]}
+
+
+def test_everything_through_apis_needs_no_free_gpu_memory():
+    smi = "0, GPU-a, NVIDIA GeForce RTX 4090, 24564, 24000\n"  # nearly full
+    sup = Supervisor(multi_gpu_cfg(["0"]), query=lambda: parse_gpus(smi))
+    sup.note_backend({"transcriber": {"engine": "api", "diarization": "local"}})
+    assert sup.pick(sup.workers) is None
+    sup.note_backend({"transcriber": {"engine": "api", "diarization": "pyannoteai"}})
+    assert sup.pick(sup.workers) is sup.workers[0]

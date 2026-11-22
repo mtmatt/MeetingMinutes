@@ -1,12 +1,14 @@
 [project]
 name = "mm-worker"
 version = "0.1.0"
-description = "GPU transcription worker for MeetingMinutes (Qwen3-ASR + pyannote diarization)"
+description = "Transcription worker for MeetingMinutes (Qwen3-ASR + pyannote on a GPU, or transcription and diarization APIs)"
 requires-python = ">=3.10,<3.13"
 dependencies = [
   "numpy>=1.26",
   "imageio-ffmpeg>=0.5.1",
   "opencc-python-reimplemented>=0.1.7",
+  # Voice fingerprints on the CPU (onnxruntime, no torch) when speakers are separated by pyannoteAI.
+  "sherpa-onnx>=2.0.3,<3",
 ]
 
 [project.optional-dependencies]

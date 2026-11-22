@@ -492,6 +492,7 @@ export const en = {
     asr: "Transcription",
     asrEngine: "Speech recognition",
     asrLocal: "This server's GPU (Qwen3-ASR)",
+    apisOnly: "Cloud APIs only (no local models installed)",
     system: "System",
     role: "Role",
     admin: "Administrator",
@@ -680,7 +681,16 @@ export const en = {
   },
   asr: {
     engine: "Who transcribes recordings",
-    engineLede: "Applies to everyone, from the next recording a worker starts, including recordings already waiting. Speaker separation and voice recognition always run on the worker's GPU.",
+    engineLede: "Applies to everyone, from the next recording a worker starts, including recordings already waiting.",
+    diarization: "Who separates speakers",
+    diarizationLede: "Finds who spoke when. Voice fingerprints are always computed on the worker.",
+    diarizationLocal: "This server's GPU",
+    diarizationLocalDesc: "pyannote on the worker's GPU. Recordings never leave the server; needs a Hugging Face token.",
+    diarizationCloudDesc: "The pyannote team's hosted service. The whole recording is uploaded and, it says, deleted within 48 hours. With the transcription API, workers need no GPU at all.",
+    diarizationFlow: "The whole recording is uploaded as 48 kbit/s audio. Voice fingerprints are computed by sherpa-onnx on the worker's CPU and not sent. After switching, Voices → Find voices in past recordings rebuilds them with the new model.",
+    noGpuNeeded: "Both steps run in the cloud: workers need no GPU, CUDA or torch; install them with scripts/install.sh --no-gpu.",
+    noCapableTitle: "No worker can run this",
+    noCapableBody: "None of the connected workers has the local models installed; they can only run the transcription API with pyannoteAI. Recordings will wait until a worker with GPU packages connects, or until you choose the cloud services.",
     local: "This server's GPU",
     localDesc: "Qwen3-ASR on the worker's GPU. Recordings never leave the server; needs about 8 GB of free GPU memory.",
     api: "Transcription API",
@@ -780,6 +790,8 @@ export const en = {
   privacy: {
     title: "Where your data goes",
     asr: "Speech recognition: done on this server's GPUs; the audio never leaves the server.",
+    asrHere: "Speech recognition: done on this server's GPUs.",
+    diarizeCloud: "Speaker separation: the whole recording is uploaded to pyannoteAI (pyannote.ai), which says it deletes it within 48 hours.",
     asrOpenRouter: "Speech recognition: the parts of the recording where someone speaks are sent through OpenRouter to {asrModel}.",
     asrApi: "Speech recognition: the parts of the recording where someone speaks are sent to {asrModel} at {asrHost}.",
     summary: "Summaries: the transcript, speaker names and meeting title are sent to OpenAI Codex.",
@@ -788,11 +800,14 @@ export const en = {
     more: "Details",
     detailsBrowser:
       "When you record in the browser, the recording is first stored in chunks in your browser (IndexedDB); that local copy is deleted once the upload succeeds, and unuploaded recordings stay until you upload or discard them. Private windows may clear this storage when they close.",
-    detailsAsr: "Speech recognition and speaker separation run on this server; the recording is not sent anywhere for them.",
+    detailsDiarizeLocal: "Speaker separation and voice recognition run on this server; the recording is not sent anywhere for them.",
+    detailsDiarizeCloud:
+      "To separate speakers, the whole recording is compressed and uploaded to pyannoteAI's (pyannote.ai) temporary storage, which its documentation says is deleted within 48 hours; pyannoteAI returns only who spoke when, and its terms apply to this audio. Voice fingerprints are computed on this server and not sent.",
+    detailsAsr: "Speech recognition runs on this server; the recording is not sent anywhere for it.",
     detailsAsrOpenRouter:
-      "Speaker separation runs on this server. For speech recognition, the parts of the recording where someone speaks (up to 30 seconds each) are sent to OpenRouter (openrouter.ai), which passes them to a company that runs {asrModel} to turn them into text; the recording is never sent as a whole, and the vocabulary you enter goes with each part. OpenRouter's and that company's terms apply to this audio.",
+      "For speech recognition, the parts of the recording where someone speaks (up to 30 seconds each) are sent to OpenRouter (openrouter.ai), which passes them to a company that runs {asrModel} to turn them into text; the recording is never sent as a whole, and the vocabulary you enter goes with each part. OpenRouter's and that company's terms apply to this audio.",
     detailsAsrApi:
-      "Speaker separation runs on this server. For speech recognition, the parts of the recording where someone speaks (up to 30 seconds each) are sent to {asrHost}, where {asrModel} turns them into text; the recording is never sent as a whole, and the vocabulary you enter goes with each part.",
+      "For speech recognition, the parts of the recording where someone speaks (up to 30 seconds each) are sent to {asrHost}, where {asrModel} turns them into text; the recording is never sent as a whole, and the vocabulary you enter goes with each part.",
     detailsSummary:
       "Summaries are written by Codex using the ChatGPT account the server administrator configured, and the data is handled under the OpenAI terms that apply to that account; Codex runs read-only with no tools and receives only this meeting's text. If you do not create a summary, the transcript does not leave the server.",
     detailsSummaryLocal:

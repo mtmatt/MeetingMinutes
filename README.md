@@ -134,8 +134,34 @@ Things to know:
 - **Vocabulary**: the upload page's vocabulary list is sent as the request's `prompt`. Whisper uses it; whether another model's provider forwards it varies, so names and jargon may help less than with the local model.
 - **Language**: the upload page's language becomes an ISO code (`zh`, `en`, `yue`, `ja`, `ko`); "auto" lets the service detect it. The detected language is shown when the service reports it (`verbose_json`); a service that refuses `verbose_json` is asked for plain `json`.
 - **Failures**: a rejected key (401), no credit (402) or an unknown model (404) fails the recording at once with the reason, without retrying; rate limits (429, honouring `Retry-After`), server errors and network errors are retried up to five times per segment, and then the whole job is retried later like any other failure. A worker without a key for the chosen service fails the recording with which variable to set.
-- **No GPU at all**: speaker separation still needs pyannote. `MM_DEVICE=cpu` runs it on the CPU, which works but is much slower; its speed here has not been measured.
+- **No GPU at all**: choose pyannoteAI for speaker separation too (next section); the worker then needs no GPU, CUDA or torch.
 - The key is read by the worker from its own environment and never passes through the web server, the database or a browser; workers report only whether they have one.
+
+### Speaker separation by pyannoteAI, and a worker without a GPU
+
+**Admin → Transcription → Who separates speakers** can send speaker separation to [pyannoteAI](https://www.pyannote.ai), the hosted service of the team behind pyannote (model `precision-2`), instead of running pyannote on the worker's GPU. With the transcription API as well, a worker needs **no GPU, CUDA or torch**:
+
+```
+scripts/install.sh --no-gpu        # Python packages without torch, Qwen3-ASR or pyannote
+```
+
+and in that machine's `.env`:
+
+```
+OPENROUTER_API_KEY=sk-or-v1-...
+PYANNOTEAI_API_KEY=...             # from dashboard.pyannote.ai
+```
+
+How it works:
+
+- The worker uploads the whole recording, as 48 kbit/s mono Opus, to pyannoteAI's temporary storage (its documentation says files are deleted within 48 hours, and results kept for 24), starts a diarization job with the speaker count from the upload page, and polls it. The answer is who spoke when; the worker then cuts the speech segments and transcribes them as before.
+- Voice fingerprints, for recognising people across meetings, are computed on the worker's CPU with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) and a Mandarin-trained 3D-Speaker ERes2Net model (about 40 MB, downloaded once into `data/models/` and checked against a pinned SHA-256). Nothing extra is uploaded for them. On a 4-speaker Mandarin sample, fingerprints of the same person scored 0.42 to 0.76 cosine similarity on 2 to 4 second clips and of different people at most 0.26, so the usual thresholds apply.
+- Fingerprints from different models are never compared. After switching, **Voices → Find voices in past recordings** redoes the fingerprints of earlier meetings with the new model and relearns the people you named.
+- Each worker reports what it can run. One installed with `--no-gpu` is handed transcriptions only while both steps are set to cloud services; the admin page warns if no connected worker can run the chosen combination.
+- The upload page tells people that the whole recording goes to pyannoteAI.
+- Errors: a rejected key (401) or no credit (402) fails the recording with the reason; rate limits, server errors and network errors are retried, then the whole job is retried later rather than keeping a transcript without speakers.
+- Price: third-party comparisons list precision-2 at about €0.10 per hour of audio; check pyannoteAI's pricing page.
+- `scripts/worker.sh check` on such a worker prints what it can run, whether its keys are set, and downloads the voice model.
 
 ## Choosing the summary model
 
@@ -338,6 +364,7 @@ All settings are environment variables. Put them in `.env` at the repository roo
 | `MIN_FREE_VRAM_GB`                                  | `8`                                    | Free GPU memory a GPU needs before a GPU session starts on it. Raise it if sessions run out of memory with a larger `ASR_BATCH_SIZE`.                                                                                                                                                                                              |
 | `MEDIA_COMPACT` / `MEDIA_COMPACT_AFTER_DAYS` / `MEDIA_COMPACT_KBPS` | `false` / `7` / `32` | Replace originals with mono Opus audio this many days after transcription, dropping any video (see Operations, "Disk space"). The first two are defaults: Admin → System overrides them. |
 | `ASR_ENGINE` / `ASR_API_PROVIDER` / `ASR_API_MODEL` | `local` / `openrouter` / `qwen/qwen3-asr-1.7b` | Where speech is recognised: `local` (the GPU) or `api`, and with `api` the service (`openrouter` or `openai`) and model. Defaults: Admin → Transcription overrides them. `ASR_API_BASE_URL` is the address of an OpenAI-compatible server (empty: OpenAI). |
+| `DIARIZATION_ENGINE` / `PYANNOTEAI_API_KEY`         | `local` / –                            | Who separates speakers: `local` (pyannote on the GPU) or `pyannoteai`; a default that Admin → Transcription overrides. The key is read by workers only. |
 | `OPENROUTER_API_KEY` / `ASR_API_KEY`                | –                                      | Worker only: the key for OpenRouter, or for an OpenAI-compatible server (`ASR_API_KEY` also serves OpenRouter; `OPENAI_API_KEY` also serves OpenAI). Never sent to the web server or browsers.                                                                                                                                   |
 | `MIN_FREE_VRAM_API_GB` / `ASR_API_CONCURRENCY`      | `3` / `4`                              | With an API: free GPU memory a session needs (pyannote only), and segments sent at the same time. `ASR_API_TIMEOUT_SEC` (120) limits one request.                                                                                                                                                                                |
 | `MODEL_KEEPALIVE_SEC`                               | `0`                                    | Seconds a GPU session waits for more work before releasing the GPU.                                                                                                                                                                                                                                                                |
@@ -413,6 +440,7 @@ What this changes, and what it does not:
 - **Browser recordings**: unsent recordings kept in the browser (IndexedDB) are tagged with the account that made them and are shown only to that account on a shared computer.
 - **Quotas**: at most 3 summaries queued or running per person, so one account cannot drain the shared Codex plan or occupy the summary GPU.
 - **Local model server**: Ollama listens on `127.0.0.1` only (`scripts/llm.sh` refuses anything else), so other machines cannot use it; the web server is its only client, and the web server's port is the only one that needs to be open.
+- **pyannoteAI**: only administrators can choose it. The whole recording is uploaded under a random name to pyannoteAI's temporary storage, and the upload page says so. Voice fingerprints stay on the worker. The key lives in each worker's environment only.
 - **Transcription API**: only administrators can choose it. Its key lives in each worker's environment and is never sent to the web server, stored in the database, or shown in the browser; workers report only whether they have one. Only speech segments are sent, never the whole recording, and the upload page says where they go before anything is uploaded.
 - **Summary model settings**: only administrators can see or change them. The server address must be `http(s)://` without credentials, and model names are checked before they reach a command line or a request. People starting a summary are told where it goes: on this server, to the model server's host, or to OpenAI.
 - **Files on disk**: the server and worker create everything with mode `0600`/`0700` (`umask 077`), and the data directory is restricted to its owner at every start. The scripts make `.env` readable by its owner only.

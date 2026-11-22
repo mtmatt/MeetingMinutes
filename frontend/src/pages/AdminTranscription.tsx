@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cloud, Cpu, KeyRound, RotateCcw } from "lucide-react";
+import { AudioLines, Cloud, Cpu, KeyRound, RotateCcw, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { AsrProvider, TranscriberSettings, TranscriberState } from "../api/types";
+import type { ApiKeyName, AsrProvider, TranscriberSettings, TranscriberState } from "../api/types";
 import { useConfirm } from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { type TKey, useI18n } from "../i18n";
@@ -79,6 +79,7 @@ export function Transcription() {
     try {
       const body: TranscriberSettings = {
         engine: form.engine,
+        diarization: form.diarization,
         api: {
           provider: form.api.provider,
           baseUrl: form.api.provider === "openrouter" ? "" : form.api.baseUrl.trim(),
@@ -112,12 +113,21 @@ export function Transcription() {
   const address = form.api.provider === "openrouter" ? data.addresses.openrouter : form.api.baseUrl.trim() || data.addresses.openai;
   const remote = validUrl(address) && !isLoopback(address);
   const canSave = dirty && !busy && (form.engine === "local" || (modelOk && urlOk));
+  // Online workers that can run what is chosen; one without GPU packages runs only the APIs.
+  const online = data.workers;
+  const capable = online.filter((w) => {
+    const c = w.capabilities ?? { asr: ["local", "api"], diarization: ["local"] };
+    return c.asr.includes(form.engine) && c.diarization.includes(form.diarization);
+  });
+  const allCloud = form.engine === "api" && form.diarization === "pyannoteai";
 
   return (
     <div className="model-admin">
       <section className="model-section">
         <div className="model-section-head">
-          <h3 className="system-h">{t("asr.engine")}</h3>
+          <h3 className="system-h">
+            <AudioLines /> {t("asr.engine")}
+          </h3>
           <p className="muted">{t("asr.engineLede")}</p>
         </div>
         <div className="source-grid" role="radiogroup" aria-label={t("asr.engine")}>
@@ -205,6 +215,55 @@ export function Transcription() {
         </section>
       )}
 
+      <section className="model-section">
+        <div className="model-section-head">
+          <h3 className="system-h">
+            <Users /> {t("asr.diarization")}
+          </h3>
+          <p className="muted">{t("asr.diarizationLede")}</p>
+        </div>
+        <div className="source-grid" role="radiogroup" aria-label={t("asr.diarization")}>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={form.diarization === "local"}
+            className="source-option"
+            onClick={() => setForm({ ...form, diarization: "local" })}
+          >
+            <Cpu />
+            <span className="source-option-name">{t("asr.diarizationLocal")}</span>
+            <span className="source-option-desc">{t("asr.diarizationLocalDesc")}</span>
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={form.diarization === "pyannoteai"}
+            className="source-option"
+            onClick={() => setForm({ ...form, diarization: "pyannoteai" })}
+          >
+            <Cloud />
+            <span className="source-option-name">pyannoteAI</span>
+            <span className="source-option-desc">{t("asr.diarizationCloudDesc")}</span>
+          </button>
+        </div>
+        {form.diarization === "pyannoteai" && (
+          <div className="model-section card model-card asr-key-card">
+            <KeyStatus data={data} provider="pyannoteai" />
+            <p className="field-hint asr-flow">{t("asr.diarizationFlow")}</p>
+          </div>
+        )}
+      </section>
+
+      {allCloud && <p className="callout asr-callout">{t("asr.noGpuNeeded")}</p>}
+      {online.length > 0 && capable.length === 0 && (
+        <div className="callout warn asr-callout" role="alert">
+          <div>
+            <strong>{t("asr.noCapableTitle")}</strong>
+            <p>{t("asr.noCapableBody")}</p>
+          </div>
+        </div>
+      )}
+
       <div className="model-actions">
         <button className="btn btn-primary" onClick={save} disabled={!canSave}>
           {busy && <span className="spinner" />} {t("common.save")}
@@ -230,8 +289,8 @@ export function Transcription() {
   );
 }
 
-/** Whether the workers that will send the audio have a key for this provider (they report it; the key never leaves them). */
-function KeyStatus({ data, provider }: { data: TranscriberState; provider: AsrProvider }) {
+/** Whether the workers that will send the audio have a key for this service (they report it; the key never leaves them). */
+function KeyStatus({ data, provider }: { data: TranscriberState; provider: ApiKeyName }) {
   const { t } = useI18n();
   const variables = data.keyVariables[provider];
   const missing = data.workers.filter((w) => !w.keys?.[provider]);
@@ -274,7 +333,7 @@ function KeyStatus({ data, provider }: { data: TranscriberState; provider: AsrPr
       {(missing.length > 0 || data.workers.length === 0) && (
         <div className="asr-key-help">
           <p className="muted">{t("asr.keyHelp", { names: variables.join(" / ") })}</p>
-          <pre className="mono asr-env">{`${variables[0]}=${provider === "openrouter" ? "sk-or-v1-…" : "sk-…"}`}</pre>
+          <pre className="mono asr-env">{`${variables[0]}=${provider === "openrouter" ? "sk-or-v1-…" : provider === "pyannoteai" ? "sk_…" : "sk-…"}`}</pre>
           <p className="faint">{t("asr.keyRestart")}</p>
         </div>
       )}

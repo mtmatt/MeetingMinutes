@@ -34,15 +34,26 @@ internalRoutes.post("/worker/heartbeat", async (c) => {
   const input = await body(c, z.object({ workerId, name: z.string().max(128).optional(), info: z.record(z.string(), z.unknown()).optional() }));
   seen(input.workerId, input.name, input.info);
   // Where transcription runs decides how much free GPU memory a worker waits for before claiming.
-  return c.json({ ok: true, transcriber: { engine: transcriberSettings().engine } });
+  const s = transcriberSettings();
+  return c.json({ ok: true, transcriber: { engine: s.engine, diarization: s.diarization } });
 });
 
 internalRoutes.post("/jobs/claim", async (c) => {
   // Workers list the job kinds they can run; older ones send nothing and get transcriptions.
-  const input = await body(c, z.object({ workerId, kinds: z.array(z.string().max(32)).max(16).optional() }));
+  const input = await body(
+    c,
+    z.object({
+      workerId,
+      kinds: z.array(z.string().max(32)).max(16).optional(),
+      // What the worker can run; workers from before this send nothing (local models plus the transcription API).
+      capabilities: z
+        .object({ asr: z.array(z.string().max(32)).max(8), diarization: z.array(z.string().max(32)).max(8) })
+        .optional(),
+    }),
+  );
   seen(input.workerId);
   const kinds = (input.kinds ?? ["transcribe"]).filter((k): k is JobKind => k === "transcribe" || k === "voiceprint" || k === "compact");
-  const job = claimJob(input.workerId, kinds);
+  const job = claimJob(input.workerId, kinds, input.capabilities);
   if (!job) return c.body(null, 204);
   return c.json({ job });
 });

@@ -64,7 +64,7 @@ describe("where transcription runs", () => {
     expect(job.asr).toEqual({ engine: "api", provider: "openrouter", model: "openai/whisper-large-v3", baseUrl: "https://openrouter.ai/api/v1" });
     // The worker is told where transcription runs, to know how much GPU memory a session needs.
     const beat = (await (await worker.call("/worker/heartbeat", { workerId: "gpu-asr" })).json()) as any;
-    expect(beat.transcriber).toEqual({ engine: "api" });
+    expect(beat.transcriber).toEqual({ engine: "api", diarization: "local" });
 
     const reset = (await (await admin.del("/api/admin/transcriber")).json()) as any;
     expect(reset.saved).toBe(false);
@@ -91,10 +91,17 @@ describe("where transcription runs", () => {
     const member = await memberClient("asr-reader");
     await admin.del("/api/admin/transcriber");
     let state = (await (await member.get("/api/auth/state")).json()) as any;
-    expect(state.transcriber).toEqual({ engine: "local", provider: null, model: null, onServer: true, host: null });
+    expect(state.transcriber).toEqual({ engine: "local", diarization: "local", provider: null, model: null, onServer: true, host: null });
     await admin.req("PUT", "/api/admin/transcriber", { json: openrouter() });
     state = (await (await member.get("/api/auth/state")).json()) as any;
-    expect(state.transcriber).toEqual({ engine: "api", provider: "openrouter", model: "qwen/qwen3-asr-1.7b", onServer: false, host: "openrouter.ai" });
+    expect(state.transcriber).toEqual({
+      engine: "api",
+      diarization: "local",
+      provider: "openrouter",
+      model: "qwen/qwen3-asr-1.7b",
+      onServer: false,
+      host: "openrouter.ai",
+    });
     // A transcription server on this machine (a vLLM serving Qwen3-ASR) keeps the recording here.
     await admin.req("PUT", "/api/admin/transcriber", { json: { engine: "api", api: { provider: "openai", baseUrl: "http://127.0.0.1:8000/v1", model: "Qwen/Qwen3-ASR-1.7B" } } });
     state = (await (await member.get("/api/auth/state")).json()) as any;
@@ -110,9 +117,101 @@ describe("where transcription runs", () => {
     await worker.call("/worker/heartbeat", { workerId: "gpu-old", name: "old", info: { asrModel: "Qwen/Qwen3-ASR-1.7B" } });
     const state = (await (await admin.get("/api/admin/transcriber")).json()) as any;
     const byName = Object.fromEntries(state.workers.map((w: any) => [w.name, w.keys]));
-    expect(byName.keyed).toEqual({ openrouter: true, openai: false });
+    expect(byName.keyed).toEqual({ openrouter: true, openai: false, pyannoteai: false });
     // A worker from before API transcription reports nothing: it cannot use an API.
     expect(byName.old).toBeNull();
     expect(state.keyVariables.openrouter).toEqual(["OPENROUTER_API_KEY", "ASR_API_KEY"]);
+  });
+});
+
+describe("speaker separation by pyannoteAI", () => {
+  afterAll(async () => {
+    await (await adminClient()).del("/api/admin/transcriber");
+  });
+
+  const cloud = { asr: ["api"], diarization: ["pyannoteai"] };
+
+  async function claimAs(meetingId: string, capabilities?: unknown, kinds?: string[]) {
+    for (let i = 0; i < 30; i++) {
+      const res = await worker.call("/jobs/claim", { workerId: "cloud-1", ...(kinds ? { kinds } : {}), ...(capabilities ? { capabilities } : {}) });
+      if (res.status === 204) return null;
+      const { job } = (await res.json()) as any;
+      if (job.meetingId === meetingId) return job;
+      await worker.call(`/jobs/${job.jobId}/fail`, { workerId: "cloud-1", error: "not this test", retryable: false });
+    }
+    return null;
+  }
+
+  test("a worker without local models gets transcriptions only when both steps run through APIs", async () => {
+    const admin = await adminClient();
+    await admin.del("/api/admin/transcriber");
+    const id = await upload(admin);
+    // Local recognition and separation: the cloud-only worker is not handed the job.
+    expect(await claimAs(id, cloud)).toBeNull();
+    // Transcription API, local separation: still not.
+    await admin.req("PUT", "/api/admin/transcriber", { json: { engine: "api", diarization: "local", api: { provider: "openrouter", baseUrl: "", model: "qwen/qwen3-asr-1.7b" } } });
+    expect(await claimAs(id, cloud)).toBeNull();
+    // Both through APIs: now it is, and the job says so.
+    const saved = await admin.req("PUT", "/api/admin/transcriber", {
+      json: { engine: "api", diarization: "pyannoteai", api: { provider: "openrouter", baseUrl: "", model: "qwen/qwen3-asr-1.7b" } },
+    });
+    expect(((await saved.json()) as any).settings.diarization).toBe("pyannoteai");
+    const job = await claimAs(id, cloud);
+    expect(job.diarization).toEqual({ engine: "pyannoteai" });
+    expect(job.asr.engine).toBe("api");
+    const beat = (await (await worker.call("/worker/heartbeat", { workerId: "cloud-1" })).json()) as any;
+    expect(beat.transcriber).toEqual({ engine: "api", diarization: "pyannoteai" });
+  });
+
+  test("workers from before pyannoteAI are not handed jobs that need it", async () => {
+    const admin = await adminClient();
+    await admin.req("PUT", "/api/admin/transcriber", {
+      json: { engine: "local", diarization: "pyannoteai", api: { provider: "openrouter", baseUrl: "", model: "qwen/qwen3-asr-1.7b" } },
+    });
+    const id = await upload(admin);
+    expect(await claimAs(id)).toBeNull();
+    // A GPU worker that knows pyannoteAI takes it.
+    expect((await claimAs(id, { asr: ["local", "api"], diarization: ["local", "pyannoteai"] }))?.diarization).toEqual({ engine: "pyannoteai" });
+  });
+
+  test("people are told the whole recording goes to pyannoteAI", async () => {
+    const admin = await adminClient();
+    await admin.req("PUT", "/api/admin/transcriber", {
+      json: { engine: "api", diarization: "pyannoteai", api: { provider: "openrouter", baseUrl: "", model: "qwen/qwen3-asr-1.7b" } },
+    });
+    const state = (await (await (await memberClient("diar-reader")).get("/api/auth/state")).json()) as any;
+    expect(state.transcriber.diarization).toBe("pyannoteai");
+    // Saving from a page that predates the setting keeps it.
+    await admin.req("PUT", "/api/admin/transcriber", { json: { engine: "api", api: { provider: "openrouter", baseUrl: "", model: "qwen/qwen3-asr-0.6b" } } });
+    expect(((await (await admin.get("/api/admin/transcriber")).json()) as any).settings.diarization).toBe("pyannoteai");
+  });
+
+  test("finding voices redoes fingerprints made by another model", async () => {
+    const admin = await adminClient();
+    const owner = await memberClient("diar-voices");
+    await admin.del("/api/admin/transcriber");
+    const id = await upload(owner);
+    const job = await claimAs(id, undefined, ["transcribe", "voiceprint"]);
+    const embedding = new Array(16).fill(0).map((_, i) => (i === 0 ? 1 : 0));
+    await worker.call(`/jobs/${job.jobId}/complete`, {
+      workerId: "cloud-1",
+      result: {
+        durationSec: 60, language: "Chinese", hasVideo: false, hasPlayback: false, hasPeaks: false,
+        speakers: ["SPEAKER_00"], segments: [{ start: 0, end: 60, speaker: "SPEAKER_00", text: "說話。" }],
+        voiceModel: "pyannote/speaker-diarization-community-1", voices: { SPEAKER_00: { embedding, speechSec: 60 } },
+      },
+    });
+    // Same model: nothing to redo.
+    let scan = (await (await owner.post("/api/voices/scan")).json()) as any;
+    expect(scan.outcome.queued).toBe(0);
+    // After switching to pyannoteAI, workers fingerprint with the CPU model: the old fingerprint is redone.
+    await admin.req("PUT", "/api/admin/transcriber", {
+      json: { engine: "api", diarization: "pyannoteai", api: { provider: "openrouter", baseUrl: "", model: "qwen/qwen3-asr-1.7b" } },
+    });
+    scan = (await (await owner.post("/api/voices/scan")).json()) as any;
+    expect(scan.outcome.queued).toBe(1);
+    const vp = await claimAs(id, cloud, ["voiceprint"]);
+    expect(vp.kind).toBe("voiceprint");
+    expect(vp.diarization).toEqual({ engine: "pyannoteai" });
   });
 });

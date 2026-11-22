@@ -231,6 +231,8 @@ export interface WorkerInfo {
     cuda?: boolean | null;
     modelsLoaded?: boolean;
     version?: string;
+    /** What the worker can run: without GPU packages, only the APIs. */
+    capabilities?: { asr: string[]; diarization: string[] };
   };
   lastSeenAt: number;
   online: boolean;
@@ -274,10 +276,14 @@ export interface SummarizerInfo {
 
 export type AsrEngine = "local" | "api";
 export type AsrProvider = "openrouter" | "openai";
+export type DiarizationEngine = "local" | "pyannoteai";
+export type ApiKeyName = AsrProvider | "pyannoteai";
 
 /** Where recordings are transcribed, as everyone signed in is told. */
 export interface TranscriberInfo {
   engine: AsrEngine;
+  /** Who separates speakers; with pyannoteAI the whole recording is uploaded there. Absent from older servers. */
+  diarization?: DiarizationEngine;
   provider: AsrProvider | null;
   model: string | null;
   /** The recording stays on this machine (the local model, or an API server on this machine). */
@@ -288,6 +294,7 @@ export interface TranscriberInfo {
 
 export interface TranscriberSettings {
   engine: AsrEngine;
+  diarization: DiarizationEngine;
   api: {
     provider: AsrProvider;
     /** OpenAI-compatible servers only; empty means api.openai.com. */
@@ -304,9 +311,15 @@ export interface TranscriberState {
   updatedAt: number | null;
   updatedBy: string | null;
   /** Online workers and which providers each has a key for; null keys: a worker too old for API transcription. */
-  workers: { id: string; name: string; keys: Record<AsrProvider, boolean> | null }[];
+  workers: {
+    id: string;
+    name: string;
+    keys: Record<ApiKeyName, boolean> | null;
+    /** What the worker can run; null for one from before pyannoteAI (local models only, plus the transcription API). */
+    capabilities: { asr: string[]; diarization: string[] } | null;
+  }[];
   /** Environment variables a worker reads the key from, per provider. */
-  keyVariables: Record<AsrProvider, string[]>;
+  keyVariables: Record<ApiKeyName, string[]>;
   addresses: Record<AsrProvider, string>;
 }
 
