@@ -45,6 +45,8 @@
   letter-spacing: -0.02em;
   font-size: clamp(1.8rem, 1.3rem + 1.8vw, 2.6rem);
   cursor: text;
+  width: fit-content;
+  max-width: 100%;
   overflow-wrap: anywhere;
   border-radius: var(--radius-s);
   transition: background var(--dur-fast);
@@ -53,6 +55,31 @@
 }
 .meeting-title:hover {
   background: var(--surface-2);
+}
+/* The pencil after the title says it can be renamed without needing a hover. */
+.title-edit {
+  display: inline-grid;
+  place-items: center;
+  width: 0.9em;
+  height: 0.9em;
+  margin-left: 0.3em;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--ink-3);
+  vertical-align: -0.04em;
+  cursor: pointer;
+  transition: color var(--dur-fast), background var(--dur-fast);
+}
+.title-edit svg {
+  width: 0.5em;
+  height: 0.5em;
+}
+.meeting-title:hover .title-edit,
+.title-edit:focus-visible {
+  color: var(--accent);
+  background: var(--surface);
 }
 .title-input {
   width: 100%;
@@ -214,8 +241,12 @@
   border-right: 1px solid var(--rule);
   min-height: 60vh;
 }
+/* The panel scrolls on its own; its scrollbar sits in the page margin, beside
+   the buttons rather than over them. */
 .summary-col {
-  padding: 28px 0 0 40px;
+  padding: 28px 14px 0 40px;
+  margin-right: -14px;
+  scrollbar-gutter: stable;
   position: sticky;
   top: var(--masthead-h);
   max-height: calc(100dvh - var(--masthead-h) - var(--player-h));
@@ -255,6 +286,7 @@
   .summary-col {
     position: static;
     padding: 20px 0 0;
+    margin-right: 0;
     max-height: none;
     overflow: visible;
   }

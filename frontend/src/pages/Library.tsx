@@ -92,13 +92,17 @@ function Row({ m, query }: { m: MeetingSummary; query: string }) {
 
   // Icons and values only; the words are kept for hover and screen readers.
   const speakers = m.speakerCount === 1 ? t("library.speakerOne") : t("library.speakers", { n: m.speakerCount });
-  const meta = [
+  // Every row has the same slots in the same order, so the facts line up down the list;
+  // a fact a meeting lacks leaves its slot empty. Video comes first so an empty slot
+  // sits at the far left rather than as a gap before the status.
+  type Fact = { key: string; icon: ReactNode; value: string | null; label: string };
+  const facts: (Fact | { key: string; empty: true })[] = [
+    m.media.hasVideo ? { key: "video", icon: <FileVideo />, value: null, label: t("library.video") } : { key: "video", empty: true },
     { key: "time", icon: <Clock />, value: time(when, locale), label: t("library.metaTime") },
-    m.durationSec != null && { key: "length", icon: <Hourglass />, value: clock(m.durationSec), label: duration(m.durationSec, locale) },
-    m.speakerCount > 0 && { key: "speakers", icon: <Users />, value: String(m.speakerCount), label: speakers },
-    lang && { key: "lang", icon: <Languages />, value: lang, label: t("library.metaLanguage") },
-    m.media.hasVideo && { key: "video", icon: <FileVideo />, value: null, label: t("library.video") },
-  ].filter((x) => !!x);
+    m.durationSec != null ? { key: "length", icon: <Hourglass />, value: clock(m.durationSec), label: duration(m.durationSec, locale) } : { key: "length", empty: true },
+    m.speakerCount > 0 ? { key: "speakers", icon: <Users />, value: String(m.speakerCount), label: speakers } : { key: "speakers", empty: true },
+    lang ? { key: "lang", icon: <Languages />, value: lang, label: t("library.metaLanguage") } : { key: "lang", empty: true },
+  ];
 
   return (
     <Link to={m.match ? `/m/${m.id}?t=${Math.ceil(m.match.start * 10) / 10}` : `/m/${m.id}`} className={`ledger-row ${failure ? "is-failed" : ""}`}>
@@ -110,19 +114,23 @@ function Row({ m, query }: { m: MeetingSummary; query: string }) {
         <div className="ledger-head">
           <h3 className="ledger-title">{m.title}</h3>
           <ul className="ledger-meta">
-            {meta.map((x) => (
-              <li key={x.key} title={x.value ? `${x.label}: ${x.value}` : x.label}>
-                {x.icon}
-                {x.value ? (
-                  <>
-                    <span className="visually-hidden">{x.label}: </span>
-                    {x.value}
-                  </>
-                ) : (
-                  <span className="visually-hidden">{x.label}</span>
-                )}
-              </li>
-            ))}
+            {facts.map((x) =>
+              "empty" in x ? (
+                <li key={x.key} className={`meta-${x.key} is-empty`} aria-hidden="true" />
+              ) : (
+                <li key={x.key} className={`meta-${x.key}`} title={x.value ? `${x.label}: ${x.value}` : x.label}>
+                  {x.icon}
+                  {x.value ? (
+                    <>
+                      <span className="visually-hidden">{x.label}: </span>
+                      <span className="meta-value">{x.value}</span>
+                    </>
+                  ) : (
+                    <span className="visually-hidden">{x.label}</span>
+                  )}
+                </li>
+              ),
+            )}
           </ul>
         </div>
         {failure ? (

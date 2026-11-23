@@ -8,6 +8,7 @@ import {
   FileVideo,
   Languages,
   MoreHorizontal,
+  Pencil,
   RefreshCw,
   Trash2,
   Upload,
@@ -127,6 +128,7 @@ function Pipeline({ meeting, onRetry }: { meeting: MeetingDetail; onRetry: () =>
 }
 
 function EditableTitle({ meeting }: { meeting: MeetingDetail }) {
+  const { t } = useI18n();
   const qc = useQueryClient();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
@@ -164,8 +166,12 @@ function EditableTitle({ meeting }: { meeting: MeetingDetail }) {
     );
   }
   return (
-    <h1 className="meeting-title" onClick={() => setEditing(true)} title="Click to rename">
+    <h1 className="meeting-title" onClick={() => setEditing(true)} title={t("meeting.titleRenameHint")}>
       {meeting.title}
+      {/* Inline after the last word, so it reads as part of the title wherever it wraps. */}
+      <button type="button" className="title-edit" aria-label={t("meeting.renameTitle")}>
+        <Pencil aria-hidden="true" />
+      </button>
     </h1>
   );
 }
