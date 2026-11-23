@@ -138,6 +138,15 @@ def load_config() -> WorkerConfig:
     else:
         default_url = f"http://127.0.0.1:{os.environ.get('PORT', '').strip() or '8787'}"
     server_url = os.environ.get("MM_SERVER_URL", "").strip().rstrip("/") or (credential or {}).get("serverUrl") or default_url
+    if remote:
+        # This machine's token and the recordings cross a network: HTTPS only, whatever
+        # MM_SERVER_URL or the credential file says (plain HTTP is for this machine alone).
+        from .client import check_server_url
+
+        try:
+            server_url = check_server_url(server_url)
+        except ValueError as e:
+            raise SystemExit(f"{e} A worker enrolled on another machine connects over HTTPS; check MM_SERVER_URL.") from None
     # Apple silicon has no CUDA; its GPU is "mps".
     default_device = "mps" if platform.system() == "Darwin" and platform.machine() == "arm64" else "cuda:0"
     device = os.environ.get("MM_DEVICE", "").strip() or default_device

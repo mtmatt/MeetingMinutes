@@ -221,6 +221,12 @@ def test_server_address_must_be_https_unless_local():
         client_mod.check_server_url("http://minutes.example.com")
     with pytest.raises(ValueError):
         client_mod.check_server_url("ftp://minutes.example.com")
+    # Loopback addresses, not names that begin like one.
+    assert client_mod.check_server_url("http://[::1]:8787") == "http://[::1]:8787"
+    assert client_mod.check_server_url("http://localhost:8787") == "http://localhost:8787"
+    for lookalike in ("http://127.0.0.1.example.com:8787", "http://127.example.com", "http://localhost.example.com"):
+        with pytest.raises(ValueError):
+            client_mod.check_server_url(lookalike)
 
 
 def test_remote_workers_do_not_compact(tmp_path):
@@ -238,3 +244,37 @@ def test_remote_workers_do_not_compact(tmp_path):
     finally:
         worker_mod.MediaJobs = real
     assert started == []
+
+
+def test_a_server_cannot_ask_for_files_other_than_the_job_s_own(two_speaker_wav, tmp_path, monkeypatch):
+    """The upload list in a job is the server's word; only what a transcription makes is ever sent."""
+    media = Path(two_speaker_wav).read_bytes()
+    secret = tmp_path / "id_ed25519"
+    secret.write_text("PRIVATE KEY")
+    srv = FakeServer(media, [])
+    try:
+        files = ["playback.m4a", str(secret), "../original.mp3", "peaks.json"]
+        uploads = {"url": "/internal/jobs/j1/files", "files": files, "chunkBytes": 65536}
+        work = run_session(remote_cfg(srv.url), job(media={"url": "/internal/jobs/j1/media", "size": len(media), "ext": "mp3"}, uploads=uploads), monkeypatch, tmp_path)
+    finally:
+        srv.close()
+    assert not any(b"PRIVATE KEY" in data for data in srv.files.values())
+    assert sorted(srv.files) == ["peaks.json", "playback.m4a"]
+    assert any(e[1] == "/jobs/j1/complete" for e in srv.events)
+    assert list(work.iterdir()) == []
+
+
+def test_an_enrolled_worker_refuses_plain_http_across_a_network(tmp_path, monkeypatch):
+    """Its token and the recordings would cross the network unencrypted."""
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("MM_SKIP_DOTENV", "1")
+    for k in ("WORKER_TOKEN", "MM_SERVER_URL", "MM_WORKER_ID", "MM_WORKER_NAME", "WORKER_GPUS"):
+        monkeypatch.delenv(k, raising=False)
+    config_mod.write_credential(tmp_path, {"serverUrl": "https://minutes.example.com:8443", "workerId": "wkabc", "name": "Mac", "token": "mmw_wkabc.secret"})
+    assert config_mod.load_config().server_url == "https://minutes.example.com:8443"
+    monkeypatch.setenv("MM_SERVER_URL", "http://minutes.example.com:8787")
+    with pytest.raises(SystemExit, match="https"):
+        config_mod.load_config()
+    # A worker on the server itself (the shared token) may use any address, as before.
+    monkeypatch.setenv("WORKER_TOKEN", "shared-token")
+    assert config_mod.load_config().server_url == "http://minutes.example.com:8787"

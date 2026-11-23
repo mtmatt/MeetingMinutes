@@ -8,6 +8,7 @@ it makes, in chunks.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
@@ -48,12 +49,24 @@ def _open(req: urllib.request.Request, timeout: float):
     return urllib.request.urlopen(req, timeout=timeout)
 
 
+def is_loopback_host(host: str) -> bool:
+    """Whether a URL's host is this machine: "localhost" or a loopback address
+    (not a name that merely starts like one, such as 127.0.0.1.example.com)."""
+    host = host.lower()
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def check_server_url(url: str) -> str:
     """HTTPS, except to this machine: a remote worker's token and the recordings travel over this."""
     url = url.strip().rstrip("/")
     parts = urllib.parse.urlsplit(url)
     host = (parts.hostname or "").lower()
-    loopback = host in ("localhost", "::1") or host.startswith("127.")
+    loopback = is_loopback_host(host)
     if parts.scheme not in ("https", "http") or not host or (parts.scheme == "http" and not loopback):
         raise ValueError(f"Use the server's https:// address (got {url!r}).")
     return url

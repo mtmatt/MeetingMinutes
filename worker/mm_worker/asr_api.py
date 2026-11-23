@@ -170,7 +170,12 @@ def settings_from_job(asr: dict) -> ApiSettings:
     model = (asr.get("model") or "").strip()
     if not model:
         raise ApiError("No transcription model is set for the API.")
-    base = (asr.get("baseUrl") or "").strip().rstrip("/") or DEFAULT_BASE_URLS[provider]
+    if provider == "openrouter":
+        # OpenRouter has one address. The one a job names is not used: this worker's
+        # OpenRouter key must never go wherever a server (or whoever controls it) says.
+        base = DEFAULT_BASE_URLS[provider]
+    else:
+        base = (asr.get("baseUrl") or "").strip().rstrip("/") or DEFAULT_BASE_URLS[provider]
     return ApiSettings(provider=provider, model=model, base_url=base)
 
 

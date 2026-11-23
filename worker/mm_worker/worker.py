@@ -262,6 +262,10 @@ class TransferError(Exception):
     retryable = True
 
 
+# What a transcription leaves in its output folder for the server to keep (pipeline.run_job).
+REMOTE_UPLOADS = ("playback.m4a", "peaks.json")
+
+
 def is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, MediaError):
         return False
@@ -364,6 +368,11 @@ class _JobRunner:
             def send_files():
                 self.report("uploading", 0.99)
                 for name in uploads.get("files") or []:
+                    # Only what a transcription makes: a server that was taken over must not be
+                    # able to ask this machine for other files ("/home/me/.ssh/id_ed25519").
+                    if name not in REMOTE_UPLOADS:
+                        log.warning("job %s: not uploading %r, which is not a file this worker makes", job_id, name)
+                        continue
                     path = Path(spec.out_dir) / name
                     if not path.exists():
                         continue

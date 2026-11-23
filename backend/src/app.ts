@@ -101,10 +101,16 @@ export function createApp() {
   const dist = config.frontendDist;
   const indexHtml = join(dist, "index.html");
   app.get("*", (c) => {
+    let urlPath: string;
+    try {
+      urlPath = decodeURIComponent(new URL(c.req.url).pathname);
+    } catch {
+      // A malformed escape ("/%E0%A4%A"): a bad request, not a server error with a stack trace in the log.
+      return c.text("Bad request.", 400);
+    }
     if (!existsSync(indexHtml)) {
       return c.text("Frontend not built. Run `bun run build` in the repository root, or use the Vite dev server.", 503);
     }
-    const urlPath = decodeURIComponent(new URL(c.req.url).pathname);
     const candidate = resolve(dist, "." + normalize(urlPath));
     if (candidate.startsWith(dist + "/") && existsSync(candidate) && statSync(candidate).isFile()) {
       const immutable = urlPath.startsWith("/assets/");

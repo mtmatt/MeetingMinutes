@@ -31,7 +31,7 @@ import { publicMediaPolicy } from "../services/mediaCompaction";
 import { hasExternalWorkers } from "../services/workerKeys";
 import { publicTranscriberInfo } from "../services/workerProfiles";
 import type { AppEnv, SessionRow } from "../types";
-import { body } from "./validate";
+import { SMALL_JSON_LIMIT_BYTES, body } from "./validate";
 
 export const authRoutes = new Hono<AppEnv>();
 
@@ -90,7 +90,7 @@ authRoutes.post("/setup", async (c) => {
   const ip = c.get("clientIp");
   const retry = tokenLimiter.check(ip);
   if (retry) httpError(429, `Too many attempts. Try again in ${retry}s.`, "rate_limited");
-  const input = await body(c, newAccount.extend({ setupToken: z.string().trim().min(1) }));
+  const input = await body(c, newAccount.extend({ setupToken: z.string().trim().min(1) }), SMALL_JSON_LIMIT_BYTES);
   if (countUsers() > 0) httpError(409, "Setup has already been completed.", "already_setup");
   if (!checkSetupToken(input.setupToken)) {
     tokenLimiter.hit(ip);
@@ -106,7 +106,7 @@ authRoutes.post("/setup", async (c) => {
 
 authRoutes.post("/login", async (c) => {
   const ip = c.get("clientIp");
-  const input = await body(c, credentials);
+  const input = await body(c, credentials, SMALL_JSON_LIMIT_BYTES);
   const userKey = input.username.toLowerCase();
   const retry = Math.max(loginIpLimiter.check(ip), loginUserLimiter.check(userKey));
   if (retry) {
@@ -157,7 +157,7 @@ authRoutes.post("/invites/:token/accept", async (c) => {
     if (!consumeInvite(invite.id, uid)) httpError(410, "This link has already been used.", "invalid_invite");
   };
   if (invite.kind === "reset") {
-    const input = await body(c, z.object({ password: z.string() }));
+    const input = await body(c, z.object({ password: z.string() }), SMALL_JSON_LIMIT_BYTES);
     const p = validatePassword(input.password);
     if (p) httpError(422, p, "weak_password");
     const target = invite.target_user_id ? findUserById(invite.target_user_id) : null;
@@ -170,7 +170,7 @@ authRoutes.post("/invites/:token/accept", async (c) => {
     })();
     userId = target.id;
   } else {
-    const input = await body(c, newAccount);
+    const input = await body(c, newAccount, SMALL_JSON_LIMIT_BYTES);
     assertNewAccount(input);
     const passwordHash = await hashPassword(input.password);
     userId = db.transaction(() => {
@@ -213,7 +213,7 @@ meRoutes.patch("/", async (c) => {
 });
 
 meRoutes.post("/password", async (c) => {
-  const input = await body(c, z.object({ current: z.string(), next: z.string() }));
+  const input = await body(c, z.object({ current: z.string(), next: z.string() }), SMALL_JSON_LIMIT_BYTES);
   const user = c.get("user");
   if (!(await verifyPassword(input.current, user.password_hash))) httpError(403, "Current password is incorrect.", "bad_credentials");
   const p = validatePassword(input.next);

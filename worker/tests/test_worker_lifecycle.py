@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
+from mm_worker import asr_api as asr_api_mod
 from mm_worker.config import WorkerConfig
 from mm_worker.gpus import parse_gpus
 from mm_worker.worker import Supervisor
@@ -309,7 +310,9 @@ def test_api_job_skips_the_local_asr_model(two_speaker_wav, tmp_path, monkeypatc
     monkeypatch.setenv("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
     stt = FakeSttServer()
-    asr = {"engine": "api", "provider": "openrouter", "model": "qwen/qwen3-asr-1.7b", "baseUrl": stt.url}
+    # OpenRouter's address is the worker's own (a job cannot move it): point that at the stand-in.
+    monkeypatch.setitem(asr_api_mod.DEFAULT_BASE_URLS, "openrouter", stt.url)
+    asr = {"engine": "api", "provider": "openrouter", "model": "qwen/qwen3-asr-1.7b"}
     job = {"jobId": "a1", "meetingId": "m1", "attempt": 1, "mediaPath": str(two_speaker_wav), "outDir": str(tmp_path / "m1"),
            "options": {"diarize": True, "language": "Chinese", "vocabulary": "Minutes"}, "title": "t", "asr": asr}
     # A second job, queued while the first ran, has no key for its provider: it fails for good, with what to set.
@@ -443,9 +446,10 @@ def test_cloud_only_job_loads_no_local_model(two_speaker_wav, tmp_path, monkeypa
     monkeypatch.setenv("PYANNOTEAI_API_KEY", "pk-test")
     stt, pya = FakeSttServer(), FakePyannoteAI()
     monkeypatch.setenv("PYANNOTEAI_API_URL", pya.url)
+    monkeypatch.setitem(asr_api_mod.DEFAULT_BASE_URLS, "openrouter", stt.url)
     job = {"jobId": "c1", "meetingId": "m1", "attempt": 1, "mediaPath": str(two_speaker_wav), "outDir": str(tmp_path / "m1"),
            "options": {"diarize": True}, "title": "t",
-           "asr": {"engine": "api", "provider": "openrouter", "model": "qwen/qwen3-asr-1.7b", "baseUrl": stt.url},
+           "asr": {"engine": "api", "provider": "openrouter", "model": "qwen/qwen3-asr-1.7b"},
            "diarization": {"engine": "pyannoteai"}}
     # A voiceprint job under the same setting fingerprints on the CPU, uploading nothing.
     vp = {"jobId": "v1", "kind": "voiceprint", "meetingId": "m0", "attempt": 1, "mediaPath": str(two_speaker_wav),
