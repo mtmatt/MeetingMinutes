@@ -221,6 +221,8 @@ export interface WorkerInfo {
     gpu?: string;
     vramTotalGb?: number;
     vramFreeGb?: number;
+    /** A Mac: memory shared by the CPU and GPU (no free-memory figure; never checked before a job). */
+    unifiedMemoryGb?: number | null;
     asrModel?: string;
     asrBackend?: string;
     /** Speaker diarization as found by the worker's last GPU session ("unknown" before any). Older workers sent a boolean. */
