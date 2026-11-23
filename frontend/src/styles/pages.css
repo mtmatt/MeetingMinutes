@@ -2478,3 +2478,104 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------------------------------------------------- admin: workers on other machines */
+.worker-keys {
+  margin-top: 18px;
+  display: grid;
+  gap: 12px;
+}
+.worker-keys-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.worker-keys-head .system-h {
+  margin-bottom: 0;
+}
+.worker-keys-lede {
+  margin: 0;
+  font-size: var(--step--1);
+  max-width: 80ch;
+}
+.worker-key-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.worker-key-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+}
+.worker-key-list li.revoked {
+  opacity: 0.6;
+}
+.worker-key-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+}
+.worker-key-name {
+  font-weight: 600;
+}
+.worker-key-main .mono {
+  font-size: var(--step--2);
+}
+.worker-key-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 10px;
+}
+.worker-key-seen {
+  font-size: var(--step--2);
+}
+.worker-enroll p {
+  margin: 0 0 12px;
+}
+.worker-enroll-steps {
+  margin: 0 0 12px;
+  padding-left: 1.3em;
+  display: grid;
+  gap: 12px;
+}
+.worker-enroll-steps pre {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.worker-enroll-command {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.worker-enroll-command pre {
+  flex: 1;
+  min-width: 0;
+}
+.worker-enroll-command .btn {
+  margin-top: 6px;
+  flex: none;
+}
+@media (max-width: 700px) {
+  .worker-key-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .worker-key-state {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    grid-row: 2;
+  }
+  .worker-enroll-command {
+    flex-direction: column;
+  }
+}

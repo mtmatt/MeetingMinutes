@@ -11,6 +11,7 @@ import type {
   Summary,
   SummarizerInfo,
   MediaPolicy,
+  WorkerKey,
   MediaState,
   TranscriberInfo,
   TranscriberSettings,
@@ -93,6 +94,7 @@ export const api = {
       summarizer: SummarizerInfo | null;
       transcriber?: TranscriberInfo | null;
       mediaPolicy?: MediaPolicy | null;
+      externalWorkers?: boolean | null;
     }>("/auth/state"),
   login: (username: string, password: string) => post<{ user: User }>("/auth/login", { username, password }),
   logout: () => post<{ ok: true }>("/auth/logout"),
@@ -188,6 +190,9 @@ export const api = {
   adminMedia: () => get<MediaState>("/admin/media"),
   adminSaveMedia: (b: MediaPolicy) => request<MediaState>("PUT", "/admin/media", b),
   adminResetMedia: () => del<MediaState>("/admin/media"),
+  adminWorkerKeys: () => get<{ keys: WorkerKey[]; enrollTtlMs: number }>("/admin/worker-keys"),
+  adminCreateWorkerKey: (name: string) => post<{ id: string; name: string; code: string; expiresAt: number }>("/admin/worker-keys", { name }),
+  adminRevokeWorkerKey: (id: string) => del<{ ok: true; requeued: number }>(`/admin/worker-keys/${encodeURIComponent(id)}`),
   /** Look at a model server with the form's values, before they are saved. */
   adminProbeModel: (b: Pick<LocalModelSettings, "api" | "baseUrl" | "model">) =>
     post<{ status: LocalModelStatus; pull: ModelPull | null }>("/admin/summarizer/probe", b),

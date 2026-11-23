@@ -4,6 +4,7 @@
     python -m mm_worker check          load both models once and print environment info
     python -m mm_worker transcribe F   transcribe a local file and print the transcript
     python -m mm_worker bench [F]      time speaker separation on the CPU (sherpa-onnx)
+    python -m mm_worker enroll URL CODE   connect this machine to a server as a remote worker
 """
 
 from __future__ import annotations
@@ -101,6 +102,9 @@ def main(argv: Optional[list[str]] = None):
     t.add_argument("--vocabulary", default="")
     t.add_argument("--no-diarize", action="store_true")
     t.add_argument("--script", default="zh-TW", choices=["zh-TW", "zh-CN", "none"])
+    e = sub.add_parser("enroll", help="connect this machine to a server, with a code from Admin -> System")
+    e.add_argument("url", help="the server's address, e.g. https://minutes.example.com:8443")
+    e.add_argument("code", help="the one-time enrollment code")
     b = sub.add_parser("bench", help="time speaker separation on the CPU")
     b.add_argument("path", nargs="?", help="a recording to use (default: a 4-speaker sample)")
     b.add_argument("--threads", default="1", help="thread counts to try, e.g. 1,2,4 (default: 1)")
@@ -112,6 +116,23 @@ def main(argv: Optional[list[str]] = None):
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
+    if args.cmd == "enroll":
+        from .client import check_server_url, enroll
+        from .config import credential_path, data_dir_path, write_credential
+
+        if os.environ.get("MM_SKIP_DOTENV") != "1":
+            from .config import REPO_ROOT, _load_dotenv
+
+            _load_dotenv(REPO_ROOT / ".env")
+        data_dir = data_dir_path()
+        if credential_path(data_dir).exists():
+            print(f"Replacing the earlier enrollment in {credential_path(data_dir)}.")
+        url = check_server_url(args.url)
+        got = enroll(url, args.code)
+        path = write_credential(data_dir, {"serverUrl": url, "workerId": got["workerId"], "name": got["name"], "token": got["token"]})
+        print(f"Enrolled as {got['name']} ({got['workerId']}); credential saved to {path} (readable by this user only).")
+        print("Next: scripts/worker.sh check   then   scripts/restart.sh worker")
+        return
     if args.cmd == "bench":
         from .bench import parse_threads, run_bench
         from .onnx_voice import default_model_dir

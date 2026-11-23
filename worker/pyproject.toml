@@ -9,6 +9,8 @@ dependencies = [
   "opencc-python-reimplemented>=0.1.7",
   # Voice fingerprints on the CPU (onnxruntime, no torch) when speakers are separated by pyannoteAI.
   "sherpa-onnx>=2.0.3,<3",
+  # Certificate authorities for workers on other machines, where Python finds no system store.
+  "certifi>=2024.2.2",
 ]
 
 [project.optional-dependencies]

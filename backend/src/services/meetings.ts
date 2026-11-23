@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
+import { open } from "node:fs/promises";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config";
@@ -70,6 +71,84 @@ export const PLAYBACK_FILE = "playback.m4a";
 
 /** Extension of a compacted original (Ogg Opus). */
 export const COMPACT_EXT = "opus";
+
+/**
+ * Files a remote worker sends for a transcription it runs, with the most each
+ * may be. They wait as incoming-<job>-<name> in the meeting's folder and are
+ * put in place only when that job completes.
+ */
+export const INCOMING_FILES = {
+  "playback.m4a": 1024 * 1024 * 1024,
+  "peaks.json": 16 * 1024 * 1024,
+} as const;
+export type IncomingName = keyof typeof INCOMING_FILES;
+
+function incomingPath(meetingId: string, jobId: string, name: IncomingName): string {
+  return join(meetingDir(meetingId), `incoming-${jobId}-${name}`);
+}
+
+/** Append a chunk at `offset` (which must be what has arrived so far, so an interrupted upload resumes). */
+export async function writeIncoming(job: JobRow, name: IncomingName, offset: number, chunk: Uint8Array) {
+  const path = incomingPath(job.meeting_id, job.id, name);
+  const have = existsSync(path) ? statSync(path).size : 0;
+  if (offset !== have) return { error: "Offset mismatch.", received: have };
+  if (offset + chunk.byteLength > INCOMING_FILES[name]) return { error: "The file is too large.", received: have };
+  const fh = await open(path, offset === 0 ? "w" : "r+");
+  try {
+    await fh.write(chunk, 0, chunk.byteLength, offset);
+  } finally {
+    await fh.close();
+  }
+  return { received: offset + chunk.byteLength };
+}
+
+/** Put a remote worker's files in place for the job that completes (a waveform must be JSON). */
+function adoptIncoming(job: JobRow) {
+  const dir = meetingDir(job.meeting_id);
+  for (const name of Object.keys(INCOMING_FILES) as IncomingName[]) {
+    const path = incomingPath(job.meeting_id, job.id, name);
+    if (!existsSync(path)) continue;
+    if (name === "peaks.json") {
+      try {
+        JSON.parse(readFileSync(path, "utf8"));
+      } catch {
+        rmSync(path, { force: true });
+        continue;
+      }
+    }
+    renameSync(path, join(dir, name));
+  }
+  removeIncoming(job.meeting_id);
+}
+
+/** Forget files remote workers sent for jobs that did not complete. */
+export function removeIncoming(meetingId: string, jobId?: string) {
+  const dir = meetingDir(meetingId);
+  if (!existsSync(dir)) return;
+  for (const f of readdirSync(dir)) {
+    if (f.startsWith(jobId ? `incoming-${jobId}-` : "incoming-")) rmSync(join(dir, f), { force: true });
+  }
+}
+
+/**
+ * A claimed job as a remote worker sees it: where to download the recording
+ * and upload its files, never paths on this server.
+ */
+export function remoteJobView(job: ClaimedJob) {
+  const { mediaPath: _path, outDir: _dir, ...rest } = job;
+  const m = getMeeting(job.meetingId);
+  return {
+    ...rest,
+    media: {
+      url: `/internal/jobs/${job.jobId}/media`,
+      size: m && existsSync(originalPath(m)) ? statSync(originalPath(m)).size : null,
+      ext: m?.media_ext ?? "bin",
+    },
+    ...(job.kind === "transcribe"
+      ? { uploads: { url: `/internal/jobs/${job.jobId}/files`, files: Object.keys(INCOMING_FILES), chunkBytes: config.uploadChunkBytes } }
+      : {}),
+  };
+}
 
 /** Where a worker writes the compact copy; the backend moves it into place once it checks out. */
 export function compactTempPath(id: string): string {
@@ -236,6 +315,7 @@ export async function deleteMeeting(m: MeetingRow) {
 // -------------------------------------------------------------- job queue
 
 export function enqueueTranscription(m: MeetingRow) {
+  removeIncoming(m.id);
   db.transaction(() => {
     db.query("UPDATE jobs SET status = 'canceled', finished_at = $t WHERE meeting_id = $m AND status IN ('queued','running')").run({
       m: m.id,
@@ -403,6 +483,8 @@ export function completeJob(jobId: string, workerId: string, result: TranscriptR
   if (!job || job.kind !== "transcribe") return false;
   const t = now();
   let meeting: MeetingRow | null = null;
+  // A remote worker's playback copy and waveform, before their presence is recorded.
+  adoptIncoming(job);
   db.transaction(() => {
     db.query("UPDATE jobs SET status = 'done', finished_at = $t, heartbeat_at = $t WHERE id = $id").run({ id: jobId, t });
     const m = job.meeting_id;
@@ -470,6 +552,7 @@ export function failJob(jobId: string, workerId: string, error: string, retryabl
 
 function finishFailedJob(job: JobRow, error: string, retryable: boolean) {
   const t = now();
+  removeIncoming(job.meeting_id, job.id);
   const retry = retryable && job.attempts < config.jobMaxAttempts;
   if (job.kind !== "transcribe") {
     // The meeting itself is unaffected: "find voices" shows a voiceprint that could
@@ -494,6 +577,14 @@ function finishFailedJob(job: JobRow, error: string, retryable: boolean) {
   }
   const m = getMeeting(job.meeting_id);
   if (m) touchMeeting(m);
+}
+
+/** Put jobs back in the queue (a revoked remote worker's), as if their worker had stopped. */
+export function requeueJobs(jobIds: string[], reason: string) {
+  for (const id of jobIds) {
+    const job = db.query<JobRow, { id: string }>("SELECT * FROM jobs WHERE id = $id AND status = 'running'").get({ id });
+    if (job) finishFailedJob(job, reason, true);
+  }
 }
 
 /** Requeue jobs whose worker stopped sending heartbeats. */

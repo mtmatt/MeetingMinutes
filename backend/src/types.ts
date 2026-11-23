@@ -190,5 +190,7 @@ export type AppEnv = {
     user: UserRow;
     session: SessionRow;
     clientIp: string;
+    /** On the worker API: a worker on this machine (shared token) or a remote one (its key). */
+    worker: { local: boolean; keyId: string | null };
   };
 };

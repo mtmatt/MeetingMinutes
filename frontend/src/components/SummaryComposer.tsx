@@ -38,7 +38,7 @@ export function normalizeRequest(req: SummaryRequest, templates: Template[]): Su
 export function DataFlowNote() {
   const { t } = useI18n();
   const { name, info } = useSummaryEngine();
-  const { transcriber } = useAuth();
+  const { transcriber, externalWorkers } = useAuth();
   // Codex sends the transcript to OpenAI; a local model keeps it on this server (or the one the admin named).
   const where = info?.provider === "local" ? (info.onServer ? "Local" : "Remote") : "";
   // A transcription API on another machine receives the speech in the recording.
@@ -58,9 +58,11 @@ export function DataFlowNote() {
                 ? transcriber?.provider === "openrouter"
                   ? "privacy.asrOpenRouter"
                   : "privacy.asrApi"
-                : diarizeCloud
-                  ? "privacy.asrHere"
-                  : "privacy.asr",
+                : externalWorkers
+                  ? "privacy.asrWorkers"
+                  : diarizeCloud
+                    ? "privacy.asrHere"
+                    : "privacy.asr",
               vars,
             )}
           </li>
@@ -71,6 +73,7 @@ export function DataFlowNote() {
           <summary>{t("privacy.more")}</summary>
           <p>{t("privacy.detailsBrowser")}</p>
           <p>{t(diarizeCloud ? "privacy.detailsDiarizeCloud" : "privacy.detailsDiarizeLocal")}</p>
+          {externalWorkers && <p>{t("privacy.detailsWorkers")}</p>}
           <p>{t(asrApi ? (transcriber?.provider === "openrouter" ? "privacy.detailsAsrOpenRouter" : "privacy.detailsAsrApi") : "privacy.detailsAsr", vars)}</p>
           <p>{t(`privacy.detailsSummary${where}`, vars)}</p>
         </details>

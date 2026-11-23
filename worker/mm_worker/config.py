@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import os
+import platform
 import socket
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# Written by `scripts/worker.sh enroll` on a machine other than the server.
+CREDENTIAL_FILE = "worker-credential.json"
 
 
 def _load_dotenv(path: Path) -> None:
@@ -71,6 +75,8 @@ class WorkerConfig:
     media_jobs: bool = True
     # Where downloaded models live (the CPU voice fingerprint model): DATA_DIR/models, or MM_MODEL_DIR.
     model_dir: Optional[Path] = None
+    # Enrolled on another machine: media comes over HTTPS, nothing is read from the server's disk.
+    remote: bool = False
     media_poll_interval: float = 30.0
     extra: dict = field(default_factory=dict)
 
@@ -111,14 +117,19 @@ def load_config() -> WorkerConfig:
     if not data_dir.is_absolute():
         data_dir = REPO_ROOT / data_dir
     token = os.environ.get("WORKER_TOKEN", "").strip()
+    credential = read_credential(data_dir)
+    if not token and credential:
+        token = credential["token"]
     if not token:
         token_file = data_dir / "worker.token"
         if token_file.exists():
             token = token_file.read_text().strip()
     if not token:
         raise SystemExit(
-            "No worker token. Start the backend once (it creates data/worker.token) or set WORKER_TOKEN."
+            "No worker token. On the server, start the backend once (it creates data/worker.token) or set WORKER_TOKEN; "
+            "on another machine, run scripts/worker.sh enroll <server URL> <code from Admin -> System>."
         )
+    remote = token.startswith("mmw_")
 
     # With built-in HTTPS (TLS_CERT_FILE) the backend also serves the worker API
     # over plain HTTP on a loopback-only port, so no certificate is needed here.
@@ -126,8 +137,10 @@ def load_config() -> WorkerConfig:
         default_url = f"http://127.0.0.1:{os.environ.get('INTERNAL_PORT', '').strip() or '8788'}"
     else:
         default_url = f"http://127.0.0.1:{os.environ.get('PORT', '').strip() or '8787'}"
-    server_url = os.environ.get("MM_SERVER_URL", "").strip().rstrip("/") or default_url
-    device = os.environ.get("MM_DEVICE", "cuda:0")
+    server_url = os.environ.get("MM_SERVER_URL", "").strip().rstrip("/") or (credential or {}).get("serverUrl") or default_url
+    # Apple silicon has no CUDA; its GPU is "mps".
+    default_device = "mps" if platform.system() == "Darwin" and platform.machine() == "arm64" else "cuda:0"
+    device = os.environ.get("MM_DEVICE", "").strip() or default_device
     # scripts/worker.sh passes every GPU in WORKER_GPUS. A worker started by
     # hand without it uses the visible GPU that MM_DEVICE names (cuda:N).
     gpus = list(dict.fromkeys(g.strip() for g in os.environ.get("WORKER_GPUS", "").split(",") if g.strip()))
@@ -135,13 +148,17 @@ def load_config() -> WorkerConfig:
         gpus = [_device_gpu(device, os.environ.get("CUDA_VISIBLE_DEVICES"))]
     host = socket.gethostname()
     # With several GPUs, WorkerConfig.for_gpu adds "-gpuN" to each one's ID.
-    worker_id = os.environ.get("MM_WORKER_ID") or (host if len(gpus) > 1 else f"{host}-gpu{gpus[0]}")
+    if remote and credential:
+        # The server accepts only worker IDs that start with this machine's key ID.
+        worker_id = os.environ.get("MM_WORKER_ID") or credential["workerId"]
+    else:
+        worker_id = os.environ.get("MM_WORKER_ID") or (host if len(gpus) > 1 else f"{host}-gpu{gpus[0]}")
 
     return WorkerConfig(
         server_url=server_url,
         token=token,
         worker_id=worker_id,
-        worker_name=os.environ.get("MM_WORKER_NAME") or worker_id,
+        worker_name=os.environ.get("MM_WORKER_NAME") or ((credential or {}).get("name") if remote else None) or worker_id,
         device=device,
         hf_token=os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or None,
         asr_model=os.environ.get("ASR_MODEL", "Qwen/Qwen3-ASR-1.7B"),
@@ -160,4 +177,39 @@ def load_config() -> WorkerConfig:
         asr_api_timeout=max(10.0, _float("ASR_API_TIMEOUT_SEC", 120.0)),
         media_jobs=os.environ.get("MM_MEDIA_JOBS", "1").strip().lower() not in ("0", "false", "no", "off"),
         model_dir=Path(os.environ["MM_MODEL_DIR"]).expanduser() if os.environ.get("MM_MODEL_DIR", "").strip() else data_dir / "models",
+        remote=remote,
     )
+
+
+def credential_path(data_dir: Path) -> Path:
+    return data_dir / CREDENTIAL_FILE
+
+
+def read_credential(data_dir: Path) -> Optional[dict]:
+    path = credential_path(data_dir)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except ValueError:
+        raise SystemExit(f"{path} is not valid JSON; enroll this machine again.") from None
+    if not all(isinstance(data.get(k), str) and data.get(k) for k in ("serverUrl", "workerId", "token")):
+        raise SystemExit(f"{path} is incomplete; enroll this machine again.")
+    return data
+
+
+def write_credential(data_dir: Path, data: dict) -> Path:
+    """Readable by this OS user only: the token lets its holder download recordings."""
+    data_dir.mkdir(parents=True, exist_ok=True)
+    path = credential_path(data_dir)
+    tmp = path.with_suffix(".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, path)
+    return path
+
+
+def data_dir_path() -> Path:
+    data_dir = Path(os.environ.get("DATA_DIR", "data"))
+    return data_dir if data_dir.is_absolute() else REPO_ROOT / data_dir

@@ -44,7 +44,8 @@ class Diarizer:
             raise DiarizationUnavailable(
                 f"Could not load {self.model}. Set HF_TOKEN and accept the model's conditions on Hugging Face."
             )
-        if self.device.startswith("cuda"):
+        # NVIDIA (cuda) or Apple silicon (mps); otherwise it stays on the CPU.
+        if self.device.startswith(("cuda", "mps")):
             pipeline.to(torch.device(self.device))
         self._pipeline = pipeline
         return pipeline

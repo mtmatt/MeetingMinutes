@@ -20,11 +20,13 @@ interface AuthValue {
   transcriber: TranscriberInfo | null;
   /** Whether originals are later kept as audio only; null until signed in. */
   mediaPolicy: MediaPolicy | null;
+  /** Recordings may be processed on other machines an administrator connected. */
+  externalWorkers: boolean;
   setUser: (u: User | null) => void;
 }
 
 type AuthState = Awaited<ReturnType<typeof api.authState>>;
-const emptyState: AuthState = { needsSetup: false, user: null, helpContact: null, uploadLimitBytes: null, googleClientId: null, summarizer: null, transcriber: null, mediaPolicy: null };
+const emptyState: AuthState = { needsSetup: false, user: null, helpContact: null, uploadLimitBytes: null, googleClientId: null, summarizer: null, transcriber: null, mediaPolicy: null, externalWorkers: null };
 
 const AuthContext = createContext<AuthValue | null>(null);
 
@@ -54,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     summarizer: q.data?.summarizer ?? null,
     transcriber: q.data?.transcriber ?? null,
     mediaPolicy: q.data?.mediaPolicy ?? null,
+    externalWorkers: !!q.data?.externalWorkers,
     setUser: (u) => {
       qc.setQueryData(["auth"], (old: AuthState | undefined) => ({ ...emptyState, ...old, needsSetup: false, user: u }));
       if (!u) qc.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });

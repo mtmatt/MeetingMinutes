@@ -322,6 +322,39 @@ Two more steps keep the IP address from revealing the site:
 - **Use a certificate for the name only.** With Option A, issue the certificate for the domain, not the IP (`scripts/make-cert.sh minutes.example.com`, or better a public certificate as described above). Then anyone opening the IP also gets a certificate warning.
 - **Know what this does not do.** The check keeps out casual and automated visitors, but it is not access control. The domain name is in the certificate the server presents, and in public certificate-transparency logs. Anyone who knows the name can send it while connecting to the IP. The sign-in is what protects the data. To limit who can connect at all, allow only your networks in the machine's firewall, or put the site behind a VPN.
 
+## Workers on other machines (NVIDIA, Mac)
+
+GPUs elsewhere (a workstation with an NVIDIA card, a Mac with Apple silicon) can transcribe for the server **without being reachable from anywhere**: a worker only ever connects out to the site over HTTPS, asks for work, downloads that one recording, and sends back the transcript. Nothing connects to it, so it can sit behind NAT or a firewall with no open port.
+
+To add one:
+
+1. **Admin → System → Workers on other machines → Add**, and give it a name. The page shows a one-time enrollment code (valid for an hour) as a command.
+2. On that machine, in a clone of this repository:
+   ```
+   scripts/install.sh --worker-only       # the worker only: no web server, no Ollama
+   scripts/worker.sh enroll https://minutes.example.com:8443 mme_...
+   scripts/worker.sh check                # downloads the models, shows what this machine can run
+   scripts/restart.sh worker              # needs tmux (on a Mac: brew install tmux)
+   ```
+3. It appears in the list as **Connected**. Speaker separation on its GPU needs `HF_TOKEN` in its `.env`, as on the server.
+
+How it works, and what it protects:
+
+- **Its own credential.** Enrolling trades the code (single use) for a token that only this machine holds, in `data/worker-credential.json`, readable by its user only. The server keeps only a hash of it. **Revoke** stops it at once and puts any recording it was working on back in the queue. The shared `WORKER_TOKEN` stays for workers on the server itself.
+- **Only its own jobs.** A remote worker can use only worker IDs under its own key, and can download only the recording of a job it is running at that moment. It gets URLs, never paths on the server. Compacting originals, which rewrites files on the server's disk, is left to the server's own worker.
+- **In transit and afterwards.** Everything goes over the site's HTTPS, with the certificate verified (`MM_CA_FILE` for a self-signed one). Downloads resume after a dropped connection; the playback copy and waveform go back in chunks and are put in place only when the job completes. The worker works in a private temporary folder that is deleted after each job, so no recording stays on that machine.
+- **People are told.** While any machine is enrolled, the upload page says recordings may be processed on other computers the administrator connected.
+
+Platforms:
+
+| Machine | Speech recognition | Speaker separation | Notes |
+| --- | --- | --- | --- |
+| Linux + NVIDIA | Qwen3-ASR on CUDA | pyannote on CUDA | The same as the server's own worker; GPU memory is checked with `nvidia-smi`. |
+| Mac (Apple silicon) | Qwen3-ASR on the GPU (`mps`) | pyannote on `mps` | Chosen automatically on an arm64 Mac (`MM_DEVICE=mps`). Operations the Apple GPU lacks fall back to the CPU (`PYTORCH_ENABLE_MPS_FALLBACK=1`). The model runs in bfloat16; if it fails on yours, try `ASR_DTYPE=float16` or `float32`. Unified memory is shared with the system, so no free-memory check is made. **Not yet tested on real hardware**: run `scripts/worker.sh check`, then transcribe one short recording. |
+| Any, without GPU packages | Transcription API | CPU (sherpa-onnx) or pyannoteAI | `scripts/install.sh --worker-only --no-gpu`. |
+
+Each worker reports what it can run, and the server hands it only work it can do under the current settings in Admin → Transcription.
+
 ## Recording meetings in the browser
 
 **New recording → Record a meeting** offers two sources:
@@ -452,7 +485,7 @@ What this changes, and what it does not:
 - **Summary model settings**: only administrators can see or change them. The server address must be `http(s)://` without credentials, and model names are checked before they reach a command line or a request. People starting a summary are told where it goes: on this server, to the model server's host, or to OpenAI.
 - **Files on disk**: the server and worker create everything with mode `0600`/`0700` (`umask 077`), and the data directory is restricted to its owner at every start. The scripts make `.env` readable by its owner only.
 - **Headers**: a strict Content-Security-Policy (no third-party origins, except Google's sign-in and Drive when Google Docs export is set up; fonts are self-hosted), `frame-ancestors 'none'`, HSTS over HTTPS, and a Permissions-Policy that allows only the microphone and tab capture (for recording) and only on this site.
-- **Workers** authenticate with a shared bearer token (`WORKER_TOKEN` or `data/worker.token`), compared in constant time. With built-in HTTPS, the worker API listens only on loopback (`INTERNAL_PORT`).
+- **Workers** on this machine authenticate with a shared bearer token (`WORKER_TOKEN` or `data/worker.token`), compared in constant time; with built-in HTTPS they use a loopback-only port (`INTERNAL_PORT`). Workers on other machines each have their own revocable token from a single-use, hour-long enrollment code (stored as a hash, rate-limited), and may only download the recording of a job they are running (see "Workers on other machines").
 
 Recommended for a deployment:
 
