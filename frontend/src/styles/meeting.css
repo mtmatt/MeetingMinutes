@@ -325,9 +325,17 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  /* With the clips open the row wraps to two lines; the first stays put. */
+  align-content: flex-start;
   gap: 8px;
-  min-height: 32px;
   font-size: var(--step--1);
+}
+/* A 32px strut sets the height of the name line, open or not, so a row with
+   its clips open lines up with its neighbour in the other column. */
+.legend-list li::before {
+  content: "";
+  height: 32px;
+  margin-right: -8px;
 }
 .legend-name {
   display: inline-flex;

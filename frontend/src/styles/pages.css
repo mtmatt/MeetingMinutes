@@ -285,6 +285,10 @@
   gap: 6px;
   min-width: 0;
 }
+/* The title's first line: the facts and the status are centred on it. */
+.ledger-row {
+  --ledger-line: calc(1.2rem * 1.35);
+}
 .ledger-title {
   font-family: var(--font-title);
   font-size: 1.2rem;
@@ -298,7 +302,7 @@
 .ledger-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 4px 24px;
 }
 .ledger-head .ledger-title {
@@ -317,6 +321,8 @@
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  min-height: var(--ledger-line);
+  align-items: center;
 }
 .ledger-meta li {
   display: inline-flex;
@@ -408,9 +414,10 @@
 }
 /* A steady width, so the facts beside it end at the same place on every row. */
 .ledger-status {
-  padding-top: 4px;
   min-width: 7.5rem;
+  min-height: var(--ledger-line);
   display: flex;
+  align-items: center;
   justify-content: flex-end;
 }
 
@@ -468,7 +475,7 @@
   }
   .ledger-status {
     grid-column: 2;
-    padding-top: 0;
+    min-height: 0;
     min-width: 0;
     justify-content: flex-start;
   }
