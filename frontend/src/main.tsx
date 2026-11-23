@@ -15,12 +15,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router";
-import { router } from "./App";
+import { preloadPages, router } from "./App";
 import { ConfirmProvider } from "./components/Modal";
 import { ToastProvider } from "./components/Toast";
 import { I18nProvider } from "./i18n";
 import { AuthProvider } from "./lib/auth";
 import { ApiError } from "./api/client";
+import { prefetchPageData } from "./lib/prefetch";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,6 +31,9 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+preloadPages(window.location.pathname);
+prefetchPageData(queryClient, window.location.pathname);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

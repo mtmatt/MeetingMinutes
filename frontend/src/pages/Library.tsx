@@ -12,6 +12,7 @@ import { apiErrorMessage, describeFailure } from "../lib/errors";
 import { useConfirm } from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { setPendingFile } from "../lib/pendingFile";
+import { PAGE_DATA_FRESH_MS } from "../lib/prefetch";
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
@@ -174,6 +175,7 @@ export function LibraryPage() {
     queryKey: ["meetings", query],
     queryFn: () => api.meetings(query),
     placeholderData: (prev) => prev,
+    staleTime: PAGE_DATA_FRESH_MS,
   });
   const meetings = data?.meetings ?? [];
 

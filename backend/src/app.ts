@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { compress } from "hono/compress";
 import { HTTPException } from "hono/http-exception";
 import { secureHeaders } from "hono/secure-headers";
 import { existsSync, statSync } from "node:fs";
@@ -82,6 +83,9 @@ export function createApp() {
   app.route("/internal", internalRoutes);
 
   const api = new Hono<AppEnv>();
+  // JSON (a meeting with its transcript is ~100 KB) shrinks about tenfold. Event
+  // streams, partial (Range) responses and media are left as they are.
+  api.use(compress());
   api.use(csrfGuard);
   api.use(async (c, next) => {
     await next();
@@ -114,14 +118,42 @@ export function createApp() {
     const candidate = resolve(dist, "." + normalize(urlPath));
     if (candidate.startsWith(dist + "/") && existsSync(candidate) && statSync(candidate).isFile()) {
       const immutable = urlPath.startsWith("/assets/");
-      return new Response(Bun.file(candidate), {
-        headers: { "Cache-Control": immutable ? "public, max-age=31536000, immutable" : "no-cache" },
-      });
+      return staticFile(candidate, c.req.header("Accept-Encoding"), immutable ? "public, max-age=31536000, immutable" : "no-cache");
     }
-    return new Response(Bun.file(indexHtml), {
-      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" },
-    });
+    return staticFile(indexHtml, c.req.header("Accept-Encoding"), "no-cache", "text/html; charset=utf-8");
   });
 
   return app;
+}
+
+/** Content codings the browser accepts (Accept-Encoding, without those it refuses with q=0). */
+function acceptedEncodings(header: string | undefined): Set<string> {
+  const out = new Set<string>();
+  for (const part of (header ?? "").toLowerCase().split(",")) {
+    const [name, ...params] = part.split(";").map((x) => x.trim());
+    const q = params.find((p) => p.startsWith("q="));
+    if (name && !(q && Number(q.slice(2)) === 0)) out.add(name);
+  }
+  return out;
+}
+
+/**
+ * A built file, as the brotli or gzip copy made at build time (app.js.br) when
+ * the browser takes it and the copy exists, else as it is.
+ */
+export function staticFile(path: string, acceptEncoding: string | undefined, cacheControl: string, type?: string): Response {
+  const file = Bun.file(path);
+  const headers: Record<string, string> = {
+    "Content-Type": type ?? file.type,
+    "Cache-Control": cacheControl,
+    Vary: "Accept-Encoding",
+  };
+  const accepted = acceptedEncodings(acceptEncoding);
+  for (const [coding, ext] of [["br", ".br"], ["gzip", ".gz"]] as const) {
+    if (accepted.has(coding) && existsSync(path + ext)) {
+      headers["Content-Encoding"] = coding;
+      return new Response(Bun.file(path + ext), { headers });
+    }
+  }
+  return new Response(file, { headers });
 }

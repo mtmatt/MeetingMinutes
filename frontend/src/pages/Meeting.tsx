@@ -28,6 +28,7 @@ import { SummaryExportItems, SummaryPanel, useSummaryInfo, useSummarySelection }
 import { useToast } from "../components/Toast";
 import { Transcript } from "../components/Transcript";
 import { useI18n, type TKey } from "../i18n";
+import { PAGE_DATA_FRESH_MS } from "../lib/prefetch";
 import { bytes, dateTime, duration, monthDay } from "../lib/format";
 import { setPageContext } from "../lib/pageContext";
 import { PlayerProvider, usePlayer, usePlayerShortcuts } from "../lib/player";
@@ -440,7 +441,7 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
 export function MeetingPage() {
   const { id = "" } = useParams();
   const { t } = useI18n();
-  const q = useQuery({ queryKey: ["meeting", id], queryFn: () => api.meeting(id) });
+  const q = useQuery({ queryKey: ["meeting", id], queryFn: () => api.meeting(id), staleTime: PAGE_DATA_FRESH_MS });
 
   if (q.isLoading) {
     return (

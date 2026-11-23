@@ -79,6 +79,17 @@ export async function request<T>(method: string, path: string, body?: Json, init
 }
 
 const get = <T>(p: string) => request<T>("GET", p);
+
+/**
+ * A GET for data fetched at start-up, before the sign-in check has answered:
+ * a refusal is only thrown, not treated as being signed out (the sign-in check
+ * decides that), so it cannot send someone to the wrong page.
+ */
+export async function quietGet<T>(path: string): Promise<T> {
+  const res = await fetch(`/api${path}`, { credentials: "same-origin", headers: { "X-MM-Client": "1", Accept: "application/json" } });
+  if (!res.ok) throw new ApiError(res.status, res.statusText, "prefetch_failed");
+  return (await res.json()) as T;
+}
 const post = <T>(p: string, b: Json = {}) => request<T>("POST", p, b);
 const patch = <T>(p: string, b: Json) => request<T>("PATCH", p, b);
 const del = <T>(p: string) => request<T>("DELETE", p);

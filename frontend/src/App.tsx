@@ -3,15 +3,41 @@ import { Masthead } from "./components/Masthead";
 import { Seal } from "./components/Seal";
 import { useAuth } from "./lib/auth";
 import { useLiveUpdates } from "./lib/useLiveUpdates";
-import { AdminPage } from "./pages/Admin";
 import { InvitePage, LoginPage, SetupPage } from "./pages/Auth";
 import { LibraryPage } from "./pages/Library";
-import { MeetingPage } from "./pages/Meeting";
 import { NotFoundPage } from "./pages/NotFound";
-import { SettingsPage } from "./pages/Settings";
-import { TemplatesPage } from "./pages/Templates";
-import { UploadPage } from "./pages/Upload";
-import { VoicesPage } from "./pages/Voices";
+
+/**
+ * Pages other than the library and sign-in are separate downloads, fetched
+ * when first needed: the library no longer waits for the Markdown renderer,
+ * the recorder or the admin screens. import() is cached, so calling these
+ * early (preloadPages) only starts the download sooner.
+ */
+const pages = {
+  meeting: () => import("./pages/Meeting"),
+  upload: () => import("./pages/Upload"),
+  templates: () => import("./pages/Templates"),
+  voices: () => import("./pages/Voices"),
+  settings: () => import("./pages/Settings"),
+  admin: () => import("./pages/Admin"),
+};
+
+/**
+ * Starts the download of the page the address opens on, in parallel with the
+ * app's own start-up, then, once the browser is idle, the meeting page, which
+ * is usually next.
+ */
+export function preloadPages(pathname: string) {
+  const first = pathname.startsWith("/m/")
+    ? pages.meeting
+    : pathname === "/new"
+      ? pages.upload
+      : ({ "/templates": pages.templates, "/voices": pages.voices, "/settings": pages.settings, "/admin": pages.admin } as Record<string, () => Promise<unknown>>)[pathname];
+  first?.().catch(() => {});
+  const later = () => void pages.meeting().catch(() => {});
+  if ("requestIdleCallback" in window) window.requestIdleCallback(later, { timeout: 4000 });
+  else setTimeout(later, 2000);
+}
 
 function Splash() {
   return (
@@ -47,10 +73,19 @@ function AdminOnly() {
   return <Outlet />;
 }
 
+/** Where to go after signing in: the page asked for (?next=), if it is one of ours. */
+function nextPage(search: string): string {
+  const next = new URLSearchParams(search).get("next");
+  return next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+}
+
 function PublicOnly() {
   const { user, loading } = useAuth();
+  const location = useLocation();
   if (loading) return <Splash />;
-  if (user) return <Navigate to="/" replace />;
+  // Signing in sets the user before the sign-in form navigates, so this redirect
+  // runs first: it must honour ?next= as well, or a shared meeting link lands on the library.
+  if (user) return <Navigate to={nextPage(location.search)} replace />;
   return <Outlet />;
 }
 
@@ -59,12 +94,12 @@ export const router = createBrowserRouter([
     element: <Protected />,
     children: [
       { path: "/", element: <LibraryPage /> },
-      { path: "/new", element: <UploadPage /> },
-      { path: "/m/:id", element: <MeetingPage /> },
-      { path: "/templates", element: <TemplatesPage /> },
-      { path: "/voices", element: <VoicesPage /> },
-      { path: "/settings", element: <SettingsPage /> },
-      { element: <AdminOnly />, children: [{ path: "/admin", element: <AdminPage /> }] },
+      { path: "/new", lazy: async () => ({ Component: (await pages.upload()).UploadPage }) },
+      { path: "/m/:id", lazy: async () => ({ Component: (await pages.meeting()).MeetingPage }) },
+      { path: "/templates", lazy: async () => ({ Component: (await pages.templates()).TemplatesPage }) },
+      { path: "/voices", lazy: async () => ({ Component: (await pages.voices()).VoicesPage }) },
+      { path: "/settings", lazy: async () => ({ Component: (await pages.settings()).SettingsPage }) },
+      { element: <AdminOnly />, children: [{ path: "/admin", lazy: async () => ({ Component: (await pages.admin()).AdminPage }) }] },
     ],
   },
   {
