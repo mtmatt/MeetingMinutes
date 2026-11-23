@@ -5,6 +5,7 @@ import { config, normalizeHost } from "../config";
 import { httpError, safeEqual } from "../lib/util";
 import type { AppEnv } from "../types";
 import { SESSION_COOKIE, resolveSession } from "./service";
+import { workerKeyForToken } from "../services/workerKeys";
 
 export function clientIp(c: Context): string {
   if (config.trustProxy) {
@@ -114,9 +115,20 @@ export const requireAdmin: MiddlewareHandler<AppEnv> = async (c, next) => {
 };
 
 /** Bearer-token auth for GPU workers calling /internal. */
+/**
+ * A worker: on this machine with the shared WORKER_TOKEN (it reads media from
+ * disk), or elsewhere with its own token from enrollment (it downloads media
+ * over HTTPS, and only for jobs it runs). Sets c.get("worker").
+ */
 export const requireWorker: MiddlewareHandler = async (c, next) => {
   const auth = c.req.header("authorization") ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  if (!token || !safeEqual(token, config.workerToken)) httpError(401, "Invalid worker token.", "unauthenticated");
+  if (token && safeEqual(token, config.workerToken)) {
+    c.set("worker", { local: true, keyId: null });
+    return next();
+  }
+  const key = token ? workerKeyForToken(token, clientIp(c)) : null;
+  if (!key) httpError(401, "Invalid worker token.", "unauthenticated");
+  c.set("worker", { local: false, keyId: key!.id });
   await next();
 };

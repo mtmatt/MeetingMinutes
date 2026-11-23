@@ -18,7 +18,8 @@ import {
   resetMediaSettings,
   saveMediaSettings,
 } from "../services/mediaCompaction";
-import { deleteMeeting, queueStats } from "../services/meetings";
+import { deleteMeeting, queueStats, requeueJobs } from "../services/meetings";
+import { ENROLL_TTL_MS, createWorkerKey, listWorkerKeys, revokeWorkerKey } from "../services/workerKeys";
 import { kick, summarizerStats } from "../services/summarizer";
 import { LlmError, localModelStatus, pullState, startPull } from "../services/llm";
 import {
@@ -337,4 +338,23 @@ adminRoutes.put("/media", async (c) => {
 adminRoutes.delete("/media", (c) => {
   resetMediaSettings();
   return c.json(mediaState());
+});
+
+// ------------------------------------------------------- workers on other machines
+
+adminRoutes.get("/worker-keys", (c) => c.json({ keys: listWorkerKeys(), enrollTtlMs: ENROLL_TTL_MS }));
+
+/** A new remote worker: its one-time enrollment code is in this answer only. */
+adminRoutes.post("/worker-keys", async (c) => {
+  const input = await body(c, z.object({ name: z.string().trim().min(1).max(60) }));
+  const { key, code } = createWorkerKey(input.name, c.get("user").id);
+  return c.json({ id: key.id, name: key.name, code, expiresAt: key.enroll_expires_at }, 201);
+});
+
+/** Revoke: the token stops working now, and that machine's running jobs go back to the queue. */
+adminRoutes.delete("/worker-keys/:id", (c) => {
+  const jobs = revokeWorkerKey(c.req.param("id"));
+  if (jobs === null) httpError(404, "No such worker.", "not_found");
+  requeueJobs(jobs!, "The worker's access was revoked.");
+  return c.json({ ok: true, requeued: jobs!.length });
 });

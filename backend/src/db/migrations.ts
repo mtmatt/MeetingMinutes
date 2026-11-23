@@ -262,4 +262,23 @@ export const migrations: string[] = [
   ALTER TABLE meetings ADD COLUMN compacted_at INTEGER;
   ALTER TABLE meetings ADD COLUMN original_size INTEGER;
   `,
+  // Workers on other machines: each has its own revocable credential
+  // (services/workerKeys.ts), traded once for a short-lived enrollment code.
+  `
+  CREATE TABLE worker_keys (
+    id                TEXT PRIMARY KEY,
+    name              TEXT NOT NULL,
+    token_hash        TEXT,
+    enroll_hash       TEXT,
+    enroll_expires_at INTEGER,
+    created_by        TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at        INTEGER NOT NULL,
+    enrolled_at       INTEGER,
+    last_used_at      INTEGER,
+    last_ip           TEXT,
+    revoked_at        INTEGER
+  );
+  CREATE UNIQUE INDEX worker_keys_token ON worker_keys(token_hash) WHERE token_hash IS NOT NULL;
+  CREATE UNIQUE INDEX worker_keys_enroll ON worker_keys(enroll_hash) WHERE enroll_hash IS NOT NULL;
+  `,
 ];

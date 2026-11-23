@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Callable, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -30,9 +31,12 @@ class Transcriber:
                 max_new_tokens=self.max_new_tokens,
             )
         else:
+            # bfloat16 on NVIDIA and Apple silicon (M2 and later); ASR_DTYPE=float16 or
+            # float32 if a GPU or its driver lacks it.
+            dtype = getattr(torch, os.environ.get("ASR_DTYPE", "").strip() or "bfloat16")
             self._model = Qwen3ASRModel.from_pretrained(
                 self.model_name,
-                dtype=torch.bfloat16,
+                dtype=dtype,
                 device_map=self.device,
                 max_inference_batch_size=self.batch_size,
                 max_new_tokens=self.max_new_tokens,

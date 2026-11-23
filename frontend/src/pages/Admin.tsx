@@ -12,6 +12,7 @@ import { diarizationReason } from "../lib/errors";
 import { bytes, initials, relative, until } from "../lib/format";
 import { useSummaryEngine } from "../lib/summaryEngine";
 import { StoragePolicy } from "./AdminStorage";
+import { WorkerKeys } from "./AdminWorkerKeys";
 import { SummaryModel } from "./AdminSummaryModel";
 import { Transcription } from "./AdminTranscription";
 
@@ -497,6 +498,7 @@ function System() {
           </p>
         </section>
       </div>
+      <WorkerKeys />
       <StoragePolicy compactions={data.jobs.compactions} />
     </div>
   );

@@ -323,6 +323,21 @@ export interface TranscriberState {
   addresses: Record<AsrProvider, string>;
 }
 
+/** A worker on another machine, as the admin page lists it (never its token). */
+export interface WorkerKey {
+  id: string;
+  name: string;
+  createdAt: number;
+  createdBy: string | null;
+  pending: boolean;
+  enrollExpiresAt: number | null;
+  enrolledAt: number | null;
+  lastUsedAt: number | null;
+  lastIp: string | null;
+  revokedAt: number | null;
+  online: boolean;
+}
+
 /** Whether originals are later kept as audio only. */
 export interface MediaPolicy {
   compact: boolean;

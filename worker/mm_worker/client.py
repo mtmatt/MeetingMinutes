@@ -1,15 +1,82 @@
-"""Minimal JSON client for the backend's /internal worker API (stdlib only)."""
+"""Minimal client for the backend's /internal worker API (stdlib only).
+
+Workers only ever connect out to the backend: on this machine over loopback,
+or from another machine over HTTPS with its own token. For those, it also
+downloads a job's recording (resuming with byte ranges) and uploads the files
+it makes, in chunks.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
+import os
+import ssl
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
-from typing import Any, Optional
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Callable, Optional
 
 log = logging.getLogger("mm_worker.client")
+
+
+@lru_cache(maxsize=1)
+def tls_context() -> ssl.SSLContext:
+    """Verifies the server's certificate: against MM_CA_FILE when set (a self-signed
+    certificate), else the system's trust store, falling back to certifi's bundle
+    where the system's is not found (some Python builds on macOS)."""
+    ca = os.environ.get("MM_CA_FILE", "").strip()
+    if ca:
+        return ssl.create_default_context(cafile=ca)
+    ctx = ssl.create_default_context()
+    if not ctx.cert_store_stats().get("x509_ca"):
+        try:
+            import certifi
+
+            ctx.load_verify_locations(certifi.where())
+        except ImportError:  # pragma: no cover
+            pass
+    return ctx
+
+
+def _open(req: urllib.request.Request, timeout: float):
+    if req.full_url.startswith("https://"):
+        return urllib.request.urlopen(req, timeout=timeout, context=tls_context())
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def check_server_url(url: str) -> str:
+    """HTTPS, except to this machine: a remote worker's token and the recordings travel over this."""
+    url = url.strip().rstrip("/")
+    parts = urllib.parse.urlsplit(url)
+    host = (parts.hostname or "").lower()
+    loopback = host in ("localhost", "::1") or host.startswith("127.")
+    if parts.scheme not in ("https", "http") or not host or (parts.scheme == "http" and not loopback):
+        raise ValueError(f"Use the server's https:// address (got {url!r}).")
+    return url
+
+
+def enroll(server_url: str, code: str, timeout: float = 30.0) -> dict:
+    """Trade a one-time enrollment code for this machine's token: {workerId, name, token}."""
+    url = check_server_url(server_url)
+    req = urllib.request.Request(
+        url + "/internal/enroll", data=json.dumps({"code": code.strip()}).encode(), method="POST", headers={"Content-Type": "application/json"}
+    )
+    try:
+        with _open(req, timeout) as res:
+            return json.loads(res.read().decode())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        try:
+            msg = json.loads(body).get("error") or body
+        except ValueError:
+            msg = body
+        raise SystemExit(f"Enrollment refused (HTTP {e.code}): {msg[:300]}") from None
+    except urllib.error.URLError as e:
+        raise SystemExit(f"Could not reach {url}: {e.reason}") from None
 
 
 class ServerError(Exception):
@@ -39,7 +106,7 @@ class BackendClient:
                 headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.token}"},
             )
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as res:
+                with _open(req, self.timeout) as res:
                     body = res.read().decode() if res.status != 204 else ""
                     return res.status, (json.loads(body) if body else None)
             except urllib.error.HTTPError as e:
@@ -84,3 +151,87 @@ class BackendClient:
 
     def fail(self, job_id: str, error: str, retryable: bool) -> None:
         self._post(f"/jobs/{job_id}/fail", {"error": error[:4000], "retryable": retryable}, retries=8)
+
+    # ------------------------------------------------- remote workers: media
+
+    def _url(self, path: str, **query) -> str:
+        q = urllib.parse.urlencode({"workerId": self.worker_id, **query})
+        return f"{self.base_url}{path}?{q}"
+
+    def download(self, path: str, dest: Path, size: Optional[int], progress: Optional[Callable[[float], None]] = None, retries: int = 6) -> None:
+        """A job's recording into ``dest``, resuming where an interrupted transfer stopped."""
+        delay = 2.0
+        for attempt in range(retries + 1):
+            have = dest.stat().st_size if dest.exists() else 0
+            if size is not None and have >= size:
+                break
+            headers = {"Authorization": f"Bearer {self.token}"}
+            if have:
+                headers["Range"] = f"bytes={have}-"
+            req = urllib.request.Request(self._url(path), headers=headers)
+            try:
+                with _open(req, max(self.timeout, 120)) as res:
+                    if have and res.status != 206:
+                        have = 0  # the server sent it whole: start over
+                    with open(dest, "r+b" if have else "wb") as out:
+                        out.seek(have)
+                        while True:
+                            buf = res.read(1 << 20)
+                            if not buf:
+                                break
+                            out.write(buf)
+                            have += len(buf)
+                            if progress and size:
+                                progress(min(1.0, have / size))
+                if size is None or have >= size:
+                    break
+            except urllib.error.HTTPError as e:
+                if e.code in (401, 403, 404, 409) or attempt >= retries:
+                    raise ServerError(e.code, e.read().decode(errors="replace")) from None
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+                if attempt >= retries:
+                    raise
+                log.warning("download interrupted (%s); resuming in %.0fs", e, delay)
+            time.sleep(delay)
+            delay = min(delay * 2, 30.0)
+        if size is not None and dest.stat().st_size != size:
+            raise ServerError(500, f"downloaded {dest.stat().st_size} of {size} bytes")
+
+    def upload(self, path: str, name: str, src: Path, chunk_bytes: int, retries: int = 6) -> None:
+        """A file this worker made, in chunks; resumes from what the server says it has."""
+        total = src.stat().st_size
+        offset = 0
+        chunk_bytes = max(64 * 1024, min(chunk_bytes, 32 * 1024 * 1024))
+        failures = 0
+        delay = 2.0
+        with open(src, "rb") as f:
+            while offset < total or total == 0:
+                f.seek(offset)
+                data = f.read(chunk_bytes)
+                req = urllib.request.Request(
+                    self._url(f"{path}/{urllib.parse.quote(name)}", offset=offset),
+                    data=data,
+                    method="PUT",
+                    headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/octet-stream"},
+                )
+                try:
+                    with _open(req, max(self.timeout, 120)) as res:
+                        offset = int(json.loads(res.read().decode())["received"])
+                    failures = 0
+                    if total == 0:
+                        break
+                    continue
+                except urllib.error.HTTPError as e:
+                    body = e.read().decode(errors="replace")
+                    if e.code == 409 and body.startswith("{") and "received" in body:
+                        offset = int(json.loads(body)["received"])  # resume where the server is
+                        continue
+                    if e.code < 500 or failures >= retries:
+                        raise ServerError(e.code, body) from None
+                except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+                    if failures >= retries:
+                        raise
+                    log.warning("upload interrupted (%s); resuming in %.0fs", e, delay)
+                failures += 1
+                time.sleep(delay)
+                delay = min(delay * 2, 30.0)

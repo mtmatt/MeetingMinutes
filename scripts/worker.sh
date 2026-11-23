@@ -5,14 +5,18 @@
 #   scripts/worker.sh check     load the models once (downloads them) and report
 #   scripts/worker.sh transcribe FILE [--language auto] [--no-diarize]
 #   scripts/worker.sh bench [FILE] [--threads 1,2,4]   time speaker separation on the CPU
+#   scripts/worker.sh enroll URL CODE   connect this machine to a server (code from Admin -> System)
 #
 # Idle workers hold no GPU memory: models are loaded in a child process only
 # while jobs are being processed.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # .env holds secrets (worker token, HF token): readable by this user only.
+# (find -perm /077 is GNU; on macOS the test is skipped and chmod is simply applied.)
 if [ -f .env ] && [ -n "$(find .env -perm /077 2>/dev/null)" ]; then
   chmod go-rwx .env && echo "==> Restricted .env to this user (it holds secrets)"
+elif [ -f .env ]; then
+  chmod go-rwx .env 2>/dev/null || true
 fi
 export PATH="$HOME/.local/bin:$PATH"
 ROOT=$PWD

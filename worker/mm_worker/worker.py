@@ -15,11 +15,17 @@ from __future__ import annotations
 import logging
 import multiprocessing as mp
 import os
+import platform
 import queue
+import re
+import shutil
 import signal
+import subprocess
+import tempfile
 import threading
 import time
 import traceback
+from pathlib import Path
 from typing import Callable, Optional
 
 from . import __version__
@@ -28,12 +34,24 @@ from .audio import CompactCanceled, MediaError, compact_audio
 from .cloud_diarize import API_URL as PYANNOTEAI_URL
 from .cloud_diarize import KEY_VARIABLE as PYANNOTEAI_KEY
 from .cloud_diarize import CloudDiarizationError, PyannoteAIDiarizer
-from .client import BackendClient
+from .client import BackendClient, ServerError
 from .config import WorkerConfig
 from .gpus import GpuMemory, find_gpu, pick_gpu, query_gpus
 from .pipeline import Canceled, JobSpec, run_job, run_voiceprint
 
 log = logging.getLogger("mm_worker")
+
+
+def apple_gpu_info() -> Optional[dict]:
+    """The chip and its unified memory on a Mac (no nvidia-smi there)."""
+    if platform.system() != "Darwin":
+        return None
+    try:
+        brand = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True, timeout=5).stdout.strip()
+        mem = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=5).stdout.strip() or 0)
+    except Exception:
+        return {"cuda": None, "gpu": "Apple GPU (MPS)"}
+    return {"cuda": None, "gpu": f"{brand or 'Apple'} (MPS)", "vramTotalGb": round(mem / 1024**3, 1) if mem else None}
 
 
 def gpu_info(gpu: str) -> dict:
@@ -43,7 +61,7 @@ def gpu_info(gpu: str) -> dict:
     except Exception as e:
         return {"cuda": None, "error": str(e)[:200]}
     if gpus is None:
-        return {"cuda": None}
+        return apple_gpu_info() or {"cuda": None}
     mem = find_gpu(gpus, gpu)
     if mem is None:
         return {"cuda": None, "error": f"nvidia-smi does not list GPU {gpu}"}
@@ -236,10 +254,16 @@ class ModelsUnavailable(Exception):
     """A model could not be loaded in this session; its job was reported as retryable."""
 
 
+class TransferError(Exception):
+    """Moving a remote job's files to or from the server failed; another try may work."""
+
+    retryable = True
+
+
 def is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, MediaError):
         return False
-    if isinstance(exc, (ApiError, CloudDiarizationError)):
+    if isinstance(exc, (ApiError, CloudDiarizationError, TransferError)):
         return exc.retryable
     text = f"{type(exc).__name__}: {exc}".lower()
     return any(k in text for k in ("out of memory", "cuda", "connection", "timeout", "temporarily"))
@@ -304,11 +328,61 @@ class _JobRunner:
             log.error("could not report failure: %s", e)
 
     def process(self, job: dict, models: Models):
+        if "mediaPath" in job:
+            # On the server's machine: the recording and the meeting's folder are on this disk.
+            self._process(job, models, JobSpec(media_path=job["mediaPath"], out_dir=job["outDir"], options=job.get("options") or {}))
+            return
+        self._process_remote(job, models)
+
+    def _process_remote(self, job: dict, models: Models):
+        """On another machine: download the recording, work in a private temporary
+        folder, upload what the server keeps, and delete everything afterwards."""
+        job_id = job["jobId"]
+        media = job.get("media") or {}
+        ext = re.sub(r"[^A-Za-z0-9]", "", str(media.get("ext") or "bin"))[:8] or "bin"
+        work = Path(tempfile.mkdtemp(prefix="mm-job-"))  # mode 0700
+        try:
+            src = work / f"original.{ext}"
+            if not self.report("downloading", 0.0):
+                return
+            try:
+                self.client.download(media["url"], src, media.get("size"))
+            except ServerError as e:
+                if e.status == 409:
+                    log.info("job %s: no longer ours", job_id)
+                    return
+                self.fail(job_id, f"Could not download the recording: {e}", e.status >= 500)
+                return
+            except Exception as e:
+                self.fail(job_id, f"Could not download the recording: {type(e).__name__}: {e}", True)
+                return
+            spec = JobSpec(media_path=str(src), out_dir=str(work / "out"), options=job.get("options") or {})
+            uploads = job.get("uploads") or {}
+
+            def send_files():
+                self.report("uploading", 0.99)
+                for name in uploads.get("files") or []:
+                    path = Path(spec.out_dir) / name
+                    if not path.exists():
+                        continue
+                    try:
+                        self.client.upload(uploads["url"], name, path, int(uploads.get("chunkBytes") or 8 * 1024 * 1024))
+                    except ServerError as e:
+                        if e.status == 409 and "not_running" in str(e):
+                            raise Canceled() from None
+                        raise TransferError(f"Could not upload {name}: {e}") from None
+                    except (OSError, ConnectionError, TimeoutError) as e:
+                        raise TransferError(f"Could not upload {name}: {e}") from None
+
+            self._process(job, models, spec, before_complete=send_files if job_kind(job) == "transcribe" else None)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
+    def _process(self, job: dict, models: Models, spec: JobSpec, before_complete: Optional[Callable[[], None]] = None):
         job_id = job["jobId"]
         kind = job_kind(job)
         log.info("job %s (%s): meeting %s (%s), attempt %s", job_id, kind, job["meetingId"], job.get("title"), job.get("attempt"))
         started = time.monotonic()
-        spec = JobSpec(media_path=job["mediaPath"], out_dir=job["outDir"], options=job.get("options") or {})
         transcriber = None
         diarizer, diarizer_unavailable = None, None
         if kind in ("transcribe", "voiceprint"):
@@ -358,6 +432,8 @@ class _JobRunner:
                 summary = f"{len(result['segments'])} segments, {len(result['speakers'])} speakers"
             else:
                 raise MediaError(f"This worker does not know {kind!r} jobs; update it.")
+            if before_complete is not None:
+                before_complete()
             accepted = self.client.complete(job_id, result)
             log.info(
                 "job %s: done in %.0fs (%s)%s",
@@ -374,7 +450,7 @@ class _JobRunner:
             log.error("job %s failed: %s\n%s", job_id, e, traceback.format_exc())
             self.fail(
                 job_id,
-                str(e) if isinstance(e, (MediaError, ApiError, CloudDiarizationError)) else f"{type(e).__name__}: {e}",
+                str(e) if isinstance(e, (MediaError, ApiError, CloudDiarizationError, TransferError)) else f"{type(e).__name__}: {e}",
                 is_retryable(e),
             )
             try:
@@ -390,6 +466,9 @@ def gpu_session(cfg: WorkerConfig, first_job: dict, events) -> None:
     # Before anything initialises CUDA: only this session's GPU, numbered the way nvidia-smi numbers it.
     os.environ["CUDA_VISIBLE_DEVICES"] = cfg.gpus[0]
     os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+    if cfg.device.startswith("mps"):
+        # Operations the Apple GPU lacks run on the CPU instead of failing.
+        os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s[gpu]: %(message)s")
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
@@ -645,6 +724,7 @@ class Supervisor:
         # Stand-in models and CPU workers use no GPU memory, so there is nothing to check.
         self.query = query or (query_gpus if cfg.uses_gpu else None)
         self._waiting: Optional[str] = None
+        self._auth_refused = False
         # Where the backend says speech is recognised and speakers separated; decides
         # how much GPU memory a session needs.
         self.asr_engine = "local"
@@ -714,7 +794,8 @@ class Supervisor:
 
     def run(self):
         threading.Thread(target=self.heartbeat_loop, daemon=True).start()
-        if self.cfg.media_jobs:
+        # Compacting rewrites originals on the server's disk: never from another machine.
+        if self.cfg.media_jobs and not self.cfg.remote:
             media = MediaJobs(self.cfg, self.workers[0].cfg.worker_id, self.stop)
             threading.Thread(target=media.run, name="mm-media", daemon=True).start()
         for worker in self.workers:
@@ -740,10 +821,29 @@ class Supervisor:
                 continue
             try:
                 job = worker.client.claim()
+            except ServerError as e:
+                if e.status in (401, 403):
+                    # Revoked, or a token from another server: say what to do, then check now and then.
+                    if not self._auth_refused:
+                        log.error(
+                            "the server refused this worker's token (HTTP %s)%s",
+                            e.status,
+                            ": it was revoked or is invalid; run scripts/worker.sh enroll with a new code from Admin -> System"
+                            if self.cfg.remote
+                            else "; check WORKER_TOKEN",
+                        )
+                        self._auth_refused = True
+                    self.stop.wait(60)
+                    continue
+                log.warning("claim failed: %s", e)
+                self.stop.wait(10)
+                continue
             except Exception as e:
                 log.warning("claim failed: %s", e)
                 self.stop.wait(10)
                 continue
+
+            self._auth_refused = False
             if not job:
                 self.stop.wait(self.cfg.poll_interval)
                 continue
