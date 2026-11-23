@@ -322,6 +322,23 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  min-width: 0;
+}
+/* On wide screens the facts sit in fixed columns, so they line up from row to row
+   whatever their length (a 1:17:25 recording, two languages, a missing duration). */
+@media (min-width: 761px) {
+  .ledger-meta {
+    display: grid;
+    grid-template-columns: 13px 6.4em 5.3em 2.3em 6.9em;
+    column-gap: 14px;
+  }
+  .ledger-meta .meta-lang .meta-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+.ledger-meta .is-empty {
+  visibility: hidden;
 }
 .ledger-meta svg {
   width: 13px;
@@ -389,8 +406,12 @@
   width: 14px;
   height: 14px;
 }
+/* A steady width, so the facts beside it end at the same place on every row. */
 .ledger-status {
   padding-top: 4px;
+  min-width: 7.5rem;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .library-empty {
@@ -448,6 +469,11 @@
   .ledger-status {
     grid-column: 2;
     padding-top: 0;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+  .ledger-meta .is-empty {
+    display: none;
   }
   .ledger-day {
     font-size: 1.35rem;

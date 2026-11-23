@@ -254,6 +254,8 @@ export const en = {
     deleteBody: "The media, transcript and all summaries will be permanently removed.",
     deleted: "Recording deleted",
     renameHint: "Click to rename",
+    titleRenameHint: "Click the title to rename it",
+    renameTitle: "Rename",
     speakingTime: "Speaking time",
     namesNotReplaced: "The new name was not filled in automatically in {n} of the summaries. Check them in the summary panel.",
     searchTranscript: "Find in transcript",

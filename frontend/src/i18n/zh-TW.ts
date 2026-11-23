@@ -256,6 +256,8 @@ export const zhTW: Dict = {
     deleteBody: "錄音檔、逐字稿與所有摘要都會永久刪除。",
     deleted: "已刪除錄音",
     renameHint: "點擊以重新命名",
+    titleRenameHint: "點擊標題即可重新命名",
+    renameTitle: "重新命名",
     speakingTime: "發言時間",
     namesNotReplaced: "有 {n} 份摘要沒有自動改名，請到摘要確認。",
     searchTranscript: "在逐字稿中搜尋",
