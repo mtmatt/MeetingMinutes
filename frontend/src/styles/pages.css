@@ -2579,3 +2579,6 @@
     flex-direction: column;
   }
 }
+.worker-unified {
+  font-size: var(--step--2);
+}

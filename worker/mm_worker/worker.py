@@ -51,7 +51,8 @@ def apple_gpu_info() -> Optional[dict]:
         mem = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=5).stdout.strip() or 0)
     except Exception:
         return {"cuda": None, "gpu": "Apple GPU (MPS)"}
-    return {"cuda": None, "gpu": f"{brand or 'Apple'} (MPS)", "vramTotalGb": round(mem / 1024**3, 1) if mem else None}
+    # Unified memory, shared with everything else on the Mac: not GPU memory to check or show as used.
+    return {"cuda": None, "gpu": f"{brand or 'Apple'} (MPS)", "unifiedMemoryGb": round(mem / 1024**3, 1) if mem else None}
 
 
 def gpu_info(gpu: str) -> dict:

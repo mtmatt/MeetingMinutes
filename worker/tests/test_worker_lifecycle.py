@@ -519,3 +519,9 @@ def test_cpu_separation_with_the_api_needs_no_gpu_memory():
     sup = Supervisor(multi_gpu_cfg(["0"]), query=lambda: parse_gpus(smi))
     sup.note_backend({"transcriber": {"engine": "api", "diarization": "cpu"}})
     assert sup.diarization_engine == "cpu" and sup.pick(sup.workers) is sup.workers[0]
+
+
+def test_mac_worker_never_waits_for_free_memory():
+    # Apple silicon: unified memory shared with the system; jobs are claimed without a check.
+    sup = Supervisor(replace(multi_gpu_cfg(["0"]), asr_backend="transformers", device="mps"))
+    assert sup.query is None and sup.pick(sup.workers) is sup.workers[0]

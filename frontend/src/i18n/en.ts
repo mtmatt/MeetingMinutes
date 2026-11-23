@@ -484,6 +484,7 @@ export const en = {
     codexPaused: "Summaries are paused for safety: Codex tools cannot be verified as disabled.",
     staleWorkersHidden: "{n} more workers have not connected for over a day and are not listed.",
     codexViaChatgpt: "signed in with a ChatGPT account",
+    unifiedMemory: "{gb} GB unified memory (shared with the system; not checked)",
     vramOthers: "used by other programs",
     diarizationNeedsToken: "Needs a Hugging Face token and the model's conditions accepted.",
     diarizationMissingPackage: "pyannote.audio is not installed.",
