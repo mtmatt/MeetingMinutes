@@ -21,6 +21,7 @@ import random
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from typing import Callable, List, Optional, Tuple
@@ -28,6 +29,7 @@ from typing import Callable, List, Optional, Tuple
 import numpy as np
 
 from .audio import ffmpeg_bin
+from .client import is_loopback_host
 
 log = logging.getLogger("mm_worker.cloud_diarize")
 
@@ -74,6 +76,18 @@ def _message(body: str) -> str:
             if isinstance(value, dict) and isinstance(value.get("message"), str):
                 return value["message"][:300]
     return body.strip()[:300]
+
+
+def _safe_upload_url(url: str) -> bool:
+    """HTTPS, or plain HTTP to this machine only (a stand-in service in tests)."""
+    try:
+        parts = urllib.parse.urlsplit(url)
+        host = (parts.hostname or "").lower()
+    except ValueError:
+        return False
+    if parts.scheme == "https":
+        return bool(host)
+    return parts.scheme == "http" and is_loopback_host(host)
 
 
 class PyannoteAIDiarizer:
@@ -181,8 +195,9 @@ class PyannoteAIDiarizer:
         report(0.05)
         media = f"media://meetingminutes/{uuid.uuid4().hex}.ogg"
         upload = self._api("POST", "/media/input", {"url": media}, "upload request").get("url")
-        if not isinstance(upload, str) or not upload.startswith("http"):
-            raise CloudDiarizationError("pyannoteAI did not return an upload address.", retryable=True)
+        if not isinstance(upload, str) or not _safe_upload_url(upload):
+            # The whole recording goes there: never over plain HTTP across a network.
+            raise CloudDiarizationError("pyannoteAI did not return an https upload address.", retryable=True)
         self._call("PUT", upload, audio, {"Content-Type": "audio/ogg"}, "upload")
         report(0.15)
 

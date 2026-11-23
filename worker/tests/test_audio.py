@@ -93,3 +93,27 @@ def test_crafted_playlists_cannot_reach_other_files_or_the_network(tmp_path):
         (tmp_path / name).write_text(body)
         with pytest.raises(audio.MediaError):
             audio.decode_pcm(str(tmp_path / name))
+
+
+def test_decoding_holds_the_audio_in_memory_once(tmp_path):
+    """A long recording is hundreds of megabytes decoded; it must not be held three times over while it is read."""
+    import subprocess
+    import tracemalloc
+
+    src = tmp_path / "long.mp3"
+    subprocess.run(
+        [audio.ffmpeg_bin(), "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=300:duration=600", "-ac", "1", "-b:a", "32k", str(src)],
+        check=True,
+    )
+    tracemalloc.start()
+    try:
+        wav = audio.decode_pcm(str(src), duration=600.0)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert abs(len(wav) / audio.SAMPLE_RATE - 600.0) < 1.0
+    # The array itself, the buffer's spare room as it grows, and one chunk being read.
+    assert peak < 1.5 * wav.nbytes, f"peak {peak / 1e6:.0f} MB for {wav.nbytes / 1e6:.0f} MB of audio"
+    # The pipeline's steps work on it as on any array (some write to it).
+    assert wav.flags.writeable and wav.dtype == np.float32
+    wav[:10] = 0.0

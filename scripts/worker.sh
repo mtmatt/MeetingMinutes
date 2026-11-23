@@ -9,8 +9,16 @@
 #
 # Idle workers hold no GPU memory: models are loaded in a child process only
 # while jobs are being processed.
+#
+# The worker runs at low CPU priority (nice 10), so the web server on the same
+# machine stays responsive while a recording is decoded or its speakers are
+# separated on the CPU. WORKER_NICE (the environment, or .env) changes the
+# niceness; 0 runs it without nice.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if [ "$(id -u)" = 0 ]; then
+  echo "warning: the worker is running as root; a dedicated user is safer (README, \"Running as a normal user\": scripts/setup-user.sh)" >&2
+fi
 # .env holds secrets (worker token, HF token): readable by this user only.
 # (find -perm /077 is GNU; on macOS the test is skipped and chmod is simply applied.)
 if [ -f .env ] && [ -n "$(find .env -perm /077 2>/dev/null)" ]; then
@@ -30,6 +38,18 @@ if [ -z "$GPUS" ]; then
   GPUS=${GPUS:-0}
 fi
 
+NICENESS=$(grep -E '^WORKER_NICE=' .env 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '"'"'"' \r' || true)
+NICENESS=${WORKER_NICE:-${NICENESS:-10}}
+case "$NICENESS" in
+  0) NICE=() ;;
+  [1-9] | 1[0-9]) NICE=(nice -n "$NICENESS") ;;
+  *) echo "WORKER_NICE must be a number from 0 (no nice) to 19 (lowest priority), got \"$NICENESS\"" >&2; exit 2 ;;
+esac
+if [ ${#NICE[@]} -gt 0 ] && ! command -v nice >/dev/null 2>&1; then
+  echo "warning: nice not found; running the worker at normal priority" >&2
+  NICE=()
+fi
+
 cd "$ROOT/worker"
 # GPU numbers are nvidia-smi's, so CUDA has to count GPUs the same way.
 export CUDA_DEVICE_ORDER=${CUDA_DEVICE_ORDER:-PCI_BUS_ID}
@@ -44,10 +64,11 @@ else
 fi
 if [ "${1:-run}" != "run" ]; then
   export CUDA_VISIBLE_DEVICES=${GPUS%%,*}
-  exec "${PY[@]}" -m mm_worker "$@"
+  exec ${NICE[@]+"${NICE[@]}"} "${PY[@]}" -m mm_worker "$@"
 fi
 
 # One process for all of them: before each GPU session it picks the GPU with the
 # most free memory (MIN_FREE_VRAM_GB), and each GPU still appears as its own worker.
-echo "starting worker on GPUs $GPUS"
-WORKER_GPUS=$(echo "$GPUS" | tr -d ' ') exec "${PY[@]}" -m mm_worker run
+echo "starting worker on GPUs $GPUS${NICE[*]+ (${NICE[*]})}"
+# ${NICE[@]+…}: bash 3.2 (macOS) treats an empty array as unset under `set -u`.
+WORKER_GPUS=$(echo "$GPUS" | tr -d ' ') exec ${NICE[@]+"${NICE[@]}"} "${PY[@]}" -m mm_worker run

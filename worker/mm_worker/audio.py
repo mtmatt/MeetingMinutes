@@ -110,7 +110,9 @@ def decode_pcm(
     ]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     assert proc.stdout is not None
-    chunks: list[bytes] = []
+    # One growing buffer that becomes the array: an hour of audio is 230 MB as
+    # float32, and a list of chunks joined and then copied held three times that.
+    data = bytearray()
     total = 0
     expected = int((duration or 0) * SAMPLE_RATE * 4)
     limit = int(max_seconds * SAMPLE_RATE * 4) if max_seconds else None
@@ -118,7 +120,7 @@ def decode_pcm(
         buf = proc.stdout.read(1 << 22)
         if not buf:
             break
-        chunks.append(buf)
+        data += buf
         total += len(buf)
         if limit is not None and total > limit:
             proc.kill()
@@ -130,9 +132,8 @@ def decode_pcm(
     code = proc.wait()
     if code != 0 or total == 0:
         raise MediaError(f"Could not decode audio: {stderr.strip()[-500:] or 'no audio stream'}")
-    data = b"".join(chunks)
-    usable = len(data) - (len(data) % 4)
-    return np.frombuffer(data[:usable], dtype=np.float32).copy()
+    # A view of the buffer (writable, as a bytearray is), not a copy of it.
+    return np.frombuffer(data, dtype=np.float32, count=len(data) // 4)
 
 
 def write_playback(src: str, dest: Path, bitrate: str = "64k") -> bool:

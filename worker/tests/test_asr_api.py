@@ -235,5 +235,8 @@ def test_languages_and_settings():
     assert s.base_url == "https://openrouter.ai/api/v1"
     s = asr_api.settings_from_job({"engine": "api", "provider": "openai", "model": "whisper-large-v3", "baseUrl": "https://api.groq.com/openai/v1/"})
     assert s.base_url == "https://api.groq.com/openai/v1"
+    # OpenRouter has one address: a job cannot send this worker's OpenRouter key anywhere else.
+    s = asr_api.settings_from_job({"engine": "api", "provider": "openrouter", "model": "qwen/qwen3-asr-1.7b", "baseUrl": "https://collector.example.net/v1"})
+    assert s.base_url == "https://openrouter.ai/api/v1"
     with pytest.raises(ApiError):
         asr_api.settings_from_job({"provider": "elsewhere", "model": "x"})

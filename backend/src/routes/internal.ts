@@ -26,7 +26,7 @@ import {
 import { effectiveSettings, profileIdFor } from "../services/workerProfiles";
 import { enrollWorker, workerIdBelongs } from "../services/workerKeys";
 import type { AppEnv, JobKind } from "../types";
-import { body } from "./validate";
+import { SMALL_JSON_LIMIT_BYTES, body } from "./validate";
 
 /**
  * API used by workers: on this machine with the shared WORKER_TOKEN, or on
@@ -39,6 +39,13 @@ internalRoutes.use(async (c, next) => (c.req.path === "/internal/enroll" ? next(
 
 const workerId = z.string().min(1).max(128);
 
+/**
+ * A finished job's result (a long meeting's transcript, voice fingerprints) is
+ * the one large message a worker sends: as much as the server accepts in one
+ * request. Everything else a worker says is a few short fields.
+ */
+const RESULT_LIMIT_BYTES = 64 * 1024 * 1024;
+
 /** A remote worker acts only under its own key's worker IDs. */
 function own(c: Context<AppEnv>, id: string) {
   const w = c.get("worker");
@@ -49,7 +56,7 @@ internalRoutes.post("/enroll", async (c) => {
   const ip = clientIp(c);
   const retry = tokenLimiter.check(ip);
   if (retry) httpError(429, `Too many attempts. Try again in ${retry}s.`, "rate_limited");
-  const input = await body(c, z.object({ code: z.string().trim().min(1).max(200) }));
+  const input = await body(c, z.object({ code: z.string().trim().min(1).max(200) }), SMALL_JSON_LIMIT_BYTES);
   const enrolled = enrollWorker(input.code, ip);
   if (!enrolled) {
     tokenLimiter.hit(ip);
@@ -76,7 +83,12 @@ function seen(id: string, name?: string, info?: unknown) {
 }
 
 internalRoutes.post("/worker/heartbeat", async (c) => {
-  const input = await body(c, z.object({ workerId, name: z.string().max(128).optional(), info: z.record(z.string(), z.unknown()).optional() }));
+  // `info` is kept and shown on the admin page: a few lines about the machine, never megabytes.
+  const input = await body(
+    c,
+    z.object({ workerId, name: z.string().max(128).optional(), info: z.record(z.string(), z.unknown()).optional() }),
+    SMALL_JSON_LIMIT_BYTES,
+  );
   own(c, input.workerId);
   seen(input.workerId, input.name, input.info);
   // Where transcription runs (for this machine) decides how much free GPU memory a worker waits for before claiming.
@@ -100,6 +112,7 @@ internalRoutes.post("/jobs/claim", async (c) => {
         })
         .optional(),
     }),
+    SMALL_JSON_LIMIT_BYTES,
   );
   own(c, input.workerId);
   seen(input.workerId);
@@ -133,7 +146,8 @@ internalRoutes.put("/jobs/:id/files/:name", async (c) => {
   const id = workerId.parse(c.req.query("workerId") ?? "");
   own(c, id);
   const name = c.req.param("name") as IncomingName;
-  if (!(name in INCOMING_FILES)) httpError(404, "Unknown file.", "not_found");
+  // Own names only: `in` would also accept "constructor" or "toString", which have no size limit.
+  if (!Object.hasOwn(INCOMING_FILES, name)) httpError(404, "Unknown file.", "not_found");
   const job = getRunningJob(c.req.param("id"), id);
   if (!job || job.kind !== "transcribe") httpError(409, "This job is not yours, or no longer running.", "not_running");
   const offset = Number(c.req.query("offset"));
@@ -146,7 +160,7 @@ internalRoutes.put("/jobs/:id/files/:name", async (c) => {
 });
 
 internalRoutes.post("/jobs/:id/progress", async (c) => {
-  const input = await body(c, z.object({ workerId, stage: z.string().max(64), progress: z.number().min(0).max(1) }));
+  const input = await body(c, z.object({ workerId, stage: z.string().max(64), progress: z.number().min(0).max(1) }), SMALL_JSON_LIMIT_BYTES);
   own(c, input.workerId);
   seen(input.workerId);
   const ok = reportProgress(c.req.param("id"), input.workerId, input.stage, input.progress);
@@ -201,20 +215,20 @@ internalRoutes.post("/jobs/:id/complete", async (c) => {
   // The result is validated as what the job is, so a malformed result gets the real error (422).
   const job = db.query<{ kind: JobKind }, { id: string }>("SELECT kind FROM jobs WHERE id = $id").get({ id });
   if (job?.kind === "compact") {
-    const input = await body(c, z.object({ workerId, result: z.object({ durationSec: z.number().nonnegative() }) }));
+    const input = await body(c, z.object({ workerId, result: z.object({ durationSec: z.number().nonnegative() }) }), SMALL_JSON_LIMIT_BYTES);
     own(c, input.workerId);
     seen(input.workerId);
     const ok = completeCompactJob(id, input.workerId, input.result);
     return c.json({ accepted: ok }, ok ? 200 : 409);
   }
   if (job?.kind === "voiceprint") {
-    const input = await body(c, z.object({ workerId, result: voiceprintSchema }));
+    const input = await body(c, z.object({ workerId, result: voiceprintSchema }), RESULT_LIMIT_BYTES);
     own(c, input.workerId);
     seen(input.workerId);
     const ok = completeVoiceprintJob(id, input.workerId, input.result);
     return c.json({ accepted: ok }, ok ? 200 : 409);
   }
-  const input = await body(c, z.object({ workerId, result: resultSchema }));
+  const input = await body(c, z.object({ workerId, result: resultSchema }), RESULT_LIMIT_BYTES);
   own(c, input.workerId);
   seen(input.workerId);
   const ok = completeJob(id, input.workerId, input.result);
@@ -222,7 +236,7 @@ internalRoutes.post("/jobs/:id/complete", async (c) => {
 });
 
 internalRoutes.post("/jobs/:id/fail", async (c) => {
-  const input = await body(c, z.object({ workerId, error: z.string().max(4000), retryable: z.boolean().default(false) }));
+  const input = await body(c, z.object({ workerId, error: z.string().max(4000), retryable: z.boolean().default(false) }), SMALL_JSON_LIMIT_BYTES);
   own(c, input.workerId);
   seen(input.workerId);
   const ok = failJob(c.req.param("id"), input.workerId, input.error, input.retryable);

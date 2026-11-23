@@ -9,6 +9,9 @@
 # (detach again with Ctrl-b d).
 set -euo pipefail
 
+if [ "$(id -u)" = 0 ]; then
+  echo "warning: starting MeetingMinutes as root; a dedicated user is safer (README, \"Running as a normal user\": scripts/setup-user.sh)" >&2
+fi
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 command -v tmux >/dev/null || { echo "tmux is required" >&2; exit 1; }
 

@@ -5,6 +5,9 @@
 # interface up to date before starting, so the browser never gets a stale UI.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if [ "$(id -u)" = 0 ]; then
+  echo "warning: the web server is running as root; a dedicated user is safer (README, \"Running as a normal user\": scripts/setup-user.sh)" >&2
+fi
 # .env holds secrets (worker token, HF token): readable by this user only.
 if [ -f .env ] && [ -n "$(find .env -perm /077 2>/dev/null)" ]; then
   chmod go-rwx .env && echo "==> Restricted .env to this user (it holds secrets)"

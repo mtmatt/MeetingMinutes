@@ -257,3 +257,25 @@ def test_real_voice_model_tells_tones_apart(two_speaker_wav):
     assert v.shape == (4, 512) and np.isnan(v[3]).all()
     a, b, c = (x / np.linalg.norm(x) for x in v[:3])
     assert float(a @ c) > float(a @ b)
+
+
+def test_the_recording_is_never_uploaded_over_plain_http():
+    """The upload address comes from the service; one that is not https (or this machine) is refused before anything is sent."""
+    import io
+
+    from mm_worker.cloud_diarize import _safe_upload_url
+
+    assert _safe_upload_url("https://storage.example.com/bucket/key?signature=abc")
+    assert _safe_upload_url("http://127.0.0.1:9000/upload/key")
+    for bad in ("http://storage.example.com/upload/key", "httpx://storage.example.com/x", "ftp://storage.example.com/x", "https:///nohost", "http://127.0.0.1.example.com/x"):
+        assert not _safe_upload_url(bad), bad
+
+    sent = []
+
+    def opener(req, timeout=None):
+        sent.append((req.get_method(), req.full_url))
+        return io.BytesIO(json.dumps({"url": "http://storage.example.com/upload/key"}).encode())
+
+    with pytest.raises(CloudDiarizationError, match="https upload address"):
+        PyannoteAIDiarizer("pk-test", FakeEmbedder(), api_url="https://api.pyannote.ai/v1", opener=opener, sleep=lambda s: None).run(speech(2.0), 16000)
+    assert sent == [("POST", "https://api.pyannote.ai/v1/media/input")]

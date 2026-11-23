@@ -322,6 +322,34 @@ Two more steps keep the IP address from revealing the site:
 - **Use a certificate for the name only.** With Option A, issue the certificate for the domain, not the IP (`scripts/make-cert.sh minutes.example.com`, or better a public certificate as described above). Then anyone opening the IP also gets a certificate warning.
 - **Know what this does not do.** The check keeps out casual and automated visitors, but it is not access control. The domain name is in the certificate the server presents, and in public certificate-transparency logs. Anyone who knows the name can send it while connecting to the IP. The sign-in is what protects the data. To limit who can connect at all, allow only your networks in the machine's firewall, or put the site behind a VPN.
 
+### Running as a normal user
+
+Nothing here needs root: the site listens on a port above 1024 (8443 in the examples, and 8788 on loopback for the workers on the same machine), so no capabilities, `setcap` or `authbind` are involved. Run it as a user of its own. The web server parses requests from the internet and the worker decodes uploaded files with ffmpeg; as root, a flaw in either is a flaw in the whole machine, while a dedicated user reaches only this project and its data. `scripts/start.sh`, `scripts/worker.sh` and `scripts/restart.sh` print a warning when they are run as root (and still run).
+
+On a server that was set up as root, `scripts/setup-user.sh` makes the change. Run it once, as root:
+
+```bash
+sudo scripts/setup-user.sh              # creates the system user "minutes"
+sudo scripts/setup-user.sh meetings     # or another name (also MM_USER=meetings)
+sudo scripts/setup-user.sh --dry-run    # only show what would be done
+```
+
+It creates the user if it does not exist (with a home directory and no password), gives it the project directory and the data directory, keeps the data directory at mode `700` and `.env` at `600`, and prints the steps below with your paths filled in. It deletes nothing and stops nothing, and it is safe to run again, for instance after an update done as root left files owned by root. A project under `/root` cannot be reached by another user: the script says so and changes nothing, and you move the project first (for example to `/opt/MeetingMinutes`).
+
+Afterwards, as root:
+
+1. Stop the services that still run as root: `tmux kill-session -t mm-web; tmux kill-session -t mm-worker`.
+2. Run `sudo -u minutes -H scripts/install.sh` once more, with the options you used before (`--no-gpu` for a server without a GPU). Bun and uv are installed in the home directory of whoever ran it, and the worker's Python environment points there. Things kept in root's home directory do not move: the Codex login (`bun run codex:login` again as the new user), Ollama and its models, and Hugging Face downloads. Recordings, the database, the worker's CPU models and its enrollment are in the data directory and stay as they are.
+3. Start the services as that user: `sudo -u minutes -H scripts/restart.sh`. Look at them with `sudo -u minutes -H tmux attach -t mm-web` (or `mm-worker`).
+4. Start them at boot, one of:
+   - cron: `crontab -u minutes -e`, with the line `@reboot /opt/MeetingMinutes/scripts/restart.sh`;
+   - systemd system units with `User=minutes`: the script prints one for the web server (`ExecStart=…/scripts/start.sh`) and says what differs for the worker. The units in `deploy/systemd/` are user units for an ordinary login account (`systemctl --user`), which is the other way to do it.
+
+   Use tmux or systemd, not both.
+5. Update as that user from now on: `sudo -u minutes -H git -C /opt/MeetingMinutes pull`, then `sudo -u minutes -H scripts/restart.sh`.
+
+**Certificate renewal.** `scripts/install-cert.sh` gives acme.sh a reload command (`scripts/restart.sh web`), and acme.sh renews from the crontab of the account it was installed for. If that was root, renewals would write `data/tls` as root, in files the new user cannot read, and restart the web server as root. Move it: as the new user, install acme.sh, issue the certificate again and run `scripts/install-cert.sh <domain>`; then, as root, `~/.acme.sh/acme.sh --remove -d <domain>`. Whichever account runs acme.sh must be able to write `data/tls`.
+
 ## Workers on other machines (NVIDIA, Mac)
 
 GPUs elsewhere (a workstation with an NVIDIA card, a Mac with Apple silicon) can transcribe for the server **without being reachable from anywhere**: a worker only ever connects out to the site over HTTPS, asks for work, downloads that one recording, and sends back the transcript. Nothing connects to it, so it can sit behind NAT or a firewall with no open port.
@@ -400,11 +428,12 @@ All settings are environment variables. Put them in `.env` at the repository roo
 | `TLS_CERT_FILE` / `TLS_KEY_FILE`                    | empty                                  | Serve HTTPS directly (see "Option A").                                                                                                                                                                                                                                                                                             |
 | `INTERNAL_PORT`                                     | `8788`                                 | Loopback-only worker API port, used when `TLS_CERT_FILE` is set.                                                                                                                                                                                                                                                                   |
 | `MAX_UPLOAD_MB` / `UPLOAD_CHUNK_MB`                 | `4096` / `32`                          | Largest accepted file, and the size of each upload request. The upload page shows `MAX_UPLOAD_MB` and rejects larger files before sending. A reverse proxy must allow request bodies larger than `UPLOAD_CHUNK_MB` (for example nginx `client_max_body_size 64m`); otherwise users see "the server refused the upload (HTTP 413)". |
-| `MAX_AUDIO_HOURS`                                   | `8`                                    | Longest recording a worker decodes. Longer (or crafted) files fail with a clear message instead of exhausting memory.                                                                                                                                                                                                              |
+| `MAX_AUDIO_HOURS`                                   | `8`                                    | Longest recording a worker decodes. Longer (or crafted) files fail with a clear message instead of exhausting memory. The decoded audio is held in memory, about 230 MB per hour of recording, so on a server with little memory set this to what fits.                                                                                                                                                                                                              |
 | `HF_TOKEN`                                          | –                                      | Enables speaker diarization (and with it, recognising speakers by voice).                                                                                                                                                                                                                                                          |
 | `VOICE_MATCH_THRESHOLD` / `VOICE_SUGGEST_THRESHOLD` | `0.6` / `0.45`                         | Voice similarity at which a speaker is named after a known voice, or only suggested.                                                                                                                                                                                                                                               |
 | `ASR_MODEL` / `ASR_BACKEND`                         | `Qwen/Qwen3-ASR-1.7B` / `transformers` | Recognition model and engine (`vllm` for speed).                                                                                                                                                                                                                                                                                   |
 | `WORKER_GPUS`                                       | all                                    | GPUs to run workers on, as `nvidia-smi` numbers them, e.g. `0,1`.                                                                                                                                                                                                                                                                  |
+| `WORKER_NICE`                                       | `10`                                   | CPU priority of the worker: `scripts/worker.sh` runs it under `nice -n 10`, so the web server on the same machine stays responsive while a recording is decoded or its speakers are separated on the CPU. `19` is the lowest priority; `0` runs it without `nice`.                                                           |
 | `MIN_FREE_VRAM_GB`                                  | `8`                                    | Free GPU memory a GPU needs before a GPU session starts on it. Raise it if sessions run out of memory with a larger `ASR_BATCH_SIZE`.                                                                                                                                                                                              |
 | `MEDIA_COMPACT` / `MEDIA_COMPACT_AFTER_DAYS` / `MEDIA_COMPACT_KBPS` | `false` / `7` / `32` | Replace originals with mono Opus audio this many days after transcription, dropping any video (see Operations, "Disk space"). The first two are defaults: Admin → System overrides them. |
 | `ASR_ENGINE` / `ASR_API_PROVIDER` / `ASR_API_MODEL` | `local` / `openrouter` / `qwen/qwen3-asr-1.7b` | Where speech is recognised: `local` (the GPU) or `api`, and with `api` the service (`openrouter` or `openai`) and model. Defaults: Admin → Transcription overrides them. `ASR_API_BASE_URL` is the address of an OpenAI-compatible server (empty: OpenAI). |
@@ -489,11 +518,12 @@ What this changes, and what it does not:
 - **Summary model settings**: only administrators can see or change them. The server address must be `http(s)://` without credentials, and model names are checked before they reach a command line or a request. People starting a summary are told where it goes: on this server, to the model server's host, or to OpenAI.
 - **Files on disk**: the server and worker create everything with mode `0600`/`0700` (`umask 077`), and the data directory is restricted to its owner at every start. The scripts make `.env` readable by its owner only.
 - **Headers**: a strict Content-Security-Policy (no third-party origins, except Google's sign-in and Drive when Google Docs export is set up; fonts are self-hosted), `frame-ancestors 'none'`, HSTS over HTTPS, and a Permissions-Policy that allows only the microphone and tab capture (for recording) and only on this site.
-- **Workers** on this machine authenticate with a shared bearer token (`WORKER_TOKEN` or `data/worker.token`), compared in constant time; with built-in HTTPS they use a loopback-only port (`INTERNAL_PORT`). Workers on other machines each have their own revocable token from a single-use, hour-long enrollment code (stored as a hash, rate-limited), and may only download the recording of a job they are running (see "Workers on other machines").
+- **Request sizes**: JSON bodies are limited before they are parsed: 64 KB for requests anyone can send (signing in, setup, accepting an invitation, enrolling a worker) and for the workers' status messages, 4 MB for a signed-in person. Only upload chunks (`UPLOAD_CHUNK_MB`) and a worker's finished result may be larger, and both require a session or a worker token first.
+- **Workers** on this machine authenticate with a shared bearer token (`WORKER_TOKEN` or `data/worker.token`), compared in constant time; with built-in HTTPS they use a loopback-only port (`INTERNAL_PORT`). Workers on other machines each have their own revocable token from a single-use, hour-long enrollment code (stored as a hash, rate-limited), and may only download the recording of a job they are running (see "Workers on other machines"). Such a worker in turn trusts the server only as far as its jobs go: it connects over HTTPS only (plain HTTP is accepted for loopback addresses alone), uploads nothing but the playback copy and waveform it made, and sends its OpenRouter key to OpenRouter's own address whatever a job says.
 
 Recommended for a deployment:
 
-- Run the server and worker as a dedicated OS user that owns only this checkout, the data directory, and its Codex login; nothing else of value should be readable by that user.
+- Run the server and worker as a dedicated OS user that owns only this checkout, the data directory, and its Codex login; nothing else of value should be readable by that user. `scripts/setup-user.sh` sets one up on a server that was installed as root (see "Running as a normal user").
 - Open only the HTTPS port in the firewall (not 11434: Ollama is for this machine only). Keep `TRUST_PROXY=false` unless a reverse proxy is in front; with built-in HTTPS, trusting `X-Forwarded-For` would let clients choose the address used for sign-in rate limits (the server warns about this at startup).
 - Dependencies: `bun audit` is clean. `pip-audit` on the worker reports advisories in `transformers`, `accelerate`, `torch`, and `vllm`. They concern loading untrusted model checkpoints, the vLLM HTTP server, or local attackers, none of which this worker does or exposes: it loads only the configured Hugging Face models, and vLLM (optional) is used in-process. Upgrade when `qwen-asr` allows newer pins.
 
@@ -521,7 +551,7 @@ Project layout:
 backend/   Bun + Hono API, SQLite schema/migrations, Codex runner, local model client, job queue, SSE
 frontend/  React app: pages/, components/, i18n/ (en, zh-TW), styles/ (design tokens)
 worker/    mm_worker: supervisor, GPU session, audio (ffmpeg), segmenter, ASR, diarization, voice fingerprints
-scripts/   install.sh, start.sh, worker.sh, llm.sh (summary model), codex-login.sh
+scripts/   install.sh, start.sh, worker.sh, restart.sh, setup-user.sh, llm.sh (summary model), codex-login.sh
 deploy/    Caddyfile, nginx.conf, systemd user units
 ```
 
