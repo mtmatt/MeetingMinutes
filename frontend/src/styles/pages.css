@@ -2525,6 +2525,9 @@
 }
 .worker-key-name {
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .worker-key-main .mono {
   font-size: var(--step--2);
@@ -2581,4 +2584,46 @@
 }
 .worker-unified {
   font-size: var(--step--2);
+}
+.worker-key-actions {
+  display: flex;
+  gap: 4px;
+}
+.worker-key-icon {
+  width: 15px;
+  height: 15px;
+  vertical-align: -2px;
+}
+.worker-profile-summary {
+  flex-basis: 100%;
+  font-size: var(--step--2);
+}
+.segmented.wrap {
+  flex-wrap: wrap;
+  height: auto;
+  border-radius: var(--radius-m);
+}
+.segmented.wrap button {
+  border-radius: var(--radius-s);
+}
+.profile-form {
+  display: grid;
+  gap: 16px;
+}
+.profile-form > p {
+  margin: 0;
+  font-size: var(--step--1);
+}
+.profile-fallback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.profile-fallback .input {
+  width: 90px;
+}
+.profile-form .field > label.switch {
+  justify-content: flex-start;
+  justify-self: start;
 }

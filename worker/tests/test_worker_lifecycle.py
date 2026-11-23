@@ -493,16 +493,20 @@ def test_capabilities_follow_what_is_installed(monkeypatch):
     from mm_worker import worker as worker_mod
 
     # The fake backend stands in for every model.
-    assert worker_mod.capabilities(cfg("http://unused")) == {"asr": ["local", "api"], "diarization": ["local", "cpu", "pyannoteai"]}
+    caps = worker_mod.capabilities(cfg("http://unused"))
+    assert caps["asr"] == ["local", "api"] and caps["diarization"] == ["local", "cpu", "pyannoteai"]
+    assert set(caps["keys"]) == {"openrouter", "openai", "pyannoteai"}
     # Without qwen-asr, pyannote or sherpa-onnx installed, only the APIs.
     real = replace(cfg("http://unused"), asr_backend="transformers")
     import importlib.util
 
     monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
-    assert worker_mod.capabilities(real) == {"asr": ["api"], "diarization": ["pyannoteai"]}
+    caps = worker_mod.capabilities(real)
+    assert caps["asr"] == ["api"] and caps["diarization"] == ["pyannoteai"]
     # Claims carry them, so the backend hands out only what this worker can do.
     sup = Supervisor(replace(real, device="cpu"))
-    assert sup.workers[0].client.capabilities == {"asr": ["api"], "diarization": ["pyannoteai"]}
+    sent = sup.workers[0].client.capabilities
+    assert sent["asr"] == ["api"] and sent["diarization"] == ["pyannoteai"] and "keys" in sent
 
 
 def test_everything_through_apis_needs_no_free_gpu_memory():

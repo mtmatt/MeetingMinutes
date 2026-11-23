@@ -148,6 +148,8 @@ export function currentVoiceModel(s: TranscriberSettings = transcriberSettings()
 export interface WorkerCapabilities {
   asr: string[];
   diarization: string[];
+  /** Which API keys the worker has; workers from before this do not say (assumed to have them). */
+  keys?: Partial<Record<AsrProvider | "pyannoteai", boolean>>;
 }
 
 const LEGACY_CAPABILITIES: WorkerCapabilities = { asr: ["local", "api"], diarization: ["local"] };
@@ -155,27 +157,11 @@ const LEGACY_CAPABILITIES: WorkerCapabilities = { asr: ["local", "api"], diariza
 /** Whether a worker can take transcriptions, and voiceprints, under the current settings. */
 export function canRun(caps: WorkerCapabilities | undefined, s: TranscriberSettings = transcriberSettings()) {
   const c = caps ?? LEGACY_CAPABILITIES;
-  const diarize = c.diarization.includes(s.diarization);
-  return { transcribe: diarize && c.asr.includes(s.engine), voiceprint: diarize };
-}
-
-/** What people uploading a recording are told about where it is transcribed. */
-export function publicTranscriberInfo(s: TranscriberSettings = transcriberSettings()): {
-  engine: AsrEngine;
-  /** Who separates speakers; with pyannoteAI the whole recording is uploaded there (local and cpu: nothing leaves). */
-  diarization: DiarizationEngine;
-  provider: AsrProvider | null;
-  model: string | null;
-  /** The recording stays on this machine: the local model, or an API server on this machine. */
-  onServer: boolean;
-  /** Host the speech is sent to (null when it stays on this machine). */
-  host: string | null;
-} {
-  const diarization = s.diarization;
-  if (s.engine === "local") return { engine: "local", diarization, provider: null, model: null, onServer: true, host: null };
-  const address = apiAddress(s.api);
-  const onServer = isLoopbackUrl(address);
-  return { engine: "api", diarization, provider: s.api.provider, model: s.api.model, onServer, host: onServer ? null : new URL(address).host };
+  // Without the key it would only fail: a worker that says it has none is not handed the job.
+  const hasKey = (name: AsrProvider | "pyannoteai") => !c.keys || c.keys[name] === true;
+  const diarize = c.diarization.includes(s.diarization) && (s.diarization !== "pyannoteai" || hasKey("pyannoteai"));
+  const asr = c.asr.includes(s.engine) && (s.engine !== "api" || hasKey(s.api.provider));
+  return { transcribe: diarize && asr, voiceprint: diarize };
 }
 
 export type ApiKeyName = AsrProvider | "pyannoteai";

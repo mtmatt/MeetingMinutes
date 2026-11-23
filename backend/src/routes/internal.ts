@@ -23,7 +23,7 @@ import {
   reportProgress,
   writeIncoming,
 } from "../services/meetings";
-import { transcriberSettings } from "../services/transcriberSettings";
+import { effectiveSettings, profileIdFor } from "../services/workerProfiles";
 import { enrollWorker, workerIdBelongs } from "../services/workerKeys";
 import type { AppEnv, JobKind } from "../types";
 import { body } from "./validate";
@@ -79,8 +79,8 @@ internalRoutes.post("/worker/heartbeat", async (c) => {
   const input = await body(c, z.object({ workerId, name: z.string().max(128).optional(), info: z.record(z.string(), z.unknown()).optional() }));
   own(c, input.workerId);
   seen(input.workerId, input.name, input.info);
-  // Where transcription runs decides how much free GPU memory a worker waits for before claiming.
-  const s = transcriberSettings();
+  // Where transcription runs (for this machine) decides how much free GPU memory a worker waits for before claiming.
+  const s = effectiveSettings(profileIdFor(c.get("worker").keyId));
   return c.json({ ok: true, transcriber: { engine: s.engine, diarization: s.diarization } });
 });
 
@@ -93,7 +93,11 @@ internalRoutes.post("/jobs/claim", async (c) => {
       kinds: z.array(z.string().max(32)).max(16).optional(),
       // What the worker can run; workers from before this send nothing (local models plus the transcription API).
       capabilities: z
-        .object({ asr: z.array(z.string().max(32)).max(8), diarization: z.array(z.string().max(32)).max(8) })
+        .object({
+          asr: z.array(z.string().max(32)).max(8),
+          diarization: z.array(z.string().max(32)).max(8),
+          keys: z.record(z.string().max(32), z.boolean()).optional(),
+        })
         .optional(),
     }),
   );
@@ -104,7 +108,7 @@ internalRoutes.post("/jobs/claim", async (c) => {
     // Compacting rewrites originals on this server's disk: workers here only.
     (k): k is JobKind => k === "transcribe" || k === "voiceprint" || (k === "compact" && !remote),
   );
-  const job = claimJob(input.workerId, kinds, input.capabilities);
+  const job = claimJob(input.workerId, kinds, input.capabilities, profileIdFor(c.get("worker").keyId));
   if (!job) return c.body(null, 204);
   // A remote worker gets addresses to download from and upload to, never paths on this server.
   return c.json({ job: remote ? remoteJobView(job) : job });

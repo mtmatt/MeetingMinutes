@@ -29,7 +29,7 @@ import { httpError } from "../lib/util";
 import { publicSummarizerInfo } from "../services/summarySettings";
 import { publicMediaPolicy } from "../services/mediaCompaction";
 import { hasExternalWorkers } from "../services/workerKeys";
-import { publicTranscriberInfo } from "../services/transcriberSettings";
+import { publicTranscriberInfo } from "../services/workerProfiles";
 import type { AppEnv, SessionRow } from "../types";
 import { body } from "./validate";
 

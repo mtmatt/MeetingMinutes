@@ -24,8 +24,8 @@ import {
   canRun,
   jobAsrSettings,
   jobDiarizationSettings,
-  transcriberSettings,
 } from "./transcriberSettings";
+import { LOCAL_PROFILE, effectiveSettings, fallbackDelaySec } from "./workerProfiles";
 
 export const SPEAKER_COLORS = 10;
 
@@ -357,21 +357,30 @@ export interface ClaimedJob {
  * voiceprints did not say, and run transcriptions only). Transcriptions go
  * first: people wait for those, while voiceprints work in the background.
  */
-export function claimJob(workerId: string, kinds: JobKind[] = ["transcribe"], capabilities?: WorkerCapabilities): ClaimedJob | null {
+export function claimJob(
+  workerId: string,
+  kinds: JobKind[] = ["transcribe"],
+  capabilities?: WorkerCapabilities,
+  profileId: string = LOCAL_PROFILE,
+): ClaimedJob | null {
   return db.transaction((): ClaimedJob | null => {
-    // A worker without the local models (no GPU packages) gets only what it can do under the current settings.
-    const settings = transcriberSettings();
+    // The settings of the machine asking (its own, or the site-wide ones), and only what it can do under them.
+    const settings = effectiveSettings(profileId);
     const can = canRun(capabilities, settings);
+    // A fallback machine leaves new work to the others for a while.
+    const before = now() - fallbackDelaySec(profileId) * 1000;
     const job = db
-      .query<JobRow, { t: number; v: number; c: number }>(
+      .query<JobRow, { t: number; v: number; c: number; before: number }>(
         `SELECT * FROM jobs WHERE status = 'queued'
-           AND ((kind = 'transcribe' AND $t) OR (kind = 'voiceprint' AND $v) OR (kind = 'compact' AND $c))
+           AND ((kind = 'transcribe' AND $t AND created_at <= $before) OR (kind = 'voiceprint' AND $v AND created_at <= $before)
+             OR (kind = 'compact' AND $c))
          ORDER BY kind = 'compact', kind = 'voiceprint', created_at ASC LIMIT 1`,
       )
       .get({
         t: kinds.includes("transcribe") && can.transcribe ? 1 : 0,
         v: kinds.includes("voiceprint") && can.voiceprint ? 1 : 0,
         c: kinds.includes("compact") ? 1 : 0,
+        before,
       });
     if (!job) return null;
     const t = now();

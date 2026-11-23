@@ -7,7 +7,7 @@ import { Client, adminClient, app, memberClient } from "./helpers";
 /** A call to the worker API with a given token (a remote worker's, or the shared one). */
 async function call(token: string, method: string, path: string, opts: { json?: unknown; body?: Uint8Array; headers?: Record<string, string> } = {}) {
   const headers: Record<string, string> = { authorization: `Bearer ${token}`, ...(opts.headers ?? {}) };
-  let body: BodyInit | undefined;
+  let body: string | Uint8Array | undefined;
   if (opts.json !== undefined) {
     headers["content-type"] = "application/json";
     body = JSON.stringify(opts.json);

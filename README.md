@@ -353,7 +353,11 @@ Platforms:
 | Mac (Apple silicon) | Qwen3-ASR on the GPU (`mps`) | pyannote on `mps` | Chosen automatically on an arm64 Mac (`MM_DEVICE=mps`). Operations the Apple GPU lacks fall back to the CPU (`PYTORCH_ENABLE_MPS_FALLBACK=1`). The model runs in bfloat16; if it fails on yours, try `ASR_DTYPE=float16` or `float32`. Unified memory is shared with the system, so no free-memory check is made. **Not yet tested on real hardware**: run `scripts/worker.sh check`, then transcribe one short recording. |
 | Any, without GPU packages | Transcription API | CPU (sherpa-onnx) or pyannoteAI | `scripts/install.sh --worker-only --no-gpu`. |
 
-Each worker reports what it can run, and the server hands it only work it can do under the current settings in Admin → Transcription.
+Each worker reports what it can run and which API keys it has, and the server hands it only work it can do: a worker without the key a setting needs is never handed that job (it would only fail).
+
+**Settings per machine.** Admin → Transcription is the site-wide default. In Admin → System → Workers on other machines, each machine (and "Workers on this server") has its own **Settings**: speech recognition (its GPU or the transcription API) and speaker separation (its GPU, its CPU or pyannoteAI), each either its own or the site-wide one. A typical setup: the Mac and the NVIDIA box on their own GPUs, the server through the API with CPU separation.
+
+**Fallback machines.** A machine marked as a fallback takes a recording only after it has waited a while (2 minutes by default) **while another worker is connected**; when every other worker is offline it takes work at once. With the server as a fallback, the GPU machines do the work while they are on, and the server picks it up when they are off. The upload page describes every path a recording may take ("depending on which worker takes it…") when machines are set differently.
 
 ## Recording meetings in the browser
 

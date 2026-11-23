@@ -91,16 +91,17 @@ describe("where transcription runs", () => {
     const member = await memberClient("asr-reader");
     await admin.del("/api/admin/transcriber");
     let state = (await (await member.get("/api/auth/state")).json()) as any;
-    expect(state.transcriber).toEqual({ engine: "local", diarization: "local", provider: null, model: null, onServer: true, host: null });
+    expect(state.transcriber).toMatchObject({ engine: "local", diarization: "local", provider: null, model: null, onServer: true, host: null, mixed: false });
     await admin.req("PUT", "/api/admin/transcriber", { json: openrouter() });
     state = (await (await member.get("/api/auth/state")).json()) as any;
-    expect(state.transcriber).toEqual({
+    expect(state.transcriber).toMatchObject({
       engine: "api",
       diarization: "local",
       provider: "openrouter",
       model: "qwen/qwen3-asr-1.7b",
       onServer: false,
       host: "openrouter.ai",
+      mixed: false,
     });
     // A transcription server on this machine (a vLLM serving Qwen3-ASR) keeps the recording here.
     await admin.req("PUT", "/api/admin/transcriber", { json: { engine: "api", api: { provider: "openai", baseUrl: "http://127.0.0.1:8000/v1", model: "Qwen/Qwen3-ASR-1.7B" } } });

@@ -19,7 +19,16 @@ import {
   saveMediaSettings,
 } from "../services/mediaCompaction";
 import { deleteMeeting, queueStats, requeueJobs } from "../services/meetings";
-import { ENROLL_TTL_MS, createWorkerKey, listWorkerKeys, revokeWorkerKey } from "../services/workerKeys";
+import { ENROLL_TTL_MS, createWorkerKey, getWorkerKey, listWorkerKeys, revokeWorkerKey } from "../services/workerKeys";
+import {
+  DEFAULT_FALLBACK_SEC,
+  LOCAL_PROFILE,
+  deleteWorkerProfile,
+  listWorkerProfiles,
+  publicTranscriberInfo,
+  saveWorkerProfile,
+  workerProfileSchema,
+} from "../services/workerProfiles";
 import { kick, summarizerStats } from "../services/summarizer";
 import { LlmError, localModelStatus, pullState, startPull } from "../services/llm";
 import {
@@ -36,7 +45,6 @@ import {
   OPENAI_BASE_URL,
   OPENROUTER_BASE_URL,
   defaultTranscriberSettings,
-  publicTranscriberInfo,
   resetTranscriberSettings,
   saveTranscriberSettings,
   transcriberSettings,
@@ -355,6 +363,21 @@ adminRoutes.post("/worker-keys", async (c) => {
 adminRoutes.delete("/worker-keys/:id", (c) => {
   const jobs = revokeWorkerKey(c.req.param("id"));
   if (jobs === null) httpError(404, "No such worker.", "not_found");
+  deleteWorkerProfile(c.req.param("id"));
   requeueJobs(jobs!, "The worker's access was revoked.");
   return c.json({ ok: true, requeued: jobs!.length });
+});
+
+// ------------------------------------------------------- settings per worker machine
+
+adminRoutes.get("/worker-profiles", (c) =>
+  c.json({ profiles: listWorkerProfiles(), local: LOCAL_PROFILE, defaultFallbackSec: DEFAULT_FALLBACK_SEC }),
+);
+
+/** A machine's own choices ("local" or a remote worker's ID); null fields follow the site-wide settings. */
+adminRoutes.put("/worker-profiles/:id", async (c) => {
+  const id = c.req.param("id");
+  if (id !== LOCAL_PROFILE && !getWorkerKey(id)) httpError(404, "No such worker.", "not_found");
+  const input = await body(c, workerProfileSchema);
+  return c.json({ profile: saveWorkerProfile(id, input, c.get("user").id) });
 });
