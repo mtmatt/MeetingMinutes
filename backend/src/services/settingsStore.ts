@@ -21,7 +21,8 @@ export function readSetting(key: string): string | null {
   return storedRow(key)?.value ?? null;
 }
 
-export function writeSetting(key: string, value: unknown, userId: string): void {
+/** `userId` null: changed by the server itself (e.g. a revoked worker's settings removed). */
+export function writeSetting(key: string, value: unknown, userId: string | null): void {
   db.query(
     `INSERT INTO settings (key, value, updated_at, updated_by) VALUES ($k, $v, $t, $u)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,

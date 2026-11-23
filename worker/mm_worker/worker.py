@@ -143,7 +143,8 @@ def capabilities(cfg: WorkerConfig) -> dict:
         + (["cpu"] if fake or installed("sherpa_onnx") else [])
         + ["pyannoteai"]
     )
-    return {"asr": asr, "diarization": diarization}
+    # With the keys it has, so the server never hands it work that needs a key it lacks.
+    return {"asr": asr, "diarization": diarization, "keys": api_keys()}
 
 
 def api_keys() -> dict:

@@ -56,8 +56,12 @@ export function DataFlowNote() {
             {t(
               asrApi
                 ? transcriber?.provider === "openrouter"
-                  ? "privacy.asrOpenRouter"
-                  : "privacy.asrApi"
+                  ? transcriber?.mixed
+                    ? "privacy.asrOpenRouterMixed"
+                    : "privacy.asrOpenRouter"
+                  : transcriber?.mixed
+                    ? "privacy.asrApiMixed"
+                    : "privacy.asrApi"
                 : externalWorkers
                   ? "privacy.asrWorkers"
                   : diarizeCloud
@@ -66,7 +70,7 @@ export function DataFlowNote() {
               vars,
             )}
           </li>
-          {diarizeCloud && <li>{t("privacy.diarizeCloud")}</li>}
+          {diarizeCloud && <li>{t(transcriber?.diarizationMixed ? "privacy.diarizeCloudMixed" : "privacy.diarizeCloud")}</li>}
           <li>{t(`privacy.summary${where}`, vars)}</li>
         </ul>
         <details>
@@ -74,6 +78,7 @@ export function DataFlowNote() {
           <p>{t("privacy.detailsBrowser")}</p>
           <p>{t(diarizeCloud ? "privacy.detailsDiarizeCloud" : "privacy.detailsDiarizeLocal")}</p>
           {externalWorkers && <p>{t("privacy.detailsWorkers")}</p>}
+          {(transcriber?.mixed || transcriber?.diarizationMixed) && <p>{t("privacy.detailsMixed")}</p>}
           <p>{t(asrApi ? (transcriber?.provider === "openrouter" ? "privacy.detailsAsrOpenRouter" : "privacy.detailsAsrApi") : "privacy.detailsAsr", vars)}</p>
           <p>{t(`privacy.detailsSummary${where}`, vars)}</p>
         </details>

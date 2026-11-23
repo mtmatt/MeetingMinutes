@@ -292,6 +292,10 @@ export interface TranscriberInfo {
   onServer: boolean;
   /** Host speech is sent to; null when it stays on this machine. */
   host: string | null;
+  /** Some machines recognise speech locally and some through the API (each worker has its own settings). */
+  mixed?: boolean;
+  /** Some machines separate speakers with pyannoteAI and some do not. */
+  diarizationMixed?: boolean;
 }
 
 export interface TranscriberSettings {
@@ -323,6 +327,14 @@ export interface TranscriberState {
   /** Environment variables a worker reads the key from, per provider. */
   keyVariables: Record<ApiKeyName, string[]>;
   addresses: Record<AsrProvider, string>;
+}
+
+/** A machine's own choices over the site-wide transcription settings; null follows them. */
+export interface WorkerProfile {
+  engine: AsrEngine | null;
+  diarization: DiarizationEngine | null;
+  /** Takes a job only after it has waited this long while another worker is online; null: not a fallback. */
+  fallbackSec: number | null;
 }
 
 /** A worker on another machine, as the admin page lists it (never its token). */

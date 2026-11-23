@@ -12,6 +12,7 @@ import type {
   SummarizerInfo,
   MediaPolicy,
   WorkerKey,
+  WorkerProfile,
   MediaState,
   TranscriberInfo,
   TranscriberSettings,
@@ -193,6 +194,9 @@ export const api = {
   adminWorkerKeys: () => get<{ keys: WorkerKey[]; enrollTtlMs: number }>("/admin/worker-keys"),
   adminCreateWorkerKey: (name: string) => post<{ id: string; name: string; code: string; expiresAt: number }>("/admin/worker-keys", { name }),
   adminRevokeWorkerKey: (id: string) => del<{ ok: true; requeued: number }>(`/admin/worker-keys/${encodeURIComponent(id)}`),
+  adminWorkerProfiles: () => get<{ profiles: Record<string, WorkerProfile>; local: string; defaultFallbackSec: number }>("/admin/worker-profiles"),
+  adminSaveWorkerProfile: (id: string, p: WorkerProfile) =>
+    request<{ profile: WorkerProfile }>("PUT", `/admin/worker-profiles/${encodeURIComponent(id)}`, p),
   /** Look at a model server with the form's values, before they are saved. */
   adminProbeModel: (b: Pick<LocalModelSettings, "api" | "baseUrl" | "model">) =>
     post<{ status: LocalModelStatus; pull: ModelPull | null }>("/admin/summarizer/probe", b),
