@@ -6,6 +6,8 @@
 #   scripts/worker.sh transcribe FILE [--language auto] [--no-diarize]
 #   scripts/worker.sh bench [FILE] [--threads 1,2,4]   time speaker separation on the CPU
 #   scripts/worker.sh enroll URL CODE   connect this machine to a server (code from Admin -> System)
+#   scripts/worker.sh compare-asr DIR [--models qwen,breeze25]   compare speech recognition models on
+#                               transcripts corrected on the site (DIR: bun run admin export-asr-eval DIR)
 #
 # Idle workers hold no GPU memory: models are loaded in a child process only
 # while jobs are being processed.

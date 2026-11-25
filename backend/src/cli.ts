@@ -6,6 +6,9 @@
  *   bun run admin list-users
  *   bun run admin setup-token                                print the first-run setup token
  *   bun run admin worker-token                               print the worker token
+ *   bun run admin export-asr-eval <dir> [meeting id …] [--min-edited N] [--playback]
+ *                                                            corrected segments and recordings, for comparing
+ *                                                            speech recognition models (scripts/worker.sh compare-asr)
  */
 import { config } from "./config";
 import {
@@ -18,6 +21,7 @@ import {
 } from "./auth/service";
 import { ensureSetupToken } from "./auth/setup";
 import { db } from "./db";
+import { exportAsrEval } from "./services/asrEval";
 
 async function readPassword(label: string): Promise<string> {
   if (process.env.MM_PASSWORD) return process.env.MM_PASSWORD;
@@ -81,8 +85,40 @@ switch (cmd) {
   case "worker-token":
     console.log(config.workerToken);
     break;
+  case "export-asr-eval": {
+    const usage = "Usage: export-asr-eval <dir> [meeting id …] [--min-edited N] [--playback]";
+    const flags = new Set(["--playback"]);
+    let minEdited: number | undefined;
+    const ids: string[] = [];
+    let dir: string | undefined;
+    for (let i = 0; i < args.length; i++) {
+      const a = args[i]!;
+      if (a === "--min-edited") {
+        minEdited = Number(args[++i]);
+        if (!Number.isInteger(minEdited) || minEdited < 1) fail(usage);
+      } else if (flags.has(a)) continue;
+      else if (a.startsWith("--")) fail(usage);
+      else if (!dir) dir = a;
+      else ids.push(a);
+    }
+    if (!dir) fail(usage);
+    let exported;
+    try {
+      exported = exportAsrEval(dir, { meetingIds: ids, minEdited, playback: args.includes("--playback") });
+    } catch (e) {
+      fail((e as Error).message);
+    }
+    if (!exported.length) {
+      fail(`No meeting has at least ${minEdited ?? 5} corrected segments. Correct some transcript lines on the site first, or name meetings, or lower --min-edited.`);
+    }
+    for (const m of exported) console.log(`${m.id}\t${m.edited} corrected of ${m.segments} segments\t${m.title}`);
+    const corrected = exported.reduce((n, m) => n + m.edited, 0);
+    console.log(`\nExported ${exported.length} meeting(s), ${corrected} corrected segments, to ${dir}.`);
+    console.log("Copy the folder to a GPU machine and run there:  scripts/worker.sh compare-asr <dir>");
+    break;
+  }
   default:
-    console.log(`Commands: create-admin, reset-password, list-users, setup-token, worker-token`);
+    console.log(`Commands: create-admin, reset-password, list-users, setup-token, worker-token, export-asr-eval`);
     process.exit(cmd ? 1 : 0);
 }
 process.exit(0);
