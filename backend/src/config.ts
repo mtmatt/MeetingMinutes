@@ -147,14 +147,20 @@ function googleClientId(): string {
   return id;
 }
 
-function resolveCodexBin(): string {
-  const explicit = process.env.CODEX_BIN;
-  if (explicit) return explicit;
-  const candidates = [
-    join(REPO_ROOT, "backend", "node_modules", ".bin", "codex"),
-    join(REPO_ROOT, "node_modules", ".bin", "codex"),
-  ];
-  return candidates.find((c) => existsSync(c)) ?? "codex";
+/**
+ * SUMMARY_PROVIDER: "local" (a model server set up on the admin page) or "api"
+ * (a hosted provider). "codex" was removed; it becomes "api" when a provider
+ * key is set, else "local".
+ */
+function summaryProvider(): "local" | "api" {
+  const v = str("SUMMARY_PROVIDER", "local").trim().toLowerCase();
+  if (v === "local" || v === "api") return v;
+  const hasKey = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"].some((k) => process.env[k]?.trim());
+  if (v === "codex") {
+    console.warn(`SUMMARY_PROVIDER=codex is no longer supported (Codex was removed); using ${hasKey ? "a hosted API" : "the local model"}. Set SUMMARY_PROVIDER=api or local.`);
+    return hasKey ? "api" : "local";
+  }
+  throw new Error(`SUMMARY_PROVIDER must be "local" or "api", got "${v}"`);
 }
 
 export const config = {
@@ -205,7 +211,15 @@ export const config = {
    * saved there takes precedence until it is reset.
    */
   summary: {
-    provider: oneOf("SUMMARY_PROVIDER", ["local", "codex"] as const, "local"),
+    provider: summaryProvider(),
+    /** A hosted model: the provider (its key from ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY or GEMINI_API_KEY) and model. */
+    apiProvider: oneOf("SUMMARY_API_PROVIDER", ["anthropic", "openai", "openrouter", "gemini"] as const, "anthropic"),
+    /** Empty: the provider's suggested model. */
+    apiModel: str("SUMMARY_API_MODEL", "").trim(),
+    /** Context to use when the provider does not report the model's (Anthropic does). */
+    apiContextTokens: Math.round(num("SUMMARY_API_CONTEXT_TOKENS", 128_000, 8192, 2_000_000)),
+    /** Summaries written at once with a hosted model. */
+    apiConcurrency: Math.max(1, int("SUMMARY_API_CONCURRENCY", 2)),
   },
   /**
    * Where speech is recognised. These are the defaults; an administrator can
@@ -263,46 +277,6 @@ export const config = {
     concurrency: Math.max(1, int("LLM_CONCURRENCY", 1)),
     /** Longest a whole summary may take, including every part of a long transcript. */
     timeoutSeconds: int("LLM_TIMEOUT_SEC", 3600),
-  },
-  codex: {
-    bin: resolveCodexBin(),
-    home: process.env.CODEX_HOME || undefined,
-    model: process.env.CODEX_MODEL || undefined,
-    reasoningEffort: process.env.CODEX_REASONING_EFFORT || undefined,
-    concurrency: Math.max(1, int("CODEX_CONCURRENCY", 1)),
-    timeoutSeconds: int("CODEX_TIMEOUT_SEC", 1200),
-    useUserConfig: bool("CODEX_USE_USER_CONFIG", false),
-    /** Codex features to turn off so the summarizer is a pure text-in/text-out model call. */
-    disableFeatures: str(
-      "CODEX_DISABLE_FEATURES",
-      [
-        "shell_tool",
-        "unified_exec",
-        "apps",
-        "browser_use",
-        "browser_use_external",
-        "computer_use",
-        "image_generation",
-        "multi_agent",
-        "multi_agent_v2",
-        "plugins",
-        "remote_plugin",
-        "memories",
-        "view_image",
-        "js_repl",
-        "code_mode",
-        "code_mode_host",
-        "hooks",
-        "skill_mcp_dependency_install",
-        "tool_suggest",
-        "workspace_dependencies",
-        "in_app_browser",
-        "realtime_conversation",
-      ].join(","),
-    )
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
   },
   isTest: process.env.NODE_ENV === "test",
 } as const;

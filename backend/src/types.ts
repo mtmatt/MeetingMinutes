@@ -129,7 +129,7 @@ export interface SegmentRow {
   edited: number;
 }
 
-export type SummaryProvider = "local" | "codex";
+export type SummaryProvider = "local" | "api";
 
 export type SummaryStatus = "queued" | "running" | "done" | "failed" | "canceled";
 
@@ -148,8 +148,8 @@ export interface SummaryRow {
   usage: string | null;
   /** JSON: speaker key → the name this summary uses; null until written. */
   speaker_names: string | null;
-  /** Which kind of model wrote it (set when it starts); null while queued. */
-  provider: SummaryProvider | null;
+  /** Which kind of model wrote it (set when it starts); null while queued. "codex": written before Codex was removed. */
+  provider: SummaryProvider | "codex" | null;
   created_at: number;
   started_at: number | null;
   finished_at: number | null;

@@ -251,8 +251,6 @@ export interface SystemInfo {
   };
   summaries: { running: number; queued: number; concurrency: number; provider: SummaryProvider };
   transcriber?: TranscriberInfo;
-  /** isolationError: summaries are paused because Codex tools cannot be verified as disabled. */
-  codex: { available: boolean; loggedIn: boolean; version: string | null; detail: string; isolationError?: string | null };
   disk: { freeBytes: number; totalBytes: number } | null;
   stats: { users: number; meetings: number; audioHours: number };
 }
@@ -264,15 +262,19 @@ export interface Peaks {
   peaks: number[];
 }
 
-export type SummaryProvider = "local" | "codex";
+export type SummaryProvider = "local" | "api";
+/** Hosted providers that can write summaries (each with a fixed address). */
+export type ApiProvider = "anthropic" | "openai" | "openrouter" | "gemini";
 
 /** Where summaries are written, as shown to everyone who starts one. */
 export interface SummarizerInfo {
   provider: SummaryProvider;
+  /** The hosted provider, for provider "api". */
+  vendor: ApiProvider | null;
   model: string | null;
   /** A local model on this machine: transcripts never leave the server. */
   onServer: boolean;
-  /** Host of a model server on another machine. */
+  /** Host the transcript is sent to: the provider's, or a model server's on another machine. */
   host: string | null;
 }
 
@@ -379,7 +381,6 @@ export interface MediaState {
 }
 
 export type LocalModelApi = "ollama" | "openai";
-export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface LocalModelSettings {
   api: LocalModelApi;
@@ -390,10 +391,34 @@ export interface LocalModelSettings {
   keepAliveSec: number;
 }
 
+export interface ApiModelSettings {
+  provider: ApiProvider;
+  model: string;
+  /** Context to use when the provider does not report the model's. */
+  contextTokens: number;
+}
+
 export interface SummarySettings {
   provider: SummaryProvider;
   local: LocalModelSettings;
-  codex: { model: string | null; reasoningEffort: ReasoningEffort | null };
+  api: ApiModelSettings;
+}
+
+export interface ApiProviderInfo {
+  label: string;
+  /** Environment variables that hold its key. */
+  keyVariables: string[];
+  host: string;
+  defaultModel: string;
+}
+
+/** A hosted model checked before saving: its limits, or what is wrong. */
+export interface ApiModelProbe {
+  ok: boolean;
+  keyConfigured: boolean;
+  contextLength?: number | null;
+  maxOutputTokens?: number | null;
+  error?: string;
 }
 
 export interface SummarizerState {
@@ -405,6 +430,9 @@ export interface SummarizerState {
   updatedBy: string | null;
   /** LLM_API_KEY is set in .env (the key itself never reaches the browser). */
   apiKeyConfigured: boolean;
+  /** Which hosted providers have a key in .env (never the keys). */
+  apiKeys: Record<ApiProvider, boolean>;
+  apiProviders: Record<ApiProvider, ApiProviderInfo>;
 }
 
 export interface LocalModelStatus {

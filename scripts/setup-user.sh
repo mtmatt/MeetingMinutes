@@ -92,7 +92,7 @@ if id -u "$NAME" >/dev/null 2>&1; then
   say "User $NAME exists"
 else
   say "Creating the system user $NAME"
-  # A home directory, because Bun, uv, acme.sh and the Codex login live in one;
+  # A home directory, because Bun, uv and acme.sh live in one;
   # no password, so nobody signs in as this user: root uses sudo -u or su.
   run useradd --system --create-home --user-group --shell /bin/bash "$NAME"
 fi
@@ -161,9 +161,8 @@ $HEAD
    of whoever ran scripts/install.sh, and the worker's Python environment
    points there, so run it once more as $NAME, with the options you used:
      $SUDO $PROJECT_DIR/scripts/install.sh [--no-gpu | --worker-only | …]
-   Not moved, because they are in root's home directory: the Codex login
-   (~/.codex; run "bun run codex:login" as $NAME), Ollama and its models,
-   and Hugging Face downloads. The worker's models in the data directory,
+   Not moved, because they are in root's home directory: Ollama and its
+   models, and Hugging Face downloads. The worker's models in the data directory,
    its enrollment and all recordings stay where they are.
 
 3. Start the services as $NAME:

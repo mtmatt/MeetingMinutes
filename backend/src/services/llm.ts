@@ -1,5 +1,23 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config";
+import { anthropicClient, PROVIDER_INFO, type ApiProvider } from "./summaryApis";
 import type { LocalModelSettings } from "./summarySettings";
+
+/**
+ * Where a summary is written: a model server set up on the admin page, or a
+ * hosted provider (with its fixed address and the key from the environment).
+ */
+export type ChatTarget = Omit<LocalModelSettings, "api"> & {
+  api: "ollama" | "openai" | "anthropic";
+  /** A hosted provider: its name in messages, its key, and how it wants the answer length. */
+  provider?: ApiProvider;
+  apiKey?: string;
+};
+
+/** "Anthropic", or "the local model server at http://…" in messages. */
+function who(s: ChatTarget): string {
+  return s.provider ? PROVIDER_INFO[s.provider].label : `the local model server at ${s.baseUrl}`;
+}
 
 /**
  * Client for a model served on this machine or the local network, through
@@ -49,7 +67,7 @@ export class LlmError extends Error {
 }
 
 /** Ollama says "model … not found" in JSON; any other 404 means this is not an Ollama server. */
-function notOllama(s: LocalModelSettings, detail: string): LlmError {
+function notOllama(s: ChatTarget, detail: string): LlmError {
   return new LlmError(
     `The server at ${s.baseUrl} does not answer like Ollama (${detail}). If it is an OpenAI-compatible API (vLLM, llama.cpp, NVIDIA, OpenRouter…), choose "OpenAI-compatible" as the server type in Admin → Summary model, with the address ending in /v1.`,
     404,
@@ -61,11 +79,14 @@ export interface ModelInfo {
   contextLength: number | null;
   /** Whether the model can think (Ollama's capability list); null if unknown. */
   thinking: boolean | null;
+  /** The longest answer the model can give, when the provider says. */
+  maxOutputTokens?: number | null;
 }
 
 const PROBE_TIMEOUT_MS = 8000;
 
-function apiKeyHeaders(s: LocalModelSettings): Record<string, string> {
+function apiKeyHeaders(s: ChatTarget): Record<string, string> {
+  if (s.apiKey) return { Authorization: `Bearer ${s.apiKey}` };
   return s.api === "openai" && config.llm.apiKey ? { Authorization: `Bearer ${config.llm.apiKey}` } : {};
 }
 
@@ -74,13 +95,12 @@ export function openaiUrl(baseUrl: string, path: string): string {
   return /\/v1$/.test(baseUrl) ? `${baseUrl}${path}` : `${baseUrl}/v1${path}`;
 }
 
-function unreachable(s: LocalModelSettings, e: unknown): LlmError {
+function unreachable(s: ChatTarget, e: unknown): LlmError {
   const how = s.api === "ollama" ? " Start it with `scripts/llm.sh serve`," : "";
   const code = (e as { code?: unknown } | null)?.code;
   const cause = typeof code === "string" ? ` (${code})` : e instanceof Error && e.message ? ` (${e.message})` : "";
-  return new LlmError(
-    `Cannot reach the local model server at ${s.baseUrl}${cause}.${how} or choose another server (or Codex) in Admin → Summary model.`,
-  );
+  if (s.provider) return new LlmError(`Cannot reach ${who(s)} (${new URL(s.baseUrl).host})${cause}. Check this server's internet connection.`);
+  return new LlmError(`Cannot reach the local model server at ${s.baseUrl}${cause}.${how} or choose another model in Admin → Summary model.`);
 }
 
 async function errorText(res: Response): Promise<string> {
@@ -95,7 +115,7 @@ async function errorText(res: Response): Promise<string> {
   return raw.trim().slice(0, 500) || `HTTP ${res.status}`;
 }
 
-async function post(s: LocalModelSettings, url: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+async function post(s: ChatTarget, url: string, body: unknown, signal?: AbortSignal): Promise<Response> {
   try {
     return await fetch(url, {
       method: "POST",
@@ -109,7 +129,7 @@ async function post(s: LocalModelSettings, url: string, body: unknown, signal?: 
   }
 }
 
-async function getJson<T>(s: LocalModelSettings, url: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+async function getJson<T>(s: ChatTarget, url: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   let res: Response;
   try {
     res = await fetch(url, {
@@ -143,16 +163,18 @@ async function* lines(res: Response): AsyncGenerator<string> {
   if (buf.trim()) yield buf.trim();
 }
 
-function modelMissing(s: LocalModelSettings, detail: string): LlmError {
+function modelMissing(s: ChatTarget, detail: string): LlmError {
   const fix =
     s.api === "ollama"
       ? `Download it in Admin → Summary model, or run \`scripts/llm.sh pull ${s.model}\` on the server.`
-      : "Check the model name in Admin → Summary model against the models the server lists.";
+      : s.provider
+        ? `Check the model name in Admin → Summary model against ${who(s)}'s model list.`
+        : "Check the model name in Admin → Summary model against the models the server lists.";
   const why = detail.trim().replace(/[.:]?$/, ".");
-  return new LlmError(`The model "${s.model}" is not available on ${s.baseUrl}: ${why} ${fix}`);
+  return new LlmError(`The model "${s.model}" is not available ${s.provider ? `from ${who(s)}` : `on ${s.baseUrl}`}: ${why} ${fix}`, 404);
 }
 
-async function chatOllama(s: LocalModelSettings, messages: ChatMessage[], o: ChatOptions): Promise<ChatResult> {
+async function chatOllama(s: ChatTarget, messages: ChatMessage[], o: ChatOptions): Promise<ChatResult> {
   const body: Record<string, unknown> = {
     model: s.model,
     messages,
@@ -168,7 +190,7 @@ async function chatOllama(s: LocalModelSettings, messages: ChatMessage[], o: Cha
     const detail = await errorText(res);
     throw /model/i.test(detail) ? modelMissing(s, detail) : notOllama(s, detail);
   }
-  if (!res.ok) throw new LlmError(`The local model server answered: ${await errorText(res)}`);
+  if (!res.ok) throw new LlmError(`${capital(who(s))} answered: ${await errorText(res)}`, res.status);
 
   let text = "";
   let reasoning = 0;
@@ -196,27 +218,28 @@ async function chatOllama(s: LocalModelSettings, messages: ChatMessage[], o: Cha
     }
   } catch (e) {
     if (o.signal?.aborted) throw new LlmError("Canceled.");
-    throw e instanceof LlmError ? e : new LlmError(`The connection to the local model server was lost: ${(e as Error).message}`);
+    throw e instanceof LlmError ? e : new LlmError(`The connection to ${who(s)} was lost: ${(e as Error).message}`);
   }
   return { text, model, promptTokens, outputTokens, truncated: doneReason === "length", ...reasoningOf(text, reasoning) };
 }
 
-async function chatOpenAI(s: LocalModelSettings, messages: ChatMessage[], o: ChatOptions): Promise<ChatResult> {
-  const body = {
+async function chatOpenAI(s: ChatTarget, messages: ChatMessage[], o: ChatOptions): Promise<ChatResult> {
+  const body: Record<string, unknown> = {
     model: s.model,
     messages,
     stream: true,
     stream_options: { include_usage: true },
-    max_tokens: o.maxTokens,
-    // vLLM, SGLang and llama.cpp pass this to the chat template: Qwen3 and
-    // other hybrid models think only when asked. Other servers ignore it.
-    // Templates name the switch differently: Qwen3 and GLM use enable_thinking,
-    // DeepSeek and some NVIDIA-hosted models use thinking. Unused keys are ignored.
-    chat_template_kwargs: { enable_thinking: s.think, thinking: s.think },
   };
+  body[s.provider ? PROVIDER_INFO[s.provider].tokenParam : "max_tokens"] = o.maxTokens;
+  // vLLM, SGLang and llama.cpp pass this to the chat template: Qwen3 and
+  // other hybrid models think only when asked. Other servers ignore it.
+  // Templates name the switch differently: Qwen3 and GLM use enable_thinking,
+  // DeepSeek and some NVIDIA-hosted models use thinking. Unused keys are ignored
+  // by those servers, but hosted APIs (OpenAI) refuse unknown fields.
+  if (!s.provider) body.chat_template_kwargs = { enable_thinking: s.think, thinking: s.think };
   const res = await post(s, openaiUrl(s.baseUrl, "/chat/completions"), body, o.signal);
   if (res.status === 404) throw modelMissing(s, await errorText(res));
-  if (!res.ok) throw new LlmError(`The local model server answered: ${await errorText(res)}`);
+  if (!res.ok) throw new LlmError(`${capital(who(s))} answered: ${await errorText(res)}`, res.status);
 
   let text = "";
   let reasoning = 0;
@@ -249,7 +272,7 @@ async function chatOpenAI(s: LocalModelSettings, messages: ChatMessage[], o: Cha
     }
   } catch (e) {
     if (o.signal?.aborted) throw new LlmError("Canceled.");
-    throw e instanceof LlmError ? e : new LlmError(`The connection to the local model server was lost: ${(e as Error).message}`);
+    throw e instanceof LlmError ? e : new LlmError(`The connection to ${who(s)} was lost: ${(e as Error).message}`);
   }
   return { text, model, promptTokens, outputTokens, truncated: finish === "length", ...reasoningOf(text, reasoning) };
 }
@@ -263,12 +286,91 @@ function reasoningOf(text: string, streamed: number): { reasoningChars: number; 
   return { reasoningChars: streamed + inline, stoppedInReasoning: openThink || ((streamed > 0 || inline > 0) && visible === "") };
 }
 
-export function chat(s: LocalModelSettings, messages: ChatMessage[], o: ChatOptions): Promise<ChatResult> {
+export function chat(s: ChatTarget, messages: ChatMessage[], o: ChatOptions): Promise<ChatResult> {
+  if (s.api === "anthropic") return chatAnthropic(s, messages, o);
   return s.api === "ollama" ? chatOllama(s, messages, o) : chatOpenAI(s, messages, o);
 }
 
+function capital(t: string): string {
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+// ---------------------------------------------------------------- Anthropic
+
+/** An Anthropic API failure as an LlmError that says what to do about it. */
+function anthropicError(s: ChatTarget, e: unknown, signal?: AbortSignal): LlmError {
+  if (e instanceof LlmError) return e;
+  if (signal?.aborted || e instanceof Anthropic.APIUserAbortError) return new LlmError("Canceled.");
+  const detail = e instanceof Error ? e.message.slice(0, 500) : String(e);
+  if (e instanceof Anthropic.AuthenticationError) {
+    return new LlmError(`Anthropic rejected the API key (ANTHROPIC_API_KEY in the server's .env): ${detail}`, 401);
+  }
+  if (e instanceof Anthropic.PermissionDeniedError) return new LlmError(`Anthropic refused this key access to ${s.model}: ${detail}`, 403);
+  if (e instanceof Anthropic.NotFoundError) return modelMissing(s, detail);
+  if (e instanceof Anthropic.RateLimitError) return new LlmError(`Anthropic's rate limit was reached; try again in a minute. (${detail})`, 429);
+  if (e instanceof Anthropic.BadRequestError) return new LlmError(`Anthropic refused the request: ${detail}`, 400);
+  if (e instanceof Anthropic.APIConnectionError) return unreachable(s, e);
+  if (e instanceof Anthropic.APIError) return new LlmError(`Anthropic failed: ${detail}`, e.status);
+  return new LlmError(`Anthropic failed: ${detail}`);
+}
+
+/**
+ * One message to Claude through the official SDK, streamed (a long transcript
+ * and a long answer would outlast a plain request's timeout). No tools are
+ * offered. Thinking is left at the model's default (current models think
+ * adaptively and spend it from max_tokens, which the caller sizes for that);
+ * only the visible text is the summary.
+ */
+async function chatAnthropic(s: ChatTarget, messages: ChatMessage[], o: ChatOptions): Promise<ChatResult> {
+  if (!s.apiKey) throw new LlmError("Set ANTHROPIC_API_KEY in the server's .env and restart it.");
+  const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
+  const user = messages.filter((m) => m.role === "user").map((m) => ({ role: "user" as const, content: m.content }));
+  let message: Anthropic.Message;
+  try {
+    const stream = anthropicClient(s.apiKey).messages.stream(
+      { model: s.model, max_tokens: o.maxTokens, ...(system ? { system } : {}), messages: user },
+      { signal: o.signal },
+    );
+    message = await stream.finalMessage();
+  } catch (e) {
+    throw anthropicError(s, e, o.signal);
+  }
+  if (message.stop_reason === "refusal") {
+    const why = message.stop_details?.explanation ?? message.stop_details?.category ?? "no reason given";
+    throw new LlmError(`Claude declined to write this summary (${why}). Try another model in Admin → Summary model.`);
+  }
+  let text = "";
+  let reasoning = 0;
+  for (const block of message.content) {
+    if (block.type === "text") text += block.text;
+    else if (block.type === "thinking") reasoning += block.thinking.length;
+  }
+  const truncated = message.stop_reason === "max_tokens" || message.stop_reason === "model_context_window_exceeded";
+  return {
+    text,
+    model: message.model,
+    promptTokens: message.usage.input_tokens,
+    outputTokens: message.usage.output_tokens,
+    truncated,
+    reasoningChars: reasoning,
+    // Thinking text is not returned by current models, so "nothing visible yet" is the sign.
+    stoppedInReasoning: truncated && text.trim() === "",
+  };
+}
+
+async function anthropicModelInfo(s: ChatTarget): Promise<ModelInfo> {
+  if (!s.apiKey) throw new LlmError("Set ANTHROPIC_API_KEY in the server's .env and restart it.");
+  try {
+    const m = await anthropicClient(s.apiKey).models.retrieve(s.model, null, { timeout: PROBE_TIMEOUT_MS });
+    return { contextLength: m.max_input_tokens, thinking: null, maxOutputTokens: m.max_tokens };
+  } catch (e) {
+    throw anthropicError(s, e);
+  }
+}
+
 /** Context length and capabilities of the configured model, as far as the server tells. */
-export async function modelInfo(s: LocalModelSettings): Promise<ModelInfo> {
+export async function modelInfo(s: ChatTarget): Promise<ModelInfo> {
+  if (s.api === "anthropic") return anthropicModelInfo(s);
   if (s.api === "ollama") {
     let show: { capabilities?: string[]; model_info?: Record<string, unknown> };
     try {
@@ -284,10 +386,24 @@ export async function modelInfo(s: LocalModelSettings): Promise<ModelInfo> {
       thinking: Array.isArray(show.capabilities) ? show.capabilities.includes("thinking") : null,
     };
   }
-  const list = await getJson<{ data?: { id: string; max_model_len?: number }[] }>(s, openaiUrl(s.baseUrl, "/models"));
-  const entry = list.data?.find((m) => m.id === s.model);
-  if (list.data?.length && !entry) throw modelMissing(s, `the server offers ${list.data.map((m) => m.id).slice(0, 8).join(", ")}.`);
-  return { contextLength: typeof entry?.max_model_len === "number" ? entry.max_model_len : null, thinking: null };
+  let list: { data?: { id: string; max_model_len?: number; context_length?: number }[] };
+  try {
+    list = await getJson(s, s.provider ? `${s.baseUrl}/models` : openaiUrl(s.baseUrl, "/models"));
+  } catch (e) {
+    if (e instanceof LlmError && (e.status === 401 || e.status === 403) && s.provider) {
+      const key = PROVIDER_INFO[s.provider].keyVariables.join(" or ");
+      throw new LlmError(`${who(s)} rejected the API key (${key} in the server's .env): ${e.message}`, e.status);
+    }
+    throw e;
+  }
+  // Gemini lists its models as "models/gemini-…".
+  const entry = list.data?.find((m) => m.id === s.model || m.id === `models/${s.model}`);
+  if (list.data?.length && !entry) {
+    const offered = s.provider ? "" : ` the server offers ${list.data.map((m) => m.id).slice(0, 8).join(", ")}.`;
+    throw modelMissing(s, offered || "it is not in the provider's model list.");
+  }
+  const ctx = entry?.max_model_len ?? entry?.context_length;
+  return { contextLength: typeof ctx === "number" && ctx > 0 ? ctx : null, thinking: null };
 }
 
 // ---------------------------------------------------------------- status
@@ -308,7 +424,7 @@ export interface LocalModelStatus {
 }
 
 /** Probe a model server, for the admin page. Never throws. */
-export async function localModelStatus(s: LocalModelSettings): Promise<LocalModelStatus> {
+export async function localModelStatus(s: ChatTarget): Promise<LocalModelStatus> {
   const status: LocalModelStatus = {
     reachable: false,
     server: null,
@@ -388,7 +504,7 @@ export function pullState(): PullState | null {
 }
 
 /** Download a model into Ollama in the background; progress is read with pullState(). */
-export function startPull(s: LocalModelSettings): PullState {
+export function startPull(s: ChatTarget): PullState {
   if (s.api !== "ollama") throw new LlmError("Only an Ollama server can download models from here.");
   if (pull && !pull.done) return pull;
   const state: PullState = { model: s.model, baseUrl: s.baseUrl, status: "starting", completed: null, total: null, done: false, error: null, startedAt: Date.now() };

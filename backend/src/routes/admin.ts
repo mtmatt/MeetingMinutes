@@ -7,7 +7,6 @@ import { MAX_INVITE_USES, createInvite, inviteStatus, type InviteRow } from "../
 import { deleteUserSessions, findUserById, publicUser } from "../auth/service";
 import { db, now } from "../db";
 import { httpError, parseJson } from "../lib/util";
-import { codexStatus } from "../services/codex";
 import {
   compactionStats,
   defaultMediaSettings,
@@ -30,9 +29,11 @@ import {
   workerProfileSchema,
 } from "../services/workerProfiles";
 import { kick, summarizerStats } from "../services/summarizer";
-import { LlmError, localModelStatus, pullState, startPull } from "../services/llm";
+import { LlmError, localModelStatus, modelInfo, pullState, startPull } from "../services/llm";
+import { API_PROVIDERS, PROVIDER_INFO, providerKey, providerKeys } from "../services/summaryApis";
 import {
   defaultSummarySettings,
+  apiSettingsSchema,
   localSettingsSchema,
   resetSummarySettings,
   saveSummarySettings,
@@ -53,7 +54,7 @@ import {
   workerApiKeys,
 } from "../services/transcriberSettings";
 import type { AppEnv, MeetingRow, UserRow } from "../types";
-import { body } from "./validate";
+import { SMALL_JSON_LIMIT_BYTES, body } from "./validate";
 
 export const adminRoutes = new Hono<AppEnv>();
 adminRoutes.use(requireUser, requireAdmin);
@@ -232,7 +233,6 @@ adminRoutes.get("/system", async (c) => {
     jobs: queueStats(),
     summaries: summarizerStats(),
     transcriber: publicTranscriberInfo(),
-    codex: await codexStatus(),
     disk,
     stats: {
       users: db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM users").get()?.n ?? 0,
@@ -251,6 +251,14 @@ function summarizerState() {
     ...summarySettingsMeta(),
     // Whether LLM_API_KEY is set (never the key itself), for OpenAI-compatible servers that need one.
     apiKeyConfigured: config.llm.apiKey !== "",
+    // Hosted providers: which have a key in the environment (never the keys), and what the page shows for each.
+    apiKeys: providerKeys(),
+    apiProviders: Object.fromEntries(
+      API_PROVIDERS.map((p) => {
+        const { label, keyVariables, host, defaultModel } = PROVIDER_INFO[p];
+        return [p, { label, keyVariables, host, defaultModel }];
+      }),
+    ),
   };
 }
 
@@ -286,6 +294,34 @@ adminRoutes.post("/summarizer/probe", async (c) => {
     status: await localModelStatus(target),
     pull: pull && pull.baseUrl === target.baseUrl ? pull : null,
   });
+});
+
+/**
+ * Check a hosted model before it is saved: is there a key, does the provider
+ * accept it, does the model exist, and how long a transcript it takes. Asks
+ * only for the model's details (free), never for a completion.
+ */
+adminRoutes.post("/summarizer/probe-api", async (c) => {
+  const input = await body(c, apiSettingsSchema.pick({ provider: true, model: true }), SMALL_JSON_LIMIT_BYTES);
+  const info = PROVIDER_INFO[input.provider];
+  const apiKey = providerKey(input.provider);
+  if (!apiKey) return c.json({ ok: false, keyConfigured: false, error: `Set ${info.keyVariables.join(" or ")} in the server's .env and restart it.` });
+  try {
+    const m = await modelInfo({
+      api: input.provider === "anthropic" ? "anthropic" : "openai",
+      provider: input.provider,
+      apiKey,
+      baseUrl: info.baseUrl,
+      model: input.model,
+      contextTokens: summarySettings().api.contextTokens,
+      think: true,
+      keepAliveSec: 0,
+    });
+    return c.json({ ok: true, keyConfigured: true, contextLength: m.contextLength, maxOutputTokens: m.maxOutputTokens ?? null });
+  } catch (e) {
+    if (e instanceof LlmError) return c.json({ ok: false, keyConfigured: true, error: e.message });
+    throw e;
+  }
 });
 
 adminRoutes.post("/summarizer/pull", async (c) => {

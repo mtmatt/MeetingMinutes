@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cpu, HardDrive, KeyRound, Link2, MoreHorizontal, Plus, ShieldCheck, Sparkles, Trash2, UserCheck, UserMinus, UserX } from "lucide-react";
+import { Cpu, HardDrive, KeyRound, Link2, MoreHorizontal, Plus, ShieldCheck, Trash2, UserCheck, UserMinus, UserX } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api/client";
 import type { AdminUser, Invite, Role, WorkerInfo } from "../api/types";
@@ -11,6 +11,7 @@ import { useAuth } from "../lib/auth";
 import { diarizationReason } from "../lib/errors";
 import { bytes, initials, relative, until } from "../lib/format";
 import { useSummaryEngine } from "../lib/summaryEngine";
+import { VENDOR_NAMES } from "../components/SummaryComposer";
 import { StoragePolicy } from "./AdminStorage";
 import { WorkerKeys } from "./AdminWorkerKeys";
 import { SummaryModel } from "./AdminSummaryModel";
@@ -457,32 +458,13 @@ function System() {
             <dt>{t("admin.summaryModel")}</dt>
             <dd>
               {engine.name}
-              {data.summaries.provider === "local" && <span className="faint"> · {t("admin.summaryModelLocal")}</span>}
+              {data.summaries.provider === "local" ? (
+                <span className="faint"> · {t("admin.summaryModelLocal")}</span>
+              ) : (
+                engine.info?.vendor && <span className="faint"> · {VENDOR_NAMES[engine.info.vendor]}</span>
+              )}
             </dd>
           </dl>
-        </section>
-        <section className="card system-card">
-          <h3 className="system-h">
-            <Sparkles /> {t("admin.codex")}
-          </h3>
-          <span className={`pill ${data.codex.loggedIn ? "ok" : data.codex.available ? "warn" : "danger"}`}>
-            <span className="dot" />
-            {data.codex.loggedIn ? t("admin.codexReady") : data.codex.available ? t("admin.codexNotLoggedIn") : t("admin.codexMissing")}
-          </span>
-          <p className="faint mono system-detail">
-            {data.codex.version} {data.codex.detail && `· ${/logged in using chatgpt/i.test(data.codex.detail) ? t("admin.codexViaChatgpt") : data.codex.detail}`}
-          </p>
-          {!data.codex.loggedIn && <p className="muted system-help">{t("admin.codexHelp")}</p>}
-          {data.codex.isolationError && (
-            <div className="callout danger" role="alert">
-              <div>
-                <strong>{t("admin.codexPaused")}</strong>
-                <p className="mono" style={{ margin: "4px 0 0", fontSize: "var(--step--2)" }}>
-                  {data.codex.isolationError}
-                </p>
-              </div>
-            </div>
-          )}
         </section>
         <section className="card system-card">
           <h3 className="system-h">

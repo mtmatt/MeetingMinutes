@@ -1,13 +1,13 @@
 # Minutes
 
-A self-hosted meeting-minutes service. Upload a recording (audio or video). It is transcribed **locally on your own GPUs** (or, if an administrator chooses, through a **transcription API** such as OpenRouter), with speaker separation and Taiwan Traditional Chinese output, and then summarised with a prompt you choose: by default by a **local model on your GPU** (Qwen3.8 27B through Ollama), so nothing leaves the server, or by **Codex**, billed to your ChatGPT plan. Administrators choose which on the admin page.
+A self-hosted meeting-minutes service. Upload a recording (audio or video). It is transcribed **locally on your own GPUs** (or, if an administrator chooses, through a **transcription API** such as OpenRouter), with speaker separation and Taiwan Traditional Chinese output, and then summarised with a prompt you choose: by default by a **local model on your GPU** (Qwen3.8 27B through Ollama), so nothing leaves the server, or by a **hosted model** (Anthropic Claude, OpenAI, OpenRouter or Google Gemini) with your API key. Administrators choose which on the admin page.
 
 Planned changes, including where transcription will run, are in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 - **Backend**: TypeScript on Bun, with Hono and SQLite (`bun:sqlite`).
 - **Frontend**: React and Vite with a custom design system, in English and 繁體中文, with light and dark themes.
 - **GPU worker**: Python, running Qwen3-ASR-1.7B for recognition and pyannote community-1 for speaker diarization. Recognition can instead go to a transcription API (OpenRouter, or any OpenAI-compatible server).
-- **Summary model**: Ollama with Qwen3.8 27B (3-bit) by default, any OpenAI-compatible server (vLLM, llama.cpp, LM Studio), or Codex.
+- **Summary model**: Ollama with Qwen3.8 27B (3-bit) by default, any OpenAI-compatible server (vLLM, llama.cpp, LM Studio), or a hosted API: Anthropic (Claude), OpenAI, OpenRouter or Google Gemini.
 - **No root required** anywhere: install, run, and update all happen as a normal user.
 
 ```
@@ -16,7 +16,7 @@ Planned changes, including where transcription will run, are in [docs/ROADMAP.md
                summaries (one of):   │         │ pull   │
                                      ▼         │ jobs   ▼
      Ollama on 127.0.0.1:11434 (Qwen3.8 27B)   GPU worker supervisor (no CUDA while idle)
-     or codex exec → ChatGPT (read-only, tools off)     │ spawns on demand
+     or a hosted API (Anthropic, OpenAI, …)            │ spawns on demand
                                                         ▼
                                                   GPU session: Qwen3-ASR + pyannote → exits, VRAM freed
                                                   (or pyannote only, with speech segments sent to
@@ -49,9 +49,9 @@ Planned changes, including where transcription will run, are in [docs/ROADMAP.md
   - invitation links, each for a set number of people (1 to 100, until it expires), with a record of who joined through each; an invitation for an administrator is always single-use;
   - password reset links;
   - roles, disabling users, and a per-user session list with remote sign-out.
-- **Admin system page**: GPU workers (model state, VRAM), queue, Codex login status, and disk usage.
+- **Admin system page**: GPU workers (model state, VRAM), queue, the summary model, and disk usage.
 - **Admin transcription page**: transcribe on the worker's GPU, or through a transcription API (OpenRouter first; any OpenAI-compatible server too), with the model, and which workers have an API key.
-- **Admin summary model page**: choose the local model or Codex, the model server and model, its context window and thinking; see whether the server is up and the model downloaded, and download it from there.
+- **Admin summary model page**: choose the local model or a hosted API, the model server and model, its context window and thinking; see whether the server is up and the model downloaded, and download it from there.
 - **Live updates** over Server-Sent Events: progress, stages, and summaries appear without reloading.
 
 ## Choosing the ASR model (RTX 4090)
@@ -172,13 +172,28 @@ How it works:
 
 ## Choosing the summary model
 
-Summaries are written by a **local model** unless an administrator chooses Codex. **Admin → Summary model** sets, for everyone:
+Summaries are written by a **local model** unless an administrator chooses a hosted API. **Admin → Summary model** sets, for everyone:
 
-- **who writes summaries**: the local model, or Codex (ChatGPT plan);
+- **who writes summaries**: the local model, or a hosted API;
 - for the local model: the server (Ollama, or an OpenAI-compatible server such as vLLM, llama.cpp, LM Studio or SGLang), its address, the model, the context window, thinking on or off, and how long the model stays in GPU memory afterwards;
-- for Codex: the model and reasoning effort (empty: Codex's defaults).
+- for a hosted API: the provider (Anthropic, OpenAI, OpenRouter or Google Gemini) and the model, for example `claude-haiku-5-5`.
 
-The page checks the server as you type: whether it answers, whether the model is downloaded (with a **Download** button for Ollama and a progress bar), the model's longest context, and whether it is in GPU memory now. Saved settings apply to every summary started afterwards, including those already queued; `.env` gives the defaults (`SUMMARY_PROVIDER`, `LLM_*`), and **Use .env defaults** goes back to them.
+The page checks the choice as you type. For the local model: whether the server answers, whether the model is downloaded (with a **Download** button for Ollama and a progress bar), the model's longest context, and whether it is in GPU memory now. For a hosted API: whether the server has the provider's key, whether the provider accepts it and has the model, and the model's limits; this asks only for the model's details and sends no meeting. Saved settings apply to every summary started afterwards, including those already queued; `.env` gives the defaults (`SUMMARY_PROVIDER`, `SUMMARY_API_*`, `LLM_*`), and **Use .env defaults** goes back to them.
+
+### Hosted APIs
+
+Each provider has a fixed address; only the model is chosen on the page, so a saved setting cannot send a transcript, or the key, anywhere else. The key comes from the server's `.env` and is never stored in the database or sent to a browser:
+
+| Provider | Key | Address | Suggested model |
+| --- | --- | --- | --- |
+| Anthropic | `ANTHROPIC_API_KEY` | api.anthropic.com (official SDK) | `claude-haiku-5-5` |
+| OpenAI | `OPENAI_API_KEY` | api.openai.com | `gpt-5-mini` |
+| OpenRouter | `OPENROUTER_API_KEY` | openrouter.ai | `anthropic/claude-haiku-4.5` |
+| Google Gemini | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | generativelanguage.googleapis.com | `gemini-2.5-flash` |
+
+Claude is called through Anthropic's official SDK, which retries rate limits and overload itself; Anthropic reports each model's context window and longest answer, so a long meeting is read in parts only when it really exceeds them. The others use their OpenAI-compatible Chat Completions endpoints, with `SUMMARY_API_CONTEXT_TOKENS` (128K) as the window when the provider does not report one. A model that declines a request is reported as such. Up to `SUMMARY_API_CONCURRENCY` (2) summaries are written at once.
+
+Choosing a hosted API sends the transcript, speaker names and meeting title to that provider, under its API terms; the privacy note on the upload page names the provider and its address. With OpenRouter, turn off prompt logging in your OpenRouter account settings.
 
 ### The default: Qwen3.8 27B, 3-bit
 
@@ -188,7 +203,7 @@ Memory: the model is loaded only while a summary is being written and released r
 
 ### Long meetings
 
-A local model's context window is much smaller than Codex's, and servers cut an over-long prompt silently. So the prompt is measured first (erring on the high side: one token per Chinese character and per digit). A transcript that fits is summarised in one call. A longer one is read in consecutive parts: the model writes detailed notes on each part (topics, who said what, decisions, numbers, dates, commitments, each with its `[hh:mm:ss]`), and then writes the document from the notes, following your template. No line of the transcript is dropped; the summary records how many calls it took. A larger context window means fewer parts and more GPU memory.
+A local model's context window is much smaller than a hosted model's, and servers cut an over-long prompt silently. So the prompt is measured first (erring on the high side: one token per Chinese character and per digit). A transcript that fits is summarised in one call. A longer one is read in consecutive parts: the model writes detailed notes on each part (topics, who said what, decisions, numbers, dates, commitments, each with its `[hh:mm:ss]`), and then writes the document from the notes, following your template. No line of the transcript is dropped; the summary records how many calls it took. A larger context window means fewer parts and more GPU memory.
 
 ### Traditional Chinese
 
@@ -218,8 +233,8 @@ Ollama goes in `~/.local/ollama` and the models in `~/.ollama/models` unless `.e
 
 - Linux x86-64 with an NVIDIA driver recent enough for CUDA 12.8 PyTorch wheels (R570 or newer is safest). No CUDA toolkit is needed; PyTorch wheels bundle the runtime.
 - Around 15 GB of disk for Python packages and models, plus space for recordings.
-- Outbound HTTPS for installation, model downloads (Hugging Face), and Codex.
-- For summaries, either about 13 GB of disk and a GPU with room for the local model (see [Choosing the summary model](#choosing-the-summary-model)), or a ChatGPT plan that includes Codex.
+- Outbound HTTPS for installation, model downloads (Hugging Face), and a hosted API if you use one.
+- For summaries, either about 13 GB of disk and a GPU with room for the local model (see [Choosing the summary model](#choosing-the-summary-model)), or an API key from a hosted provider (Anthropic, OpenAI, OpenRouter or Google Gemini).
 - A Hugging Face account, for diarization. Accept the conditions of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1) and create a read token. Without it, transcripts are produced without speaker labels.
 
 Nothing needs root. The installer puts Bun in `~/.bun` and uv in `~/.local/bin`. ffmpeg comes from the `imageio-ffmpeg` wheel, and Python comes from uv.
@@ -231,7 +246,7 @@ git clone <this repo> ~/MeetingMinutes && cd ~/MeetingMinutes
 scripts/install.sh              # add --vllm for the faster ASR backend, --no-gpu on a web-only host
 $EDITOR .env                    # PUBLIC_URL, TRUST_PROXY, HF_TOKEN
 scripts/llm.sh pull             # download the summary model (Qwen3.8 27B, about 13 GB)
-bun run codex:login             # only to use Codex instead: device-code login with the ChatGPT account that pays
+# or, for a hosted model instead: put its key in .env (e.g. ANTHROPIC_API_KEY) and choose it in Admin → Summary model
 scripts/worker.sh check         # optional: download both speech models now and confirm the GPU works
 ```
 
@@ -339,7 +354,7 @@ It creates the user if it does not exist (with a home directory and no password)
 Afterwards, as root:
 
 1. Stop the services that still run as root: `tmux kill-session -t mm-web; tmux kill-session -t mm-worker`.
-2. Run `sudo -u minutes -H scripts/install.sh` once more, with the options you used before (`--no-gpu` for a server without a GPU). Bun and uv are installed in the home directory of whoever ran it, and the worker's Python environment points there. Things kept in root's home directory do not move: the Codex login (`bun run codex:login` again as the new user), Ollama and its models, and Hugging Face downloads. Recordings, the database, the worker's CPU models and its enrollment are in the data directory and stay as they are.
+2. Run `sudo -u minutes -H scripts/install.sh` once more, with the options you used before (`--no-gpu` for a server without a GPU). Bun and uv are installed in the home directory of whoever ran it, and the worker's Python environment points there. Things kept in root's home directory do not move: Ollama and its models, and Hugging Face downloads. Recordings, the database, the worker's CPU models and its enrollment are in the data directory and stay as they are.
 3. Start the services as that user: `sudo -u minutes -H scripts/restart.sh`. Look at them with `sudo -u minutes -H tmux attach -t mm-web` (or `mm-worker`).
 4. Start them at boot, one of:
    - cron: `crontab -u minutes -e`, with the line `@reboot /opt/MeetingMinutes/scripts/restart.sh`;
@@ -442,33 +457,18 @@ All settings are environment variables. Put them in `.env` at the repository roo
 | `OPENROUTER_API_KEY` / `ASR_API_KEY`                | –                                      | Worker only: the key for OpenRouter, or for an OpenAI-compatible server (`ASR_API_KEY` also serves OpenRouter; `OPENAI_API_KEY` also serves OpenAI). Never sent to the web server or browsers.                                                                                                                                   |
 | `MIN_FREE_VRAM_API_GB` / `ASR_API_CONCURRENCY`      | `3` / `4`                              | With an API: free GPU memory a session needs (pyannote only), and segments sent at the same time. `ASR_API_TIMEOUT_SEC` (120) limits one request.                                                                                                                                                                                |
 | `MODEL_KEEPALIVE_SEC`                               | `0`                                    | Seconds a GPU session waits for more work before releasing the GPU.                                                                                                                                                                                                                                                                |
-| `SUMMARY_PROVIDER`                                  | `local`                                | Who writes summaries: `local` or `codex`. A default: Admin → Summary model overrides it.                                                                                                                                                                                                                                           |
+| `SUMMARY_PROVIDER`                                  | `local`                                | Who writes summaries: `local` or `api`. A default: Admin → Summary model overrides it.                                                                                                                                                                                                                                             |
+| `SUMMARY_API_PROVIDER` / `SUMMARY_API_MODEL`        | `anthropic` / the provider's suggestion | With `api`: `anthropic`, `openai`, `openrouter` or `gemini`, and the model (e.g. `claude-haiku-5-5`). Defaults: the admin page overrides them. |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `GEMINI_API_KEY` | – | The hosted provider's key; only the one in use is needed. Never stored in the database or sent to browsers. |
+| `SUMMARY_API_CONTEXT_TOKENS` / `SUMMARY_API_CONCURRENCY` | `128000` / `2`                     | Context window when the provider does not report one, and summaries written at once with a hosted API. Each person can have at most 3 summaries queued or running. |
 | `LLM_API` / `LLM_BASE_URL` / `LLM_MODEL`            | `ollama` / `http://127.0.0.1:11434` / `batiai/qwen3.8-27b:q3` | The local model server and model (`openai` for vLLM, llama.cpp, LM Studio).                                                                                                                                                                                                                                       |
 | `LLM_CONTEXT_TOKENS` / `LLM_THINK`                  | `65536` / `false`                      | Context window (longer transcripts are read in parts) and thinking.                                                                                                                                                                                                                                                                |
 | `LLM_KEEP_ALIVE_SEC` / `LLM_GPUS`                   | `0` / all                              | Seconds the model stays in GPU memory after a summary; GPUs Ollama may use (`scripts/llm.sh`).                                                                                                                                                                                                                                     |
 | `LLM_TIMEOUT_SEC` / `LLM_CONCURRENCY` / `LLM_API_KEY` | `3600` / `1` / –                     | Longest summary, summaries at once, and a key for an OpenAI-compatible server (never sent to browsers).                                                                                                                                                                                                                            |
-| `CODEX_MODEL` / `CODEX_REASONING_EFFORT`            | Codex defaults                         | Codex model settings (also on the admin page).                                                                                                                                                                                                                                                                                     |
-| `CODEX_CONCURRENCY`                                 | `1`                                    | Parallel Codex summaries (each uses quota). Each person can have at most 3 summaries queued or running.                                                                                                                                                                                                                                  |
 
-## How summaries use Codex
+## How summaries are kept safe
 
-With Codex chosen, for each summary the backend runs:
-
-```
-codex exec --ephemeral --sandbox read-only --ignore-user-config --skip-git-repo-check \
-           --disable shell_tool --disable unified_exec … -c web_search="disabled" --json -o <file> -
-```
-
-It runs in an empty temporary directory, with the prompt (instructions, meeting metadata, and the speaker-labelled transcript) on stdin. The prompt tells the model to treat the transcript as untrusted data, but the safeguards below do not rely on the model obeying it:
-
-- **Tools off, verified**: before the first run, the backend reads `codex features list` and checks that every tool that could act on the machine (`shell_tool`, `unified_exec`, `view_image`) is known and will be disabled. If the listing cannot be read, or a newer Codex renames one of them, summaries are paused (fail closed) and the admin page says why, instead of running with a tool left on. Unknown flags are a hard error in Codex, so only features the installed version reports are passed.
-- **Tripwire**: the run is watched through `--json`. Any event other than text, reasoning, or a plan (for example a command or file access) kills Codex immediately and discards the result.
-- **No secrets in reach**: Codex gets only an allowlisted environment (what it needs to run and sign in: `PATH`, `HOME`, `CODEX_HOME`, its own API key if you use one, locale, CA and proxy settings), never the worker token, `HF_TOKEN`, or the data directory path. The read-only sandbox prevents writes.
-- **Output check**: a summary that contains a server credential (the worker token, API keys, or the Codex login) is discarded.
-
-The admin page shows whether Codex is signed in, and whether summaries are paused.
-
-A local model gets the same prompt as a plain chat request (system and user messages) with no tools offered, so a prompt injection in a transcript has nothing to act with. Its output goes through the same credential check, and `LLM_API_KEY` is neither passed to Codex nor shown on any page.
+Every model, local or hosted, gets the summary prompt as a plain chat request (system and user messages: instructions, meeting metadata, and the speaker-labelled transcript) with no tools offered, so a prompt injection in a transcript has nothing to act with. The prompt also tells the model to treat the transcript as untrusted data, but nothing relies on it obeying. A summary that contains a server credential (the worker token, `HF_TOKEN`, `LLM_API_KEY` or a provider's API key) is discarded, and no key is ever shown on a page.
 
 ## Exporting to Google Docs
 
@@ -512,7 +512,7 @@ What this changes, and what it does not:
 - **Isolation**: every meeting, media file, export, and summary query is scoped to its owner; someone else's meeting or summary is answered with 404, not 403, so IDs cannot be probed. The live-update stream closes when its session is signed out or the account is disabled.
 - **Uploaded files**: stored under random IDs, served with a media type derived from the checked file extension (never the type the browser declared), `X-Content-Type-Options: nosniff`, and the site CSP, so an uploaded HTML or SVG file cannot run as a page. ffmpeg reads them with `-protocol_whitelist file`, so a crafted playlist cannot fetch URLs or other files, and decoding stops at `MAX_AUDIO_HOURS`.
 - **Browser recordings**: unsent recordings kept in the browser (IndexedDB) are tagged with the account that made them and are shown only to that account on a shared computer.
-- **Quotas**: at most 3 summaries queued or running per person, so one account cannot drain the shared Codex plan or occupy the summary GPU.
+- **Quotas**: at most 3 summaries queued or running per person, so one account cannot drain the shared API budget or occupy the summary GPU.
 - **Local model server**: Ollama listens on `127.0.0.1` only (`scripts/llm.sh` refuses anything else), so other machines cannot use it; the web server is its only client, and the web server's port is the only one that needs to be open.
 - **pyannoteAI**: only administrators can choose it. The whole recording is uploaded under a random name to pyannoteAI's temporary storage, and the upload page says so. Voice fingerprints stay on the worker. The key lives in each worker's environment only.
 - **Transcription API**: only administrators can choose it. Its key lives in each worker's environment and is never sent to the web server, stored in the database, or shown in the browser; workers report only whether they have one. Only speech segments are sent, never the whole recording, and the upload page says where they go before anything is uploaded.
@@ -524,7 +524,7 @@ What this changes, and what it does not:
 
 Recommended for a deployment:
 
-- Run the server and worker as a dedicated OS user that owns only this checkout, the data directory, and its Codex login; nothing else of value should be readable by that user. `scripts/setup-user.sh` sets one up on a server that was installed as root (see "Running as a normal user").
+- Run the server and worker as a dedicated OS user that owns only this checkout and the data directory; nothing else of value should be readable by that user. `scripts/setup-user.sh` sets one up on a server that was installed as root (see "Running as a normal user").
 - Open only the HTTPS port in the firewall (not 11434: Ollama is for this machine only). Keep `TRUST_PROXY=false` unless a reverse proxy is in front; with built-in HTTPS, trusting `X-Forwarded-For` would let clients choose the address used for sign-in rate limits (the server warns about this at startup).
 - Dependencies: `bun audit` is clean. `pip-audit` on the worker reports advisories in `transformers`, `accelerate`, `torch`, and `vllm`. They concern loading untrusted model checkpoints, the vLLM HTTP server, or local attackers, none of which this worker does or exposes: it loads only the configured Hugging Face models, and vLLM (optional) is used in-process. Upgrade when `qwen-asr` allows newer pins.
 
@@ -541,7 +541,7 @@ ASR_BACKEND=fake uv run python -m mm_worker run   # stand-in models, no GPU or t
 Tests:
 
 ```bash
-bun run test                    # backend: auth, CSRF, uploads, worker protocol, Codex runner (fake codex)
+bun run test                    # backend: auth, CSRF, uploads, worker protocol, summaries (a stand-in Anthropic API and model servers)
 bun run typecheck               # backend + frontend
 cd worker && uv run pytest      # segmentation, text normalisation, ffmpeg, pipeline, voice fingerprints, GPU-session lifecycle
 ```
@@ -549,10 +549,10 @@ cd worker && uv run pytest      # segmentation, text normalisation, ffmpeg, pipe
 Project layout:
 
 ```
-backend/   Bun + Hono API, SQLite schema/migrations, Codex runner, local model client, job queue, SSE
+backend/   Bun + Hono API, SQLite schema/migrations, summary model clients (local and hosted), job queue, SSE
 frontend/  React app: pages/, components/, i18n/ (en, zh-TW), styles/ (design tokens)
 worker/    mm_worker: supervisor, GPU session, audio (ffmpeg), segmenter, ASR, diarization, voice fingerprints
-scripts/   install.sh, start.sh, worker.sh, restart.sh, setup-user.sh, llm.sh (summary model), codex-login.sh
+scripts/   install.sh, start.sh, worker.sh, restart.sh, setup-user.sh, llm.sh (summary model)
 deploy/    Caddyfile, nginx.conf, systemd user units
 ```
 
@@ -576,6 +576,5 @@ deploy/    Caddyfile, nginx.conf, systemd user units
 - **Backups**: copy `data/`. SQLite runs in WAL mode; use `sqlite3 data/meetingminutes.sqlite ".backup backup.sqlite"` for a consistent snapshot while the server is running.
 - **Workers after an update**: a worker from before voice recognition still runs transcriptions; it is never given the background voice-fingerprint jobs, which wait until an updated worker claims them. Restart `scripts/worker.sh` after `git pull` to process them.
 - **Stuck jobs**: if a worker dies mid-job, the backend notices the missing heartbeat within 3 minutes and requeues the job (up to 3 attempts).
-- **Summaries paused**: if the admin page says summaries are paused, the installed Codex could not prove that its tools are off (usually after a Codex upgrade renamed a feature). Check `backend/node_modules/.bin/codex features list`, and update this project or pin the previous Codex version.
-- **Summaries fail with "Cannot reach the local model server"**: start `scripts/llm.sh serve` (or `systemctl --user start meetingminutes-llm`), then `scripts/llm.sh check`. "Not available" means the model is not downloaded: `scripts/llm.sh pull`, or **Download** in Admin → Summary model. To keep using Codex instead, choose it there.
+- **Summaries fail with "Cannot reach the local model server"**: start `scripts/llm.sh serve` (or `systemctl --user start meetingminutes-llm`), then `scripts/llm.sh check`. "Not available" means the model is not downloaded: `scripts/llm.sh pull`, or **Download** in Admin → Summary model. To use a hosted model instead, choose it there.
 - **Admin CLI**: `bun run admin list-users | reset-password <user> | create-admin <user> | setup-token | worker-token`.

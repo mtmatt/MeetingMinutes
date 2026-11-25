@@ -174,7 +174,7 @@ describe("renaming speakers updates summaries", () => {
     expect(s.content).toContain("Bob: 我先報告進度");
     expect(s.content).toContain("Speaker 2: 我補充風險");
     expect(s.speakerNames.SPEAKER_01).toBe("Bob");
-  }, 20000); // the fake Codex takes 5 s to answer SLOW_PLEASE
+  }, 20000); // the fake Anthropic API takes 5 s to answer SLOW_PLEASE
 
   test("taking another speaker's name leaves summaries alone, and renaming back loses nothing", async () => {
     const c = await memberClient("names-collide");

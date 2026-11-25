@@ -1,11 +1,10 @@
-import { chat, LlmError, modelInfo, type ChatMessage, type ChatResult } from "./llm";
+import { chat, LlmError, modelInfo, type ChatMessage, type ChatResult, type ChatTarget } from "./llm";
 import type { SummaryPromptParts } from "./summarizer";
-import type { LocalModelSettings } from "./summarySettings";
 
 /**
- * Summaries written by a local model.
+ * Summaries written by a model on a server set up by the administrator, or a hosted one.
  *
- * A local model has a much smaller context window than Codex (64K tokens by
+ * A local model has a much smaller context window than a hosted one (64K tokens by
  * default, about three hours of Mandarin), and servers cut an over-long prompt
  * silently. So the prompt is measured first: a transcript that fits is
  * summarised in one call; a longer one is read in consecutive parts, each
@@ -126,12 +125,12 @@ export interface LocalSummaryOptions {
  * switch), by server and name. They get the thinking budget from then on.
  */
 const thinksAnyway = new Set<string>();
-const modelKey = (s: LocalModelSettings) => `${s.api} ${s.baseUrl} ${s.model}`;
+const modelKey = (s: ChatTarget) => `${s.api} ${s.baseUrl} ${s.model}`;
 
 /** The answer budget went to thinking that was not asked for: worth one more try with the thinking budget. */
 class ThinksAnyway extends Error {}
 
-export async function summarizeLocally(p: SummaryPromptParts, s: LocalModelSettings, opts: LocalSummaryOptions): Promise<LocalSummaryResult> {
+export async function summarizeLocally(p: SummaryPromptParts, s: ChatTarget, opts: LocalSummaryOptions): Promise<LocalSummaryResult> {
   const key = modelKey(s);
   try {
     return await summarizeWith(p, s, opts, s.think || thinksAnyway.has(key));
@@ -143,11 +142,14 @@ export async function summarizeLocally(p: SummaryPromptParts, s: LocalModelSetti
   }
 }
 
-async function summarizeWith(p: SummaryPromptParts, s: LocalModelSettings, opts: LocalSummaryOptions, thinkingBudget: boolean): Promise<LocalSummaryResult> {
+async function summarizeWith(p: SummaryPromptParts, s: ChatTarget, opts: LocalSummaryOptions, thinkingBudget: boolean): Promise<LocalSummaryResult> {
   const info = await modelInfo(s);
   // The model's own limit wins over the configured window.
   const ctx = Math.min(s.contextTokens, info.contextLength ?? Number.POSITIVE_INFINITY);
-  const { answer, input } = contextBudget(ctx, thinkingBudget);
+  const budget = contextBudget(ctx, thinkingBudget);
+  // A hosted model may cap its answers below what the window would allow.
+  const answer = Math.min(budget.answer, info.maxOutputTokens ?? Number.POSITIVE_INFINITY);
+  const input = ctx - answer;
   const sendThink = info.thinking === true || (info.thinking === null && s.think);
 
   let promptTokens = 0;
@@ -247,7 +249,7 @@ async function summarizeWith(p: SummaryPromptParts, s: LocalModelSettings, opts:
       `The model stopped before finishing: the summary reached its length limit (${answer.toLocaleString("en-US")} tokens), which usually means it started repeating itself. Try again, or raise the context window in Admin → Summary model (the answer gets ${thinkingBudget ? "half" : "a quarter"} of it).`,
     );
   }
-  if (!text) throw new LlmError("The local model returned an empty answer.");
+  if (!text) throw new LlmError("The model returned an empty answer.");
   const usage: Record<string, number> = {};
   if (promptTokens) usage.input_tokens = promptTokens;
   if (outputTokens) usage.output_tokens = outputTokens;

@@ -20,8 +20,10 @@ export function modelDisplayName(model: string): string {
 /** Name of the model that writes summaries, for sentences such as "{engine} is writing the summary". */
 export function engineName(info: SummarizerInfo | null, fallback: string): string {
   if (!info) return fallback;
-  if (info.provider === "codex") return "Codex";
-  return info.model ? modelDisplayName(info.model) : fallback;
+  if (!info.model) return fallback;
+  // Hosted model names are already readable ("claude-haiku-5-5", "gpt-5-mini"); only the vendor prefix goes.
+  if (info.provider === "api") return info.model.includes("/") ? info.model.slice(info.model.lastIndexOf("/") + 1) : info.model;
+  return modelDisplayName(info.model);
 }
 
 export function useSummaryEngine(): { name: string; info: SummarizerInfo | null } {

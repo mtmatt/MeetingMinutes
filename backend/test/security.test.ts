@@ -50,7 +50,7 @@ describe("security", () => {
     const still = (await (await alice.get(`/api/meetings/${aliceMeeting}`)).json()) as any;
     expect(still.meeting.summaries.find((s: any) => s.id === summary.id)?.status).not.toBe("canceled");
 
-    // Summaries use the shared Codex quota: at most three in progress per person.
+    // Summaries share the API quota or the local GPU: at most three in progress per person.
     const more = [];
     for (let i = 0; i < 3; i++) more.push(await alice.post(`/api/meetings/${aliceMeeting}/summaries`, { prompt: "SLOW_PLEASE", outputLanguage: "en" }));
     expect(more.map((r) => r.status)).toEqual([201, 201, 429]);

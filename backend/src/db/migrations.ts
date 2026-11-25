@@ -281,4 +281,34 @@ export const migrations: string[] = [
   CREATE UNIQUE INDEX worker_keys_token ON worker_keys(token_hash) WHERE token_hash IS NOT NULL;
   CREATE UNIQUE INDEX worker_keys_enroll ON worker_keys(enroll_hash) WHERE enroll_hash IS NOT NULL;
   `,
+  // Hosted APIs replace Codex: summaries.provider gains 'api' ('codex' stays for
+  // summaries written before). SQLite cannot change a CHECK constraint, so the
+  // table is rebuilt (nothing references it).
+  `
+  CREATE TABLE summaries_new (
+    id              TEXT PRIMARY KEY,
+    meeting_id      TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    created_by      TEXT REFERENCES users(id) ON DELETE SET NULL,
+    template_id     TEXT,
+    template_name   TEXT,
+    prompt          TEXT NOT NULL,
+    output_language TEXT NOT NULL,
+    status          TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed', 'canceled')),
+    content         TEXT,
+    error           TEXT,
+    model           TEXT,
+    usage           TEXT,
+    created_at      INTEGER NOT NULL,
+    started_at      INTEGER,
+    finished_at     INTEGER,
+    speaker_names   TEXT,
+    provider        TEXT CHECK (provider IN ('local', 'api', 'codex'))
+  );
+  INSERT INTO summaries_new (id, meeting_id, created_by, template_id, template_name, prompt, output_language, status, content, error, model, usage, created_at, started_at, finished_at, speaker_names, provider)
+    SELECT id, meeting_id, created_by, template_id, template_name, prompt, output_language, status, content, error, model, usage, created_at, started_at, finished_at, speaker_names, provider FROM summaries;
+  DROP TABLE summaries;
+  ALTER TABLE summaries_new RENAME TO summaries;
+  CREATE INDEX summaries_meeting ON summaries(meeting_id, created_at DESC);
+  CREATE INDEX summaries_status ON summaries(status, created_at);
+  `,
 ];
