@@ -5,6 +5,7 @@
     python -m mm_worker transcribe F   transcribe a local file and print the transcript
     python -m mm_worker bench [F]      time speaker separation on the CPU (sherpa-onnx)
     python -m mm_worker enroll URL CODE   connect this machine to a server as a remote worker
+    python -m mm_worker compare-asr DIR   compare speech recognition models on corrected transcripts
 """
 
 from __future__ import annotations
@@ -109,6 +110,17 @@ def main(argv: Optional[list[str]] = None):
     b.add_argument("path", nargs="?", help="a recording to use (default: a 4-speaker sample)")
     b.add_argument("--threads", default="1", help="thread counts to try, e.g. 1,2,4 (default: 1)")
     b.add_argument("--minutes", type=float, default=5.0, help="length of sample audio to use (default: 5)")
+    c = sub.add_parser("compare-asr", help="compare speech recognition models on transcripts corrected on the site")
+    c.add_argument("dir", help="folder made on the server with: bun run admin export-asr-eval <dir>")
+    c.add_argument("--models", default="qwen,breeze25", help="comma-separated: qwen, breeze25, breeze26, whisper-v2, whisper-v3, qwen:<repo>, whisper:<repo> (default: qwen,breeze25)")
+    c.add_argument("--out", help="where to write the results (default: DIR/results-<time>)")
+    c.add_argument("--limit", type=int, help="score only the first N segments (a quick try)")
+    c.add_argument("--include-unedited", action="store_true", help="also score segments nobody corrected (they are Qwen3-ASR's own output)")
+    c.add_argument("--batch-size", type=int, default=8, help="clips per batch for Whisper-type models (default: 8)")
+    c.add_argument("--dtype", choices=["float16", "bfloat16", "float32"], help="Whisper-type models (default: float16 on NVIDIA, float32 elsewhere)")
+    c.add_argument("--language", help="force a language for Whisper-type models, e.g. zh (default: detect per clip)")
+    c.add_argument("--no-vocabulary", action="store_true", help="do not give the meeting's vocabulary to the models")
+    c.add_argument("--show", type=int, default=10, help="segments with the largest differences to print (default: 10)")
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -140,6 +152,29 @@ def main(argv: Optional[list[str]] = None):
         os.environ.setdefault("WORKER_TOKEN", "unused")
         cfg = load_config()
         run_bench(cfg.model_dir or default_model_dir(None), args.path, parse_threads(args.threads), args.minutes)
+        return
+    if args.cmd == "compare-asr":
+        from pathlib import Path
+
+        from .asr_compare import compare
+
+        os.environ.setdefault("WORKER_TOKEN", "unused")
+        cfg = load_config()
+        print(
+            compare(
+                cfg,
+                Path(args.dir),
+                [m.strip() for m in args.models.split(",") if m.strip()],
+                Path(args.out) if args.out else None,
+                args.include_unedited,
+                args.limit,
+                args.batch_size,
+                args.dtype,
+                args.language,
+                not args.no_vocabulary,
+                args.show,
+            )
+        )
         return
     if args.cmd == "transcribe":
         os.environ.setdefault("WORKER_TOKEN", "unused")

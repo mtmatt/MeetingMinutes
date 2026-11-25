@@ -62,7 +62,7 @@ The target is Mandarin–English code-switched meetings, with Traditional Chines
 | ------------------------------------ | ---------------------------- | ----------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | **Qwen3-ASR-1.7B** (chosen)          | AISHELL-2 WER **2.71**       | LibriSpeech 1.63 / 3.38 | strong; language ID per chunk | Apache-2.0 (2026). Accepts a text _context_ for names and jargon. Transformers and vLLM backends. About 5 GB of VRAM in bf16. |
 | Whisper large-v3 / turbo             | AISHELL-2 WER 5.06           | 1.51 / 3.97             | good                          | Tends to output Simplified. Known hallucination loops on silence.                                                             |
-| Breeze-ASR-25 (Whisper-v2 fine-tune) | tuned for Taiwanese Mandarin | good                    | good                          | Worth trying as an alternative; still has Whisper's failure modes.                                                            |
+| Breeze-ASR-25 (Whisper-v2 fine-tune) | tuned for Taiwanese Mandarin | good                    | good                          | Apache-2.0. Outputs Traditional Chinese. Compare it on your own meetings (below); still has Whisper's failure modes.          |
 | SenseVoice / Paraformer              | very fast, strong Mandarin   | weaker English          | weak                          | Better suited to Mandarin-only audio.                                                                                         |
 | Parakeet / Canary                    | –                            | best-in-class           | –                             | English only.                                                                                                                 |
 
@@ -73,6 +73,23 @@ Speaker diarization uses **pyannote `speaker-diarization-community-1`**. It impr
 On a 4090, both models together use roughly 6–8 GB. Each GPU runs one GPU session at a time, so two GPUs process two meetings in parallel. `ASR_BACKEND=vllm` (install with `--vllm`) gives higher throughput on long recordings.
 
 Sources: [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR), [Qwen3-ASR technical report](https://arxiv.org/abs/2601.21337), [pyannote community-1 benchmarks](https://github.com/pyannote/pyannote-audio).
+
+### Comparing models on your own meetings
+
+Published benchmarks are read speech or broadcast audio; what matters is your meetings. Every transcript line someone corrects on the site is a reference: what was really said at that moment. Two commands compare models on them:
+
+```bash
+# On the server: corrected lines and their recordings (meetings with at least 5 corrections, or name them)
+bun run admin export-asr-eval ~/asr-eval [meeting id …] [--min-edited N] [--playback]
+# Copy the folder to a GPU machine (an NVIDIA box or a Mac), then there:
+scripts/worker.sh compare-asr ~/asr-eval --models qwen,breeze25
+```
+
+Each corrected segment's audio is given to each model in turn (one model in memory at a time), with the meeting's vocabulary as a hint, and the text goes through the same Traditional Chinese conversion as a real transcript. The score is the mixed error rate (MER) used for Chinese-English speech: each Chinese character and each English word or number is one unit; substitutions, deletions and insertions are counted against the corrected text, with punctuation, spacing, width and case ignored. The report gives MER and minutes of processing per hour of audio for each model, how many segments each got better, and the segments where they differ most; `segments.csv` has every segment and model side by side, and `summary.json` the totals.
+
+Models: `qwen` (the worker's `ASR_MODEL`), `breeze25` ([MediaTek-Research/Breeze-ASR-25](https://huggingface.co/MediaTek-Research/Breeze-ASR-25): Whisper-large-v2 tuned for Taiwanese Mandarin and Mandarin-English switching, Apache-2.0), `breeze26` ([Breeze-ASR-26](https://huggingface.co/MediaTek-Research/Breeze-ASR-26): Taiwanese Hokkien, written as Mandarin characters, Apache-2.0), `whisper-v2`, `whisper-v3`, or any `whisper:<repo>` / `qwen:<repo>` on Hugging Face. `--limit 50` scores a few segments first; `--language zh` fixes the language for Whisper-type models instead of detecting it per segment.
+
+Two things lean the result towards Qwen3-ASR: the references were corrected from its own transcripts, so a mistake nobody noticed counts as right for it; and segments longer than 30 s (Whisper's window) are left out. Numbers written as digits by one model and as characters by another (3 / 三) count as errors.
 
 ### Recognising speakers by voice
 
