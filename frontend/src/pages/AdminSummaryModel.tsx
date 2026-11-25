@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cloud, Cpu, Download, RefreshCw, RotateCcw } from "lucide-react";
+import { Cloud, Cpu, Download, KeyRound, RefreshCw, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
-import type { LocalModelSettings, ReasoningEffort, SummarySettings } from "../api/types";
+import type { ApiModelSettings, ApiProvider, LocalModelSettings, SummarizerState, SummarySettings } from "../api/types";
 import { useConfirm } from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { useI18n } from "../i18n";
@@ -11,7 +11,15 @@ import { modelDisplayName } from "../lib/summaryEngine";
 
 /** Models that suit one or two 24 GB GPUs, offered for Ollama next to what is installed. The first is the default. */
 const SUGGESTED_OLLAMA = ["batiai/qwen3.8-27b:q3", "qwen3.8:27b", "qwen3:14b", "qwen3:30b"];
-const EFFORTS: ReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh"];
+
+/** Models offered per hosted provider (any other name can be typed). The provider's suggested model comes first. */
+const SUGGESTED_API: Record<ApiProvider, string[]> = {
+  anthropic: ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-4-5"],
+  openai: ["gpt-5-mini", "gpt-5", "gpt-5-nano"],
+  openrouter: ["anthropic/claude-haiku-4.5", "google/gemini-2.5-flash", "qwen/qwen3-235b-a22b-2507"],
+  gemini: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
+};
+const API_ORDER: ApiProvider[] = ["anthropic", "openai", "openrouter", "gemini"];
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
@@ -50,7 +58,6 @@ export function SummaryModel() {
   const confirm = useConfirm();
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin", "summarizer"], queryFn: api.adminSummarizer });
-  const system = useQuery({ queryKey: ["admin", "system"], queryFn: api.adminSystem, staleTime: 30_000 });
   const [form, setForm] = useState<SummarySettings | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -61,6 +68,7 @@ export function SummaryModel() {
   if (!data || !form) return <div className="skeleton" style={{ height: 320 }} />;
   const dirty = !same(form, data.settings);
   const setLocal = (patch: Partial<LocalModelSettings>) => setForm({ ...form, local: { ...form.local, ...patch } });
+  const setApi = (patch: Partial<ApiModelSettings>) => setForm({ ...form, api: { ...form.api, ...patch } });
 
   const applied = async (next: Awaited<ReturnType<typeof api.adminSummarizer>>, message: string) => {
     qc.setQueryData(["admin", "summarizer"], next);
@@ -76,7 +84,7 @@ export function SummaryModel() {
       const body: SummarySettings = {
         ...form,
         local: { ...form.local, baseUrl: form.local.baseUrl.trim(), model: form.local.model.trim() },
-        codex: { model: form.codex.model?.trim() || null, reasoningEffort: form.codex.reasoningEffort },
+        api: { ...form.api, model: form.api.model.trim() },
       };
       await applied(await api.adminSaveSummarizer(body), t("common.saved"));
     } catch (e) {
@@ -96,7 +104,6 @@ export function SummaryModel() {
     }
   };
 
-  const codex = system.data?.codex;
   return (
     <div className="model-admin">
       <section className="model-section">
@@ -110,10 +117,10 @@ export function SummaryModel() {
             <span className="source-option-name">{t("model.local")}</span>
             <span className="source-option-desc">{t("model.localDesc")}</span>
           </button>
-          <button type="button" role="radio" aria-checked={form.provider === "codex"} className="source-option" onClick={() => setForm({ ...form, provider: "codex" })}>
+          <button type="button" role="radio" aria-checked={form.provider === "api"} className="source-option" onClick={() => setForm({ ...form, provider: "api" })}>
             <Cloud />
-            <span className="source-option-name">{t("model.codex")}</span>
-            <span className="source-option-desc">{t("model.codexDesc")}</span>
+            <span className="source-option-name">{t("model.api")}</span>
+            <span className="source-option-desc">{t("model.apiDesc")}</span>
           </button>
         </div>
       </section>
@@ -121,59 +128,7 @@ export function SummaryModel() {
       {form.provider === "local" ? (
         <LocalModelForm value={form.local} onChange={setLocal} apiKeyConfigured={data.apiKeyConfigured} />
       ) : (
-        <section className="model-section card model-card">
-          <h3 className="system-h">
-            <Cloud /> {t("model.codex")}
-          </h3>
-          {codex && (
-            <span className={`pill ${codex.loggedIn ? "ok" : codex.available ? "warn" : "danger"}`}>
-              <span className="dot" />
-              {codex.loggedIn ? t("admin.codexReady") : codex.available ? t("admin.codexNotLoggedIn") : t("admin.codexMissing")}
-            </span>
-          )}
-          {codex && !codex.loggedIn && <p className="muted system-help">{t("admin.codexHelp")}</p>}
-          {codex?.isolationError && (
-            <div className="callout danger" role="alert">
-              <div>
-                <strong>{t("admin.codexPaused")}</strong>
-                <p className="mono" style={{ margin: "4px 0 0", fontSize: "var(--step--2)" }}>
-                  {codex.isolationError}
-                </p>
-              </div>
-            </div>
-          )}
-          <div className="grid-2 even">
-            <div className="field">
-              <label htmlFor="codex-model">{t("model.codexModel")}</label>
-              <input
-                id="codex-model"
-                className="input mono"
-                value={form.codex.model ?? ""}
-                placeholder={t("model.codexDefault")}
-                spellCheck={false}
-                autoComplete="off"
-                onChange={(e) => setForm({ ...form, codex: { ...form.codex, model: e.target.value || null } })}
-              />
-              <span className="field-hint">{t("model.codexModelHint")}</span>
-            </div>
-            <div className="field">
-              <label htmlFor="codex-effort">{t("model.effort")}</label>
-              <select
-                id="codex-effort"
-                className="select"
-                value={form.codex.reasoningEffort ?? ""}
-                onChange={(e) => setForm({ ...form, codex: { ...form.codex, reasoningEffort: (e.target.value || null) as ReasoningEffort | null } })}
-              >
-                <option value="">{t("model.codexDefault")}</option>
-                {EFFORTS.map((x) => (
-                  <option key={x} value={x}>
-                    {t(`model.effort_${x}`)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </section>
+        <ApiModelForm value={form.api} onChange={setApi} state={data} />
       )}
 
       <div className="model-actions">
@@ -452,6 +407,134 @@ function LocalModelForm({
             )}
           </dl>
         )}
+      </div>
+    </section>
+  );
+}
+
+/** A hosted model: the provider (its key comes from the server's .env), the model, and a check before saving. */
+function ApiModelForm({ value, onChange, state }: { value: ApiModelSettings; onChange: (patch: Partial<ApiModelSettings>) => void; state: SummarizerState }) {
+  const { t } = useI18n();
+  const info = state.apiProviders[value.provider];
+  const hasKey = state.apiKeys[value.provider];
+  const target = useDebounced({ provider: value.provider, model: value.model.trim() }, 600);
+  const probe = useQuery({
+    queryKey: ["admin", "api-model-probe", target],
+    queryFn: () => api.adminProbeApiModel(target),
+    enabled: target.model.length > 0,
+    staleTime: 60_000,
+  });
+  const result = probe.data;
+  const suggestions = [...new Set([info.defaultModel, ...SUGGESTED_API[value.provider]])];
+
+  return (
+    <section className="model-section card model-card">
+      <h3 className="system-h">
+        <Cloud /> {t("model.api")}
+      </h3>
+      <div className="model-grid">
+        <div className="field">
+          <span className="field-label">{t("model.apiProvider")}</span>
+          <div className="segmented">
+            {API_ORDER.map((p) => (
+              <button
+                key={p}
+                type="button"
+                aria-pressed={value.provider === p}
+                onClick={() => onChange({ provider: p, model: p === value.provider ? value.model : state.apiProviders[p].defaultModel })}
+              >
+                {state.apiProviders[p].label}
+              </button>
+            ))}
+          </div>
+          <span className="field-hint">{t("model.apiProviderHint", { host: info.host })}</span>
+        </div>
+        <div className="field">
+          <label htmlFor="api-model">{t("model.model")}</label>
+          <input
+            id="api-model"
+            className="input mono"
+            list="api-models"
+            value={value.model}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => onChange({ model: e.target.value })}
+          />
+          <datalist id="api-models">
+            {suggestions.map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+          <span className="field-hint">{t("model.apiModelHint")}</span>
+        </div>
+        <div className="field">
+          <span className="field-label">{t("model.apiKey")}</span>
+          <span className={`pill ${hasKey ? "ok" : "warn"}`}>
+            <KeyRound />
+            {hasKey ? t("model.apiKeyFound", { name: info.keyVariables[0]! }) : t("model.apiKeyMissing")}
+          </span>
+          <span className="field-hint">{hasKey ? t("model.apiKeyFoundHint") : t("model.apiKeyMissingHint", { names: info.keyVariables.join(" / ") })}</span>
+        </div>
+        {value.provider !== "anthropic" && (
+          <div className="field">
+            <label htmlFor="api-ctx">{t("model.context")}</label>
+            <input
+              id="api-ctx"
+              className="input mono"
+              type="number"
+              min={8192}
+              max={2000000}
+              step={1024}
+              value={value.contextTokens}
+              onChange={(e) => onChange({ contextTokens: Math.round(Number(e.target.value) || 0) })}
+            />
+            <span className="field-hint">{t("model.apiContextHint")}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="model-status" aria-live="polite">
+        <div className="model-status-head">
+          <span className="field-label">{t("model.status")}</span>
+          <button className="btn btn-sm btn-ghost" onClick={() => probe.refetch()} disabled={!target.model || probe.isFetching}>
+            {probe.isFetching ? <span className="spinner" /> : <RefreshCw />} {t("model.check")}
+          </button>
+        </div>
+        {!target.model ? (
+          <p className="faint">{t("model.apiEnterModel")}</p>
+        ) : !result ? (
+          <div className="skeleton" style={{ height: 48 }} />
+        ) : !result.ok ? (
+          <div className="callout warn">
+            <div>
+              <strong>{result.keyConfigured ? t("model.apiNotUsable") : t("model.apiKeyMissing")}</strong>
+              <p className="mono model-error">{result.error}</p>
+            </div>
+          </div>
+        ) : (
+          <dl className="kv">
+            <dt>{target.model}</dt>
+            <dd>
+              <span className="pill ok">
+                <span className="dot" />
+                {t("model.apiReady", { provider: info.label })}
+              </span>
+            </dd>
+            {result.contextLength != null && (
+              <>
+                <dt>{t("model.maxContext")}</dt>
+                <dd className="mono">{t("model.tokens", { n: result.contextLength.toLocaleString() })}</dd>
+              </>
+            )}
+            {result.maxOutputTokens != null && (
+              <>
+                <dt>{t("model.maxOutput")}</dt>
+                <dd className="mono">{t("model.tokens", { n: result.maxOutputTokens.toLocaleString() })}</dd>
+              </>
+            )}
+          </dl>
+        )}
+        <p className="field-hint">{t("model.apiPrivacy", { provider: info.label, host: info.host })}</p>
       </div>
     </section>
   );

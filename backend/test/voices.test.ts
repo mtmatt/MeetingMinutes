@@ -231,7 +231,7 @@ describe("voice recognition", () => {
       const d = await detail(c, second);
       return d.summaries[0]?.status === "done" ? d : null;
     });
-    expect(readFileSync(process.env.FAKE_CODEX_PROMPT_FILE!, "utf8")).toContain("Alice Chen: SPEAKER_00 talks.");
+    expect(readFileSync(process.env.FAKE_ANTHROPIC_PROMPT_FILE!, "utf8")).toContain("Alice Chen: SPEAKER_00 talks.");
     expect(m.summaries[0].speakerNames).toEqual({ SPEAKER_00: "Alice Chen" });
   });
 

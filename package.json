@@ -15,7 +15,6 @@
     "test": "bun run --cwd backend test",
     "typecheck": "bun run --cwd backend typecheck && bun run --cwd frontend typecheck",
     "admin": "bun run --cwd backend src/cli.ts",
-    "codex:login": "scripts/codex-login.sh",
     "worker": "scripts/worker.sh"
   }
 }

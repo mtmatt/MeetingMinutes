@@ -19,8 +19,11 @@ from mm_worker.config import WorkerConfig
 class FakeServer:
     """The server's worker API for a remote worker: enroll, claim, media (with ranges), file uploads."""
 
-    def __init__(self, media: bytes, jobs, cut_first_download=False):
+    def __init__(self, media: bytes, jobs, cut_first_download=False, transfer: bytes = None, pending: int = 0):
         self.media = media
+        # The audio-only copy (?variant=audio), and how many times to answer "still being made" first.
+        self.transfer = transfer
+        self.pending = pending
         self.jobs = list(jobs)
         self.cut = cut_first_download
         self.events = []
@@ -73,6 +76,15 @@ class FakeServer:
                     return self._send(403, {"error": "no"})
                 rng = self.headers.get("Range")
                 start = int(rng.split("=")[1].split("-")[0]) if rng else 0
+                if q.get("variant") == ["audio"]:
+                    with srv.lock:
+                        waiting = srv.pending > 0
+                        srv.pending -= 1
+                    if waiting:
+                        return self._send(202, {"pending": True}, headers={"Retry-After": "1"})
+                    if srv.transfer is not None:
+                        return self._send(200, raw=srv.transfer, headers={"X-MM-Media": "transfer"})
+                    return self._send(200, raw=srv.media, headers={"X-MM-Media": "original"})
                 data = srv.media[start:]
                 if srv.cut and not rng:
                     # The connection drops halfway: the worker must resume with a range.
@@ -278,3 +290,64 @@ def test_an_enrolled_worker_refuses_plain_http_across_a_network(tmp_path, monkey
     # A worker on the server itself (the shared token) may use any address, as before.
     monkeypatch.setenv("WORKER_TOKEN", "shared-token")
     assert config_mod.load_config().server_url == "http://minutes.example.com:8787"
+
+
+def _opus(wav_path, dest):
+    import subprocess
+
+    from mm_worker.audio import ffmpeg_bin
+
+    subprocess.run([ffmpeg_bin(), "-v", "error", "-y", "-i", str(wav_path), "-ac", "1", "-c:a", "libopus", "-b:a", "48k", "-f", "ogg", str(dest)], check=True)
+    return Path(dest).read_bytes()
+
+
+def test_remote_job_downloads_the_audio_copy_and_shows_its_progress(two_speaker_wav, tmp_path, monkeypatch):
+    """The server is still making the small copy at first (202), then sends it; the
+    download is the first tenth of the progress bar and the work the rest."""
+    media = Path(two_speaker_wav).read_bytes()
+    transfer = _opus(two_speaker_wav, tmp_path / "t.ogg")
+    srv = FakeServer(media, [], transfer=transfer, pending=1)
+    first = job(media={"url": "/internal/jobs/j1/media", "size": len(media), "ext": "wav", "transfer": {"url": "/internal/jobs/j1/media?variant=audio"}})
+    try:
+        work = run_session(remote_cfg(srv.url), first, monkeypatch, tmp_path)
+    finally:
+        srv.close()
+    gets = [e for e in srv.events if e[0] == "GET"]
+    # Only the copy was fetched (asked twice: once while it was being made), never the original.
+    assert len(gets) == 2 and all(g[2].get("variant") == "audio" for g in gets)
+    complete = next(e for e in srv.events if e[1] == "/jobs/j1/complete")[2]
+    assert complete["result"]["speakers"] == ["SPEAKER_00", "SPEAKER_01"] and complete["result"]["durationSec"] > 10
+    progress = [(e[2]["stage"], e[2]["progress"]) for e in srv.events if e[1] == "/jobs/j1/progress"]
+    downloading = [p for s, p in progress if s == "downloading"]
+    after = [p for s, p in progress if s not in ("downloading", "loading", "starting")]
+    assert downloading and max(downloading) <= 0.10 + 1e-9
+    assert after and min(after) >= 0.10 - 1e-9 and max(after) <= 1.0
+    # The bar only moves forward.
+    values = [p for s, p in progress if s != "loading"]
+    assert values == sorted(values)
+    assert list(work.iterdir()) == []
+
+
+def test_remote_job_takes_the_original_when_the_server_sends_it(two_speaker_wav, tmp_path, monkeypatch):
+    """A server without ffmpeg (or a recording already small) answers the copy's address with the original."""
+    media = Path(two_speaker_wav).read_bytes()
+    srv = FakeServer(media, [])
+    first = job(media={"url": "/internal/jobs/j1/media", "size": len(media), "ext": "wav", "transfer": {"url": "/internal/jobs/j1/media?variant=audio"}})
+    try:
+        run_session(remote_cfg(srv.url), first, monkeypatch, tmp_path)
+    finally:
+        srv.close()
+    complete = next(e for e in srv.events if e[1] == "/jobs/j1/complete")[2]
+    assert complete["result"]["speakers"] == ["SPEAKER_00", "SPEAKER_01"]
+
+
+def test_download_gives_up_waiting_for_a_copy_that_never_comes(tmp_path):
+    srv = FakeServer(b"x", [], pending=10**6)
+    try:
+        c = client_mod.BackendClient(srv.url, "mmw_wkabc.secret", "wkabc")
+        waits = []
+        with pytest.raises(client_mod.ServerError) as e:
+            c.download("/internal/jobs/j1/media?variant=audio", tmp_path / "f", None, on_wait=lambda: waits.append(1), max_wait_sec=3, sleep=lambda s: None)
+        assert e.value.status == 504 and len(waits) == 3
+    finally:
+        srv.close()

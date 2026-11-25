@@ -265,6 +265,9 @@ class TransferError(Exception):
 # What a transcription leaves in its output folder for the server to keep (pipeline.run_job).
 REMOTE_UPLOADS = ("playback.m4a", "peaks.json")
 
+# Share of a remote transcription's progress bar for downloading the recording.
+DOWNLOAD_SHARE = 0.10
+
 
 def is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, MediaError):
@@ -347,12 +350,42 @@ class _JobRunner:
         media = job.get("media") or {}
         ext = re.sub(r"[^A-Za-z0-9]", "", str(media.get("ext") or "bin"))[:8] or "bin"
         work = Path(tempfile.mkdtemp(prefix="mm-job-"))  # mode 0700
+        # The download is the first stretch of the progress bar, and over a slow
+        # link it can be the longest; the work on the recording fills the rest.
+        transcribing = job_kind(job) == "transcribe"
+
+        def scaled(stage: str, progress: float) -> bool:
+            return self.report(stage, DOWNLOAD_SHARE + (1 - DOWNLOAD_SHARE) * progress if transcribing else progress)
+
+        last = [0.0]
+
+        def downloaded(frac: float) -> None:
+            now = time.monotonic()
+            if now - last[0] < 2.0 and frac < 1.0:
+                return
+            last[0] = now
+            if not self.report("downloading", DOWNLOAD_SHARE * frac if transcribing else 0.0):
+                raise Canceled()
+
+        def waiting() -> None:
+            # The server is still making the audio-only copy.
+            if not self.report("downloading", 0.0):
+                raise Canceled()
+
         try:
-            src = work / f"original.{ext}"
+            part = work / "recording.part"
             if not self.report("downloading", 0.0):
                 return
+            transfer = (media.get("transfer") or {}).get("url")
             try:
-                self.client.download(media["url"], src, media.get("size"))
+                if transfer:
+                    # The small audio-only copy; the server may send the original instead (X-MM-Media).
+                    headers = self.client.download(transfer, part, None, progress=downloaded, on_wait=waiting)
+                else:
+                    headers = self.client.download(media["url"], part, media.get("size"), progress=downloaded)
+            except Canceled:
+                log.info("job %s: canceled while downloading", job_id)
+                return
             except ServerError as e:
                 if e.status == 409:
                     log.info("job %s: no longer ours", job_id)
@@ -362,6 +395,10 @@ class _JobRunner:
             except Exception as e:
                 self.fail(job_id, f"Could not download the recording: {type(e).__name__}: {e}", True)
                 return
+            sent = headers.get("x-mm-media") if transfer else "original"
+            src = work / ("transfer.ogg" if sent == "transfer" else f"original.{ext}")
+            part.rename(src)
+            log.info("job %s: downloaded the %s (%.1f MB)", job_id, "audio-only copy" if sent == "transfer" else "original", src.stat().st_size / 1e6)
             spec = JobSpec(media_path=str(src), out_dir=str(work / "out"), options=job.get("options") or {})
             uploads = job.get("uploads") or {}
 
@@ -385,12 +422,20 @@ class _JobRunner:
                     except (OSError, ConnectionError, TimeoutError) as e:
                         raise TransferError(f"Could not upload {name}: {e}") from None
 
-            self._process(job, models, spec, before_complete=send_files if job_kind(job) == "transcribe" else None)
+            self._process(job, models, spec, before_complete=send_files if transcribing else None, report=scaled)
         finally:
             shutil.rmtree(work, ignore_errors=True)
 
-    def _process(self, job: dict, models: Models, spec: JobSpec, before_complete: Optional[Callable[[], None]] = None):
+    def _process(
+        self,
+        job: dict,
+        models: Models,
+        spec: JobSpec,
+        before_complete: Optional[Callable[[], None]] = None,
+        report: Optional[Callable[[str, float], bool]] = None,
+    ):
         job_id = job["jobId"]
+        report = report or self.report
         kind = job_kind(job)
         log.info("job %s (%s): meeting %s (%s), attempt %s", job_id, kind, job["meetingId"], job.get("title"), job.get("attempt"))
         started = time.monotonic()
@@ -424,7 +469,7 @@ class _JobRunner:
             if kind == "voiceprint":
                 result = run_voiceprint(
                     spec,
-                    report=self.report,
+                    report=report,
                     diarizer=diarizer,
                     diarizer_unavailable=diarizer_unavailable,
                     max_audio_sec=self.cfg.max_audio_sec,
@@ -433,7 +478,7 @@ class _JobRunner:
             elif kind == "transcribe":
                 result = run_job(
                     spec,
-                    report=self.report,
+                    report=report,
                     transcriber=transcriber,
                     diarizer=diarizer,
                     max_segment_sec=self.cfg.max_segment_sec,

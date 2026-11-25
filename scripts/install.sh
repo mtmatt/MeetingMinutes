@@ -5,7 +5,7 @@
 #   scripts/install.sh            backend + frontend + GPU worker + Ollama (summary model)
 #   scripts/install.sh --no-gpu   skip the worker's GPU dependencies (torch, Qwen3-ASR, pyannote) and Ollama:
 #                                 a web host only, or a worker that uses the transcription API and pyannoteAI
-#   scripts/install.sh --no-llm   skip Ollama (summaries by Codex, or a model server elsewhere)
+#   scripts/install.sh --no-llm   skip Ollama (summaries by a hosted API, or a model server elsewhere)
 #   scripts/install.sh --vllm     also install the vLLM backend for faster ASR
 #   scripts/install.sh --worker-only   a worker on another machine (an NVIDIA box, a Mac): only the
 #                                 worker, no web server or Ollama; then scripts/worker.sh enroll
@@ -95,7 +95,7 @@ if [ "$LLM" = 1 ]; then
     say "Ollama is already installed (run scripts/llm.sh install to update it)"
   else
     say "Installing Ollama, for summaries"
-    scripts/llm.sh install || echo "warning: Ollama could not be installed; see scripts/llm.sh, or choose Codex in Admin → Summary model" >&2
+    scripts/llm.sh install || echo "warning: Ollama could not be installed; see scripts/llm.sh, or choose a hosted API in Admin → Summary model" >&2
   fi
 fi
 
@@ -106,7 +106,8 @@ Installed. Next steps:
   2. Summaries are written by a local model (Qwen3.8 27B, about 13 GB):
        start it:                                  scripts/llm.sh serve
        download the model (once):                 scripts/llm.sh pull
-     Or use Codex instead (Admin → Summary model): bun run codex:login
+     Or a hosted model instead (Anthropic, OpenAI, OpenRouter, Gemini):
+       put its key in .env (e.g. ANTHROPIC_API_KEY), then choose it in Admin → Summary model
   3. Start the web server:                        scripts/start.sh
   4. Start the GPU worker(s):                     scripts/worker.sh
   5. Open the site and create the admin account with the setup token printed by step 3.

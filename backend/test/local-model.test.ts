@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import type { Server } from "bun";
 import { chunkTranscript, cleanModelOutput, contextBudget, estimateTokens } from "../src/services/localSummary";
-import { openaiUrl } from "../src/services/llm";
+import { chat, openaiUrl } from "../src/services/llm";
 import { hasSimplified, toTaiwanTraditional } from "../src/services/zhTW";
 import { Client, adminClient, memberClient, waitFor, worker } from "./helpers";
 
@@ -169,7 +169,7 @@ async function summarize(c: Client, id: string, prompt = "Write minutes.", outpu
 const local = (url: string, extra: Record<string, unknown> = {}) => ({
   provider: "local",
   local: { api: "ollama", baseUrl: url, model: "qwen3:14b", contextTokens: 32768, think: false, keepAliveSec: 0, ...extra },
-  codex: { model: null, reasoningEffort: null },
+  api: { provider: "anthropic", model: "claude-haiku-5-5", contextTokens: 128000 },
 });
 
 // --------------------------------------------------------------- tests
@@ -249,8 +249,13 @@ describe("summaries with a local model", () => {
     expect(bad.status).toBe(422);
     const badModel = await admin.req("PUT", "/api/admin/summarizer", { json: local(ollama.url, { model: "qwen3; rm -rf /" }) });
     expect(badModel.status).toBe(422);
-    const badEffort = await admin.req("PUT", "/api/admin/summarizer", { json: { ...local(ollama.url), codex: { model: null, reasoningEffort: 'high" -c x="y' } } });
-    expect(badEffort.status).toBe(422);
+    // Only the listed providers (each with its fixed address), and model names only.
+    const badProvider = await admin.req("PUT", "/api/admin/summarizer", { json: { ...local(ollama.url), api: { provider: "elsewhere", model: "x", contextTokens: 128000 } } });
+    expect(badProvider.status).toBe(422);
+    const badApiModel = await admin.req("PUT", "/api/admin/summarizer", { json: { ...local(ollama.url), api: { provider: "anthropic", model: "claude haiku; rm -rf /", contextTokens: 128000 } } });
+    expect(badApiModel.status).toBe(422);
+    // Codex is gone.
+    expect((await admin.req("PUT", "/api/admin/summarizer", { json: { ...local(ollama.url), provider: "codex" } })).status).toBe(422);
   });
 
   test("defaults come from .env until saved; reset brings them back; secrets never leave", async () => {
@@ -267,13 +272,14 @@ describe("summaries with a local model", () => {
     expect(saved.settings.local.baseUrl).toBe(ollama.url);
 
     const state = (await (await admin.get("/api/auth/state")).json()) as any;
-    expect(state.summarizer).toEqual({ provider: "local", model: "qwen3:14b", onServer: true, host: null });
+    expect(state.summarizer).toEqual({ provider: "local", vendor: null, model: "qwen3:14b", onServer: true, host: null });
     // Not before signing in.
     expect(((await (await new Client().get("/api/auth/state")).json()) as any).summarizer).toBeNull();
 
     const reset = (await (await admin.del("/api/admin/summarizer")).json()) as any;
     expect(reset.saved).toBe(false);
-    expect(reset.settings.provider).toBe("codex");
+    expect(reset.settings.provider).toBe("api");
+    expect(reset.settings.api).toMatchObject({ provider: "anthropic", model: "claude-haiku-5-5" });
   });
 
   test("a summary is written by the local model, in Taiwan Traditional Chinese", async () => {
@@ -446,18 +452,76 @@ describe("summaries with a local model", () => {
     }
   });
 
-  test("Codex can be chosen instead, with an administrator's model choice", async () => {
+  test("a hosted model writes summaries through its API; the page can check a model first", async () => {
     const admin = await adminClient();
-    await admin.req("PUT", "/api/admin/summarizer", {
-      json: { ...local(ollama.url), provider: "codex", codex: { model: "gpt-5.1-codex", reasoningEffort: "high" } },
-    });
+    const saved = (await (await admin.req("PUT", "/api/admin/summarizer", {
+      json: { ...local(ollama.url), provider: "api", api: { provider: "anthropic", model: "claude-haiku-5-5", contextTokens: 128000 } },
+    })).json()) as any;
+    // Which providers have a key, never the keys.
+    expect(saved.apiKeys).toMatchObject({ anthropic: true, openrouter: false });
+    expect(JSON.stringify(saved)).not.toContain(process.env.ANTHROPIC_API_KEY!);
+    const state = (await (await admin.get("/api/auth/state")).json()) as any;
+    expect(state.summarizer).toEqual({ provider: "api", vendor: "anthropic", model: "claude-haiku-5-5", onServer: false, host: "api.anthropic.com" });
+
     const id = await readyMeeting(admin, SHORT);
     const s = await summarize(admin, id, "Write minutes.", "en");
     expect(s.status).toBe("done");
-    expect(s.provider).toBe("codex");
-    const args = JSON.parse(await Bun.file(process.env.FAKE_CODEX_ARGS_FILE!).text()) as string[];
-    expect(args[args.indexOf("--model") + 1]).toBe("gpt-5.1-codex");
-    expect(args).toContain('model_reasoning_effort="high"');
+    expect(s.provider).toBe("api");
+    expect(s.model).toBe("claude-haiku-5-5");
+    expect(s.usage).toMatchObject({ input_tokens: 100, output_tokens: 20 });
+
+    const refused = await summarize(admin, id, "REFUSE_PLEASE", "en");
+    expect(refused.status).toBe("failed");
+    expect(refused.error).toContain("declined");
+
+    // Checking a model asks only for its details: limits, or what is wrong.
+    const good = (await (await admin.post("/api/admin/summarizer/probe-api", { provider: "anthropic", model: "claude-haiku-5-5" })).json()) as any;
+    expect(good).toMatchObject({ ok: true, keyConfigured: true, contextLength: 1_000_000, maxOutputTokens: 128_000 });
+    const unknown = (await (await admin.post("/api/admin/summarizer/probe-api", { provider: "anthropic", model: "claude-nope" })).json()) as any;
+    expect(unknown.ok).toBe(false);
+    expect(unknown.error).toContain('"claude-nope" is not available from Anthropic');
+    const noKey = (await (await admin.post("/api/admin/summarizer/probe-api", { provider: "openrouter", model: "anthropic/claude-haiku-4.5" })).json()) as any;
+    expect(noKey).toMatchObject({ ok: false, keyConfigured: false });
+    expect(noKey.error).toContain("OPENROUTER_API_KEY");
+
+    // A provider without a key: the summary says which variable to set.
+    await admin.req("PUT", "/api/admin/summarizer", {
+      json: { ...local(ollama.url), provider: "api", api: { provider: "gemini", model: "gemini-2.5-flash", contextTokens: 128000 } },
+    });
+    const missing = await summarize(admin, id, "Write minutes.", "en");
+    expect(missing.status).toBe("failed");
+    expect(missing.error).toContain("GEMINI_API_KEY or GOOGLE_API_KEY");
+    await admin.del("/api/admin/summarizer");
+  });
+
+  test("OpenAI-style hosted APIs get their key and answer-length field, and no server-specific fields", async () => {
+    const api = fakeOpenAI();
+    try {
+      const target = {
+        api: "openai" as const,
+        provider: "openai" as const,
+        apiKey: "sk-test-openai-0123456789",
+        baseUrl: api.url + "/v1",
+        model: "Qwen/Qwen3-14B-AWQ",
+        contextTokens: 128000,
+        think: true,
+        keepAliveSec: 0,
+      };
+      const r = await chat(target, [{ role: "system", content: "s" }, { role: "user", content: "u" }], {
+        numCtx: 128000,
+        maxTokens: 4000,
+        keepAliveSec: 0,
+        sendThink: false,
+      });
+      expect(r.text).toContain("# Minutes");
+      const call = api.requests.find((x) => x.path === "/v1/chat/completions")!;
+      expect(call.headers.get("authorization")).toBe("Bearer sk-test-openai-0123456789");
+      expect(call.body.max_completion_tokens).toBe(4000);
+      expect(call.body.max_tokens).toBeUndefined();
+      expect(call.body.chat_template_kwargs).toBeUndefined();
+    } finally {
+      api.server.stop(true);
+    }
   });
 
   test("a cloud API entered as Ollama, with its full endpoint pasted, is explained and fixed up", async () => {

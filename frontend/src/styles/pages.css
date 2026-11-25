@@ -2660,3 +2660,13 @@
   justify-content: flex-start;
   justify-self: start;
 }
+
+/* Admin → Summary model: whether the hosted provider's key is set, as a pill that fits its text. */
+.model-card .field > .pill {
+  justify-self: start;
+  width: fit-content;
+}
+.model-card .field > .pill svg {
+  width: 13px;
+  height: 13px;
+}

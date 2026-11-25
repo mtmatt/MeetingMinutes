@@ -3,6 +3,7 @@ import { createApp } from "./app";
 import { ensureSetupToken } from "./auth/setup";
 import { purgeExpiredSessions } from "./auth/service";
 import { enqueueCompactions } from "./services/mediaCompaction";
+import { sweepTransfers } from "./services/mediaTransfer";
 import { reapStaleJobs } from "./services/meetings";
 import { kick, recoverSummaries } from "./services/summarizer";
 import { seedBuiltinTemplates } from "./services/templates";
@@ -51,6 +52,14 @@ const sweepCompactions = () => {
   }
 };
 setInterval(sweepCompactions, 10 * 60 * 1000);
+// Transfer copies a remote worker never came back for.
+setInterval(() => {
+  try {
+    sweepTransfers();
+  } catch (e) {
+    console.error("[media] could not remove old transfer copies:", e);
+  }
+}, 30 * 60 * 1000);
 sweepCompactions();
 kick();
 

@@ -1,6 +1,8 @@
 import type {
   AdminUser,
   Invite,
+  ApiModelProbe,
+  ApiModelSettings,
   LocalModelSettings,
   LocalModelStatus,
   MeetingDetail,
@@ -212,6 +214,7 @@ export const api = {
   adminProbeModel: (b: Pick<LocalModelSettings, "api" | "baseUrl" | "model">) =>
     post<{ status: LocalModelStatus; pull: ModelPull | null }>("/admin/summarizer/probe", b),
   adminPullModel: (b: Pick<LocalModelSettings, "api" | "baseUrl" | "model">) => post<{ pull: ModelPull }>("/admin/summarizer/pull", b),
+  adminProbeApiModel: (b: Pick<ApiModelSettings, "provider" | "model">) => post<ApiModelProbe>("/admin/summarizer/probe-api", b),
 };
 
 export const mediaUrl = {

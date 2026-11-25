@@ -151,6 +151,29 @@
   text-align: right;
   font-size: var(--step--1);
 }
+.processing-note {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+/* What the current step is doing, above the general note. */
+.processing-head .processing-hint {
+  max-width: 42ch;
+  color: var(--ink);
+  line-height: 1.55;
+}
+@media (max-width: 600px) {
+  .processing-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .processing-note {
+    justify-items: start;
+  }
+  .processing-head p {
+    text-align: left;
+  }
+}
 .processing-pct {
   font-family: var(--font-display);
   font-size: 4rem;
@@ -219,6 +242,29 @@
   color: var(--accent);
   box-shadow: 0 0 0 4px var(--accent-wash);
   animation: pulse-dot 1.8s ease-in-out infinite;
+}
+/* On a phone five labels do not fit side by side: the current step keeps its
+   label, the others show only their mark (their names stay for screen readers). */
+@media (max-width: 600px) {
+  .pipeline {
+    display: flex;
+    gap: 10px;
+  }
+  .pipeline-step {
+    flex: none;
+  }
+  .pipeline-step.active {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .pipeline-step:not(.active) .pipeline-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 /* Tabs only on narrow screens */

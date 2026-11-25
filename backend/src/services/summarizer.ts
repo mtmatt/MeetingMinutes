@@ -2,9 +2,9 @@ import { config } from "../config";
 import { db, now } from "../db";
 import { formatClock, newId, parseJson } from "../lib/util";
 import type { MeetingRow, OutputLanguage, SegmentRow, SpeakerRow, SummaryRequest, SummaryRow, TranscribeOptions } from "../types";
-import { CodexError, containsSecret, runCodex } from "./codex";
-import { LlmError } from "./llm";
+import { LlmError, type ChatTarget } from "./llm";
 import { summarizeLocally } from "./localSummary";
+import { PROVIDER_INFO, providerKey, providerKeyValues } from "./summaryApis";
 import { publish } from "./events";
 import { currentSpeakerNames, parseNameMap, reconcileSpeakerNames, type NameMap } from "./speakerNames";
 import { summarySettings, type SummarySettings } from "./summarySettings";
@@ -54,7 +54,7 @@ export function renderTranscript(segments: SegmentRow[], speakers: Map<string, s
   return lines.join("\n");
 }
 
-/** The parts of a summary prompt; Codex gets them as one message, a local model as system and user messages. */
+/** The parts of a summary prompt, sent as system and user messages. */
 export interface SummaryPromptParts {
   /** Role, operating constraints and output language. */
   system: string;
@@ -100,24 +100,6 @@ Detected language: ${meeting.language ?? "unknown"}
 </meeting_metadata>`,
     transcript: transcript ? transcript.split("\n") : [],
   };
-}
-
-export function buildSummaryPrompt(
-  meeting: MeetingRow,
-  userPrompt: string,
-  outputLanguage: OutputLanguage,
-  speakers?: SpeakerRow[],
-): string {
-  const p = summaryPromptParts(meeting, userPrompt, outputLanguage, speakers);
-  return `${p.system}
-
-${p.instructions}
-
-${p.metadata}
-
-<transcript>
-${p.transcript.join("\n")}
-</transcript>`;
 }
 
 export function summaryPublic(s: SummaryRow) {
@@ -187,7 +169,36 @@ export function kick() {
 
 /** Summaries that may run at once with the model in use. */
 function concurrency(settings: SummarySettings = summarySettings()): number {
-  return settings.provider === "local" ? config.llm.concurrency : config.codex.concurrency;
+  return settings.provider === "local" ? config.llm.concurrency : config.summary.apiConcurrency;
+}
+
+/** Server credentials that must never appear in a summary (a transcript cannot contain them; a model that repeats one was led astray). */
+function serverSecrets(): string[] {
+  const values = [config.workerToken, process.env.HF_TOKEN, process.env.HUGGING_FACE_HUB_TOKEN, config.llm.apiKey, ...providerKeyValues()];
+  return [...new Set(values.map((v) => (v ?? "").trim()).filter((v) => v.length >= 16))];
+}
+
+export function containsSecret(text: string, secrets = serverSecrets()): boolean {
+  return secrets.some((s) => text.includes(s));
+}
+
+/** The model a summary is written with: the local server, or the hosted provider with its fixed address and key. */
+export function chatTarget(settings: SummarySettings): ChatTarget {
+  if (settings.provider === "local") return settings.local;
+  const { provider, model, contextTokens } = settings.api;
+  const info = PROVIDER_INFO[provider];
+  return {
+    api: provider === "anthropic" ? "anthropic" : "openai",
+    provider,
+    apiKey: providerKey(provider) ?? undefined,
+    baseUrl: info.baseUrl,
+    model,
+    contextTokens,
+    // Hosted models may reason before answering, from the same token budget:
+    // give the answer room for both.
+    think: true,
+    keepAliveSec: 0,
+  };
 }
 
 async function pump() {
@@ -222,23 +233,24 @@ async function write(
   speakers: SpeakerRow[],
   signal: AbortSignal,
 ): Promise<{ text: string; model: string | null; usage: Record<string, number> | null }> {
-  if (settings.provider === "codex") {
-    const prompt = buildSummaryPrompt(meeting, summary.prompt, summary.output_language, speakers);
-    return runCodex(prompt, { signal, choice: settings.codex });
+  const target = chatTarget(settings);
+  if (target.provider && !target.apiKey) {
+    const vars = PROVIDER_INFO[target.provider].keyVariables.join(" or ");
+    throw new LlmError(`Summaries are set to ${PROVIDER_INFO[target.provider].label}, but this server has no API key: set ${vars} in its .env and restart it.`);
   }
   const parts = summaryPromptParts(meeting, summary.prompt, summary.output_language, speakers);
   const timeout = AbortSignal.timeout(config.llm.timeoutSeconds * 1000);
   // Keep the model loaded when another summary is waiting for it.
   const waiting = (db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM summaries WHERE status = 'queued'").get()?.n ?? 0) > 0;
   try {
-    const result = await summarizeLocally(parts, settings.local, {
+    const result = await summarizeLocally(parts, target, {
       signal: AbortSignal.any([signal, timeout]),
       keepAliveSec: waiting ? Math.max(settings.local.keepAliveSec, 120) : settings.local.keepAliveSec,
     });
     if (containsSecret(result.text)) throw new LlmError("The output contained server credentials, so it was discarded.");
     return result;
   } catch (e) {
-    if (timeout.aborted && !signal.aborted) throw new LlmError(`The local model did not finish within ${config.llm.timeoutSeconds}s (LLM_TIMEOUT_SEC).`);
+    if (timeout.aborted && !signal.aborted) throw new LlmError(`The model did not finish within ${config.llm.timeoutSeconds}s (LLM_TIMEOUT_SEC).`);
     throw e;
   }
 }
@@ -250,7 +262,7 @@ async function execute(summary: SummaryRow, ctrl: AbortController) {
   db.query("UPDATE summaries SET provider = $p WHERE id = $id").run({ id: summary.id, p: settings.provider });
   publish(meeting.owner_id, { type: "summary.updated", meetingId: meeting.id, summaryId: summary.id });
   try {
-    if (meeting.status !== "ready") throw new CodexError("The transcript is not ready yet.");
+    if (meeting.status !== "ready") throw new LlmError("The transcript is not ready yet.");
     const speakers = db
       .query<SpeakerRow, { m: string }>("SELECT * FROM speakers WHERE meeting_id = $m ORDER BY key")
       .all({ m: meeting.id });

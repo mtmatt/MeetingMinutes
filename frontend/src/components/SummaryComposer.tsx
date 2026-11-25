@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, RotateCcw, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { OutputLanguage, SummaryRequest, Template } from "../api/types";
+import type { ApiProvider, OutputLanguage, SummaryRequest, Template } from "../api/types";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { useSummaryEngine } from "../lib/summaryEngine";
@@ -34,18 +34,22 @@ export function normalizeRequest(req: SummaryRequest, templates: Template[]): Su
   return req;
 }
 
+/** Hosted providers by name, for the privacy note. */
+export const VENDOR_NAMES: Record<ApiProvider, string> = { anthropic: "Anthropic", openai: "OpenAI", openrouter: "OpenRouter", gemini: "Google Gemini" };
+
 /** Where meeting data goes: shown wherever a summary can be started. */
 export function DataFlowNote() {
   const { t } = useI18n();
   const { name, info } = useSummaryEngine();
   const { transcriber, externalWorkers } = useAuth();
-  // Codex sends the transcript to OpenAI; a local model keeps it on this server (or the one the admin named).
-  const where = info?.provider === "local" ? (info.onServer ? "Local" : "Remote") : "";
+  // A hosted model receives the transcript; a local model keeps it on this server (or the one the admin named).
+  const where = info?.provider === "local" ? (info.onServer ? "Local" : "Remote") : "Api";
   // A transcription API on another machine receives the speech in the recording.
   const asrApi = transcriber?.engine === "api" && !transcriber.onServer;
   // pyannoteAI receives the whole recording to separate speakers.
   const diarizeCloud = transcriber?.diarization === "pyannoteai";
-  const vars = { engine: name, host: info?.host ?? "", asrModel: transcriber?.model ?? "", asrHost: transcriber?.host ?? "" };
+  const vendor = info?.vendor ? VENDOR_NAMES[info.vendor] : "";
+  const vars = { engine: name, host: info?.host ?? "", vendor, asrModel: transcriber?.model ?? "", asrHost: transcriber?.host ?? "" };
   return (
     <div className="dataflow">
       <ShieldCheck />

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { config } from "../config";
 import { parseJson } from "../lib/util";
 import type { SummaryProvider } from "../types";
+import { API_PROVIDERS, PROVIDER_INFO, type ApiProvider } from "./summaryApis";
 import { deleteSetting, readSetting, settingMeta, writeSetting } from "./settingsStore";
 
 /**
@@ -9,13 +10,13 @@ import { deleteSetting, readSetting, settingMeta, writeSetting } from "./setting
  *
  * The environment (.env) gives the defaults. Once an administrator saves the
  * settings on the admin page they are kept in the database and take
- * precedence, until they are reset. Secrets (LLM_API_KEY) are never part of
- * these settings: they stay in the environment and never reach the browser.
+ * precedence, until they are reset. Secrets (LLM_API_KEY, ANTHROPIC_API_KEY and
+ * the other providers' keys) are never part of these settings: they stay in the
+ * environment and never reach the browser.
  */
 
-/** Model names as Ollama, vLLM and Codex spell them: "batiai/qwen3.8-27b:q3", "Qwen/Qwen3-14B-AWQ", "gpt-5.1-codex". */
+/** Model names as providers and servers spell them: "batiai/qwen3.8-27b:q3", "Qwen/Qwen3-14B-AWQ", "claude-haiku-5-5", "anthropic/claude-haiku-4.5". */
 export const MODEL_NAME = /^[\w][\w.:/@+-]{0,199}$/;
-export const REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const;
 
 export const baseUrl = z
   .string()
@@ -42,23 +43,28 @@ export const localSettingsSchema = z.object({
   keepAliveSec: z.number().int().min(0).max(86_400),
 });
 
+/** A hosted model: the provider (with its fixed address) and the model name. */
+export const apiSettingsSchema = z.object({
+  provider: z.enum(API_PROVIDERS),
+  model: z.string().trim().regex(MODEL_NAME, "Enter a model name such as claude-haiku-5-5."),
+  /** Largest context to use when the provider does not say (Anthropic does; most OpenAI-compatible APIs do not). */
+  contextTokens: z.number().int().min(8192).max(2_000_000),
+});
+
 export const summarySettingsSchema = z.object({
-  provider: z.enum(["local", "codex"]),
+  provider: z.enum(["local", "api"]),
   local: localSettingsSchema,
-  codex: z.object({
-    model: z.string().trim().regex(MODEL_NAME, "Enter a Codex model name, or leave it empty.").nullable(),
-    reasoningEffort: z.enum(REASONING_EFFORTS).nullable(),
-  }),
+  api: apiSettingsSchema,
 });
 
 export type LocalModelSettings = z.infer<typeof localSettingsSchema>;
+export type ApiModelSettings = z.infer<typeof apiSettingsSchema>;
 export type SummarySettings = z.infer<typeof summarySettingsSchema>;
 
 const KEY = "summarizer";
 
 /** The settings .env describes; used until an administrator saves others. */
 export function defaultSummarySettings(): SummarySettings {
-  const effort = config.codex.reasoningEffort;
   return {
     provider: config.summary.provider,
     local: {
@@ -69,9 +75,10 @@ export function defaultSummarySettings(): SummarySettings {
       think: config.llm.think,
       keepAliveSec: config.llm.keepAliveSec,
     },
-    codex: {
-      model: config.codex.model ?? null,
-      reasoningEffort: effort && (REASONING_EFFORTS as readonly string[]).includes(effort) ? (effort as SummarySettings["codex"]["reasoningEffort"]) : null,
+    api: {
+      provider: config.summary.apiProvider,
+      model: config.summary.apiModel || PROVIDER_INFO[config.summary.apiProvider].defaultModel,
+      contextTokens: config.summary.apiContextTokens,
     },
   };
 }
@@ -84,11 +91,12 @@ export function summarySettings(): SummarySettings {
   const defaults = defaultSummarySettings();
   const value = readSetting(KEY);
   if (value === null) return defaults;
-  const saved = parseJson<Partial<SummarySettings>>(value, {});
+  const saved = parseJson<Partial<SummarySettings> & { provider?: string }>(value, {});
   const merged = {
-    provider: saved.provider ?? defaults.provider,
+    // Codex was removed: settings saved with it fall back to the default.
+    provider: saved.provider === "local" || saved.provider === "api" ? saved.provider : defaults.provider,
     local: { ...defaults.local, ...(saved.local ?? {}) },
-    codex: { ...defaults.codex, ...(saved.codex ?? {}) },
+    api: { ...defaults.api, ...(saved.api ?? {}) },
   };
   const parsed = summarySettingsSchema.safeParse(merged);
   return parsed.success ? parsed.data : defaults;
@@ -122,13 +130,17 @@ export function isLoopbackUrl(url: string): boolean {
 /** What people starting a summary are told about where it is written. */
 export function publicSummarizerInfo(s: SummarySettings = summarySettings()): {
   provider: SummaryProvider;
+  /** The hosted provider ("anthropic"…), for provider "api". */
+  vendor: ApiProvider | null;
   model: string | null;
   /** Local model on this machine: the transcript never leaves the server. */
   onServer: boolean;
-  /** Host of a local model server on another machine (null otherwise). */
+  /** Host the transcript is sent to: a hosted provider's, or a model server's on another machine (null when on this server). */
   host: string | null;
 } {
-  if (s.provider === "codex") return { provider: "codex", model: s.codex.model, onServer: false, host: null };
+  if (s.provider === "api") {
+    return { provider: "api", vendor: s.api.provider, model: s.api.model, onServer: false, host: PROVIDER_INFO[s.api.provider].host };
+  }
   const onServer = isLoopbackUrl(s.local.baseUrl);
-  return { provider: "local", model: s.local.model, onServer, host: onServer ? null : new URL(s.local.baseUrl).host };
+  return { provider: "local", vendor: null, model: s.local.model, onServer, host: onServer ? null : new URL(s.local.baseUrl).host };
 }

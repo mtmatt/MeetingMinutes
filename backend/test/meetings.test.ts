@@ -149,16 +149,12 @@ describe("meeting lifecycle", () => {
     expect(summary.templateName).toBe("Meeting minutes");
     expect(summary.usage.input_tokens).toBe(100);
 
-    const prompt = readFileSync(process.env.FAKE_CODEX_PROMPT_FILE!, "utf8");
+    expect(summary.provider).toBe("api");
+    expect(summary.model).toBe("claude-haiku-5-5");
+    const prompt = readFileSync(process.env.FAKE_ANTHROPIC_PROMPT_FILE!, "utf8");
     expect(prompt).toContain("Write minutes.");
     expect(prompt).toContain("[00:00:04] Speaker 2: 上週的 release 已經部署完成。 下週三前要補齊測試。");
     expect(prompt).toContain("繁體中文");
-    const args = JSON.parse(readFileSync(process.env.FAKE_CODEX_ARGS_FILE!, "utf8")) as string[];
-    expect(args).toContain("read-only");
-    expect(args).toContain("--ephemeral");
-    // Only features the binary knows about are disabled.
-    expect(args.join(" ")).toContain("--disable shell_tool");
-    expect(args.join(" ")).not.toContain("--disable computer_use");
   });
 
   test("speaker rename, segment edit, exports and range requests", async () => {
@@ -225,7 +221,7 @@ describe("meeting lifecycle", () => {
     expect(list.meetings).toHaveLength(0);
   });
 
-  test("failed summaries surface the codex error; manual re-run works", async () => {
+  test("failed summaries surface the error from the provider; manual re-run works", async () => {
     const c = await adminClient();
     const id = await createAndUpload(c, new Uint8Array(100));
     const job = await claimFor(id);
