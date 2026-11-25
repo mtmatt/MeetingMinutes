@@ -8,6 +8,7 @@ import { db, now } from "../db";
 import { serveFile } from "../lib/serveFile";
 import { httpError } from "../lib/util";
 import { completeCompactJob } from "../services/mediaCompaction";
+import { dropTransferIfIdle, transferFor, transferHasVideo } from "../services/mediaTransfer";
 import {
   INCOMING_FILES,
   type IncomingName,
@@ -123,11 +124,21 @@ internalRoutes.post("/jobs/claim", async (c) => {
   );
   const job = claimJob(input.workerId, kinds, input.capabilities, profileIdFor(c.get("worker").keyId));
   if (!job) return c.body(null, 204);
+  if (remote && job.kind !== "compact") {
+    // Start making the small copy it will download, so it is ready (or nearly) when asked for.
+    const m = getMeeting(job.meetingId);
+    if (m) transferFor(m);
+  }
   // A remote worker gets addresses to download from and upload to, never paths on this server.
   return c.json({ job: remote ? remoteJobView(job) : job });
 });
 
-/** The recording of a job this worker is running (byte ranges, to resume). */
+/**
+ * The recording of a job this worker is running (byte ranges, to resume).
+ * `?variant=audio`: the small audio-only copy (see mediaTransfer), answered
+ * with 202 and Retry-After while it is being made; X-MM-Media says which
+ * file was sent ("transfer" or "original").
+ */
 internalRoutes.get("/jobs/:id/media", (c) => {
   const id = workerId.parse(c.req.query("workerId") ?? "");
   own(c, id);
@@ -135,7 +146,21 @@ internalRoutes.get("/jobs/:id/media", (c) => {
   if (!job) httpError(409, "This job is not yours, or no longer running.", "not_running");
   const m = getMeeting(job!.meeting_id);
   if (!m) httpError(404, "The meeting is gone.", "not_found");
-  return serveFile(c, originalPath(m!), mediaTypeFor(m!.media_ext));
+  if (c.req.query("variant") === "audio" && job!.kind !== "compact") {
+    const transfer = transferFor(m!);
+    if (transfer.kind === "pending") {
+      reportProgress(job!.id, id, job!.kind === "transcribe" ? "downloading" : "voiceprint", 0);
+      return c.json({ pending: true, retryAfter: 3 }, 202, { "Retry-After": "3", "Cache-Control": "no-store" });
+    }
+    if (transfer.kind === "ready") {
+      const res = serveFile(c, transfer.path, "audio/ogg");
+      res.headers.set("X-MM-Media", "transfer");
+      return res;
+    }
+  }
+  const res = serveFile(c, originalPath(m!), mediaTypeFor(m!.media_ext));
+  res.headers.set("X-MM-Media", "original");
+  return res;
 });
 
 /**
@@ -210,6 +235,11 @@ const resultSchema = z.object({
 
 const voiceprintSchema = z.object({ voiceModel, voices: voicesSchema });
 
+/** The meeting a job belongs to (any status), or "" if there is no such job. */
+function jobMeeting(jobId: string): string {
+  return db.query<{ meeting_id: string }, { id: string }>("SELECT meeting_id FROM jobs WHERE id = $id").get({ id: jobId })?.meeting_id ?? "";
+}
+
 internalRoutes.post("/jobs/:id/complete", async (c) => {
   const id = c.req.param("id");
   // The result is validated as what the job is, so a malformed result gets the real error (422).
@@ -226,12 +256,18 @@ internalRoutes.post("/jobs/:id/complete", async (c) => {
     own(c, input.workerId);
     seen(input.workerId);
     const ok = completeVoiceprintJob(id, input.workerId, input.result);
+    if (ok) dropTransferIfIdle(jobMeeting(id));
     return c.json({ accepted: ok }, ok ? 200 : 409);
   }
   const input = await body(c, z.object({ workerId, result: resultSchema }), RESULT_LIMIT_BYTES);
   own(c, input.workerId);
   seen(input.workerId);
-  const ok = completeJob(id, input.workerId, input.result);
+  const meetingId = jobMeeting(id);
+  const meeting = meetingId ? getMeeting(meetingId) : null;
+  // A worker that was sent the audio-only copy cannot see the original's video; this server can.
+  const hasVideo = meeting ? transferHasVideo(meeting) : null;
+  const ok = completeJob(id, input.workerId, hasVideo === null ? input.result : { ...input.result, hasVideo });
+  if (ok && meetingId) dropTransferIfIdle(meetingId);
   return c.json({ accepted: ok }, ok ? 200 : 409);
 });
 
@@ -239,6 +275,9 @@ internalRoutes.post("/jobs/:id/fail", async (c) => {
   const input = await body(c, z.object({ workerId, error: z.string().max(4000), retryable: z.boolean().default(false) }), SMALL_JSON_LIMIT_BYTES);
   own(c, input.workerId);
   seen(input.workerId);
+  const meetingId = jobMeeting(c.req.param("id"));
   const ok = failJob(c.req.param("id"), input.workerId, input.error, input.retryable);
+  // Kept while the job is queued again (another worker will want it).
+  if (ok && meetingId) dropTransferIfIdle(meetingId);
   return c.json({ accepted: ok }, ok ? 200 : 409);
 });

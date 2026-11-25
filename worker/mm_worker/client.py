@@ -169,12 +169,33 @@ class BackendClient:
 
     def _url(self, path: str, **query) -> str:
         q = urllib.parse.urlencode({"workerId": self.worker_id, **query})
-        return f"{self.base_url}{path}?{q}"
+        # The server's addresses may carry a query of their own (…/media?variant=audio).
+        return f"{self.base_url}{path}{'&' if '?' in path else '?'}{q}"
 
-    def download(self, path: str, dest: Path, size: Optional[int], progress: Optional[Callable[[float], None]] = None, retries: int = 6) -> None:
-        """A job's recording into ``dest``, resuming where an interrupted transfer stopped."""
+    def download(
+        self,
+        path: str,
+        dest: Path,
+        size: Optional[int],
+        progress: Optional[Callable[[float], None]] = None,
+        retries: int = 6,
+        on_wait: Optional[Callable[[], None]] = None,
+        max_wait_sec: float = 1800.0,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> dict:
+        """A job's recording into ``dest``, resuming where an interrupted transfer stopped.
+
+        ``size`` may be None (the audio-only copy is made when first asked for):
+        it is then taken from the response. A 202 means the server is still
+        making the file: ``on_wait`` is called (it may raise to give up) and the
+        request is sent again after Retry-After, for up to ``max_wait_sec``.
+        Returns the headers of the last response (lower-case names).
+        """
         delay = 2.0
-        for attempt in range(retries + 1):
+        attempt = 0
+        waited = 0.0
+        headers_seen: dict = {}
+        while True:
             have = dest.stat().st_size if dest.exists() else 0
             if size is not None and have >= size:
                 break
@@ -184,8 +205,28 @@ class BackendClient:
             req = urllib.request.Request(self._url(path), headers=headers)
             try:
                 with _open(req, max(self.timeout, 120)) as res:
+                    headers_seen = {k.lower(): v for k, v in res.headers.items()}
+                    if res.status == 202:
+                        res.read()
+                        if waited >= max_wait_sec:
+                            raise ServerError(504, f"the server did not have the recording ready within {max_wait_sec / 60:.0f} minutes")
+                        if on_wait:
+                            on_wait()
+                        try:
+                            pause = min(30.0, max(1.0, float(headers_seen.get("retry-after") or 3)))
+                        except ValueError:
+                            pause = 3.0
+                        sleep(pause)
+                        waited += pause
+                        continue
                     if have and res.status != 206:
                         have = 0  # the server sent it whole: start over
+                    if size is None:
+                        total = headers_seen.get("content-range", "").rpartition("/")[2]
+                        if total.isdigit():
+                            size = int(total)
+                        elif res.status == 200 and str(headers_seen.get("content-length", "")).isdigit():
+                            size = int(headers_seen["content-length"])
                     with open(dest, "r+b" if have else "wb") as out:
                         out.seek(have)
                         while True:
@@ -205,10 +246,12 @@ class BackendClient:
                 if attempt >= retries:
                     raise
                 log.warning("download interrupted (%s); resuming in %.0fs", e, delay)
-            time.sleep(delay)
+            attempt += 1
+            sleep(delay)
             delay = min(delay * 2, 30.0)
         if size is not None and dest.stat().st_size != size:
             raise ServerError(500, f"downloaded {dest.stat().st_size} of {size} bytes")
+        return headers_seen
 
     def upload(self, path: str, name: str, src: Path, chunk_bytes: int, retries: int = 6) -> None:
         """A file this worker made, in chunks; resumes from what the server says it has."""

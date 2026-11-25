@@ -36,11 +36,21 @@ import { apiErrorMessage, describeFailure } from "../lib/errors";
 
 const PIPELINE: { key: string; label: TKey; stages: string[] }[] = [
   { key: "queued", label: "status.queued", stages: ["queued", "starting", "retrying"] },
-  { key: "loading", label: "stage.loading", stages: ["loading"] },
+  // Loading the models, and on a machine elsewhere also receiving the recording; named by what it is doing.
+  { key: "prepare", label: "stage.prepare", stages: ["loading", "downloading"] },
   { key: "decode", label: "stage.decoding", stages: ["decoding", "preparing"] },
   { key: "speakers", label: "stage.diarizing", stages: ["diarizing"] },
-  { key: "transcribe", label: "stage.transcribing", stages: ["transcribing", "finalizing"] },
+  { key: "transcribe", label: "stage.transcribing", stages: ["transcribing", "finalizing", "uploading"] },
 ];
+
+/** What the current stage is doing, where a number alone would not say (it can sit at 0% for minutes). */
+const STAGE_HINT: Record<string, TKey> = {
+  loading: "meeting.hintLoading",
+  downloading: "meeting.hintDownloading",
+  uploading: "meeting.hintUploading",
+};
+/** Stages whose length cannot be told in advance: the bar moves without a figure. */
+const UNMEASURED = new Set(["starting", "loading"]);
 
 function Pipeline({ meeting, onRetry }: { meeting: MeetingDetail; onRetry: () => void }) {
   const { t } = useI18n();
@@ -48,6 +58,8 @@ function Pipeline({ meeting, onRetry }: { meeting: MeetingDetail; onRetry: () =>
   const current = meeting.status === "queued" ? "queued" : meeting.stage ?? "starting";
   const activeIdx = PIPELINE.findIndex((p) => p.stages.includes(current));
   const pct = Math.round(meeting.progress * 100);
+  const hint = STAGE_HINT[current];
+  const unmeasured = meeting.status === "queued" || (UNMEASURED.has(current) && pct === 0);
 
   if (meeting.status === "failed") {
     const failure = describeFailure(meeting.error);
@@ -108,7 +120,10 @@ function Pipeline({ meeting, onRetry }: { meeting: MeetingDetail; onRetry: () =>
             </div>
           )}
         </div>
-        <p className="muted">{meeting.status === "queued" ? t("meeting.queuedBody") : t("meeting.processingBody")}</p>
+        <div className="processing-note">
+          {hint && <p className="processing-hint">{t(hint)}</p>}
+          <p className="muted">{meeting.status === "queued" ? t("meeting.queuedBody") : t("meeting.processingBody")}</p>
+        </div>
       </div>
       <ol className="pipeline">
         {PIPELINE.map((p, i) => {
@@ -116,12 +131,12 @@ function Pipeline({ meeting, onRetry }: { meeting: MeetingDetail; onRetry: () =>
           return (
             <li key={p.key} className={`pipeline-step ${state}`}>
               <span className="pipeline-mark">{state === "done" ? <Check /> : <span className="mono">{i + 1}</span>}</span>
-              <span className="pipeline-label">{t(p.label)}</span>
+              <span className="pipeline-label">{state === "active" && p.key === "prepare" ? t(`stage.${current}` as TKey) : t(p.label)}</span>
             </li>
           );
         })}
       </ol>
-      <div className={`progress ${meeting.status === "queued" ? "indeterminate" : ""}`} style={{ height: 6 }}>
+      <div className={`progress ${unmeasured ? "indeterminate" : ""}`} style={{ height: 6 }}>
         <span style={{ width: `${pct}%` }} />
       </div>
     </div>

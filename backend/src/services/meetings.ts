@@ -143,6 +143,8 @@ export function remoteJobView(job: ClaimedJob) {
       url: `/internal/jobs/${job.jobId}/media`,
       size: m && existsSync(originalPath(m)) ? statSync(originalPath(m)).size : null,
       ext: m?.media_ext ?? "bin",
+      // The audio-only copy, usually far smaller (workers from before it use `url`).
+      transfer: { url: `/internal/jobs/${job.jobId}/media?variant=audio` },
     },
     ...(job.kind === "transcribe"
       ? { uploads: { url: `/internal/jobs/${job.jobId}/files`, files: Object.keys(INCOMING_FILES), chunkBytes: config.uploadChunkBytes } }

@@ -110,6 +110,7 @@ export const en = {
   },
   stage: {
     starting: "Starting",
+    prepare: "Getting ready",
     retrying: "Retrying",
     loading: "Loading models",
     decoding: "Decoding audio",
@@ -269,6 +270,9 @@ export const en = {
     edited: "edited",
     processingTitle: "Working on it",
     processingBody: "You can leave this page; processing continues on the server.",
+    hintLoading: "Loading the recognition models on the machine doing the work. This usually takes under a minute; the first time on a machine, the models are downloaded first, which can take a quarter of an hour.",
+    hintDownloading: "Sending the recording to the machine doing the work (its sound only, without any video). Over a slow connection this can take a few minutes.",
+    hintUploading: "Transcribed; sending the results back to the server.",
     queuedBody: "Waiting for a free GPU worker.",
     uploadingBody: "The upload did not finish. Upload the recording again.",
     failedTitle: "Transcription failed",

@@ -112,6 +112,7 @@ export const zhTW: Dict = {
   },
   stage: {
     starting: "準備中",
+    prepare: "準備模型與錄音",
     retrying: "重新嘗試",
     loading: "載入模型",
     decoding: "解碼音訊",
@@ -271,6 +272,9 @@ export const zhTW: Dict = {
     edited: "已編輯",
     processingTitle: "處理中",
     processingBody: "可以先離開此頁，伺服器會繼續處理。",
+    hintLoading: "正在把辨識模型載入處理的機器。通常不到一分鐘；那台機器第一次處理時要先下載模型，可能要十幾分鐘。",
+    hintDownloading: "正在把錄音傳到處理這份錄音的機器（只傳聲音，不含影片）。網路較慢時這一步可能要幾分鐘。",
+    hintUploading: "轉錄已完成，正在把結果傳回伺服器。",
     queuedBody: "正在等待可用的 GPU。",
     uploadingBody: "上傳沒有完成，請重新上傳錄音。",
     failedTitle: "轉錄失敗",

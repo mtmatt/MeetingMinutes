@@ -86,7 +86,17 @@ describe("workers on other machines", () => {
     const job = await claimAs(token, wid, id);
     expect(job.mediaPath).toBeUndefined();
     expect(job.outDir).toBeUndefined();
-    expect(job.media).toEqual({ url: `/internal/jobs/${job.jobId}/media`, size: AUDIO.length, ext: "wav" });
+    expect(job.media).toEqual({
+      url: `/internal/jobs/${job.jobId}/media`,
+      size: AUDIO.length,
+      ext: "wav",
+      transfer: { url: `/internal/jobs/${job.jobId}/media?variant=audio` },
+    });
+    // Too small to be worth a copy: the copy's address sends the original, and says so.
+    const small = await call(token, "GET", `${job.media.transfer.url}&workerId=${wid}`);
+    expect(small.status).toBe(200);
+    expect(small.headers.get("x-mm-media")).toBe("original");
+    expect(new Uint8Array(await small.arrayBuffer())).toEqual(AUDIO);
     expect(job.uploads.files).toEqual(["playback.m4a", "peaks.json"]);
 
     // Whole, and resumed from byte 1000.
