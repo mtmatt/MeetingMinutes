@@ -420,6 +420,10 @@ Each worker reports what it can run and which API keys it has, and the server ha
 
 **Fallback machines.** A machine marked as a fallback takes a recording only after it has waited a while (2 minutes by default) **while another worker is connected**; when every other worker is offline it takes work at once. With the server as a fallback, the GPU machines do the work while they are on, and the server picks it up when they are off. The upload page describes every path a recording may take ("depending on which worker takes it…") when machines are set differently.
 
+## Presets for adding a recording
+
+Settings people reuse can be kept as named presets: the language, the number of speakers, the vocabulary (names and terms the recogniser should spell your way, such as `NTU COOL、資工系`), the script, and whether and how to summarise. On **New recording**, choose a preset to fill all of them in; after changing settings, **Update** keeps them in that preset, or **Save as preset** makes a new one. The preset marked default is filled in whenever the page opens. **Settings → Presets** lists them, to change the default, rename or delete one. Presets are per person (up to 30), and changing one never touches recordings already added.
+
 ## Recording meetings in the browser
 
 **New recording → Record a meeting** offers two sources:

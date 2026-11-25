@@ -36,7 +36,7 @@ import { serveFile } from "../lib/serveFile";
 export const meetingRoutes = new Hono<AppEnv>();
 meetingRoutes.use(requireUser);
 
-const optionsSchema = z.object({
+export const optionsSchema = z.object({
   language: z.string().trim().max(32).default("auto"),
   diarize: z.boolean().default(true),
   numSpeakers: z.number().int().min(1).max(32).nullable().default(null),
@@ -46,7 +46,7 @@ const optionsSchema = z.object({
   script: z.enum(["zh-TW", "zh-CN", "none"]).default("zh-TW"),
 });
 
-const summaryRequestSchema = z.object({
+export const summaryRequestSchema = z.object({
   templateId: z.string().max(64).nullable().default(null),
   prompt: z.string().trim().min(1, "The prompt cannot be empty.").max(20000),
   outputLanguage: z.enum(["zh-TW", "en", "auto"]).default("zh-TW"),

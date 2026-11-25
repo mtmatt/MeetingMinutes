@@ -33,6 +33,20 @@ export interface SummaryRequest {
   outputLanguage: OutputLanguage;
 }
 
+/** Named settings for adding a recording, applied in one click; the default one by itself. */
+export interface Preset {
+  id: string;
+  name: string;
+  options: TranscribeOptions;
+  /** The automatic summary; null for none. */
+  summary: SummaryRequest | null;
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type PresetInput = Pick<Preset, "name" | "options" | "summary" | "isDefault">;
+
 export interface MeetingSummary {
   id: string;
   title: string;

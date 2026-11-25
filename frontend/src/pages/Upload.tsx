@@ -2,7 +2,8 @@ import { AlertCircle, AlertTriangle, AudioLines, ChevronRight, Download, FileAud
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import { useBlocker, useNavigate, useSearchParams } from "react-router";
 import { ApiError, api, uploadFile } from "../api/client";
-import type { Script, SummaryRequest, TranscribeOptions } from "../api/types";
+import type { Preset, Script, SummaryRequest, TranscribeOptions } from "../api/types";
+import { PresetBar, usePresets, type PresetValue } from "../components/Presets";
 import { DataFlowNote, SummaryComposer, defaultOutputLanguage, normalizeRequest, useTemplates } from "../components/SummaryComposer";
 import { useI18n, type TFn } from "../i18n";
 import { bytes, clock, fromLocalInput, monthDay, time, toLocalInput } from "../lib/format";
@@ -73,6 +74,8 @@ export function UploadPage() {
   });
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  // The preset whose settings fill the form (null: none chosen).
+  const [presetId, setPresetId] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
   const mode: "file" | "record" = params.get("mode") === "record" ? "record" : "file";
   const setMode = (m: "file" | "record") => setParams(m === "record" ? { mode: "record" } : {}, { replace: true });
@@ -213,6 +216,38 @@ export function UploadPage() {
     [language, speakerMode, exact, range, vocabulary, script],
   );
 
+  const presetValue: PresetValue = useMemo(() => ({ options, summary: autoSummary ? summary : null }), [options, autoSummary, summary]);
+
+  /** Fill the form from a preset (null: keep the settings, stop following a preset). */
+  const applyPreset = useCallback((p: Preset | null) => {
+    setPresetId(p?.id ?? null);
+    if (!p) return;
+    const o = p.options;
+    setLanguage(o.language);
+    if (!o.diarize) setSpeakerMode("off");
+    else if (o.numSpeakers) {
+      setSpeakerMode("exact");
+      setExact(o.numSpeakers);
+    } else if (o.minSpeakers && o.maxSpeakers) {
+      setSpeakerMode("range");
+      setRange([o.minSpeakers, o.maxSpeakers]);
+    } else setSpeakerMode("auto");
+    setVocabulary(o.vocabulary);
+    setScript(o.script);
+    setAutoSummary(!!p.summary);
+    if (p.summary) setSummary(p.summary);
+  }, []);
+
+  // The default preset fills the form when the page opens.
+  const presets = usePresets();
+  const defaultApplied = useRef(false);
+  useEffect(() => {
+    if (defaultApplied.current || !presets.data) return;
+    defaultApplied.current = true;
+    const d = presets.data.presets.find((p) => p.isDefault);
+    if (d) applyPreset(d);
+  }, [presets.data, applyPreset]);
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!file) return setError(t("upload.needFile"));
@@ -328,6 +363,7 @@ export function UploadPage() {
       <hr className="rule-double" />
 
       <form className="upload-form" onSubmit={submit} id="upload-form">
+        <PresetBar current={presetValue} appliedId={presetId} onApply={applyPreset} onSaved={(p) => setPresetId(p.id)} />
         <Step n="1" title={t("upload.step1")}>
           {!file && (
             <div className="mode-tabs" role="tablist" aria-label={t("upload.step1")}>

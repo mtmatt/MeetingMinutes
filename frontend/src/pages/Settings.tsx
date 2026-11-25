@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Laptop, LogOut, Monitor, Moon, Smartphone, Sun } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { api } from "../api/client";
+import { PresetManager } from "../components/Presets";
 import { useToast } from "../components/Toast";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
@@ -144,6 +145,10 @@ export function SettingsPage() {
             </div>
           </div>
         </div>
+      </Section>
+
+      <Section title={t("presets.title")} lede={t("presets.lede")}>
+        <PresetManager />
       </Section>
 
       <Section title={t("settings.security")}>

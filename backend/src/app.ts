@@ -11,6 +11,7 @@ import { authRoutes, meRoutes } from "./routes/auth";
 import { eventRoutes } from "./routes/events";
 import { internalRoutes } from "./routes/internal";
 import { meetingRoutes } from "./routes/meetings";
+import { presetRoutes } from "./routes/presets";
 import { templateRoutes } from "./routes/templates";
 import { voiceRoutes } from "./routes/voices";
 import type { AppEnv } from "./types";
@@ -95,6 +96,7 @@ export function createApp() {
   api.route("/me", meRoutes);
   api.route("/meetings", meetingRoutes);
   api.route("/templates", templateRoutes);
+  api.route("/presets", presetRoutes);
   api.route("/voices", voiceRoutes);
   api.route("/admin", adminRoutes);
   api.route("/events", eventRoutes);

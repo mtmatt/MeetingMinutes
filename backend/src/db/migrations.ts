@@ -311,4 +311,20 @@ export const migrations: string[] = [
   CREATE INDEX summaries_meeting ON summaries(meeting_id, created_at DESC);
   CREATE INDEX summaries_status ON summaries(status, created_at);
   `,
+  // Presets: named transcription and automatic-summary settings a person
+  // applies when adding a recording; at most one per person is the default.
+  `
+  CREATE TABLE transcribe_presets (
+    id         TEXT PRIMARY KEY,
+    owner_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    options    TEXT NOT NULL,
+    summary    TEXT,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX transcribe_presets_name ON transcribe_presets(owner_id, name);
+  CREATE UNIQUE INDEX transcribe_presets_default ON transcribe_presets(owner_id) WHERE is_default = 1;
+  `,
 ];

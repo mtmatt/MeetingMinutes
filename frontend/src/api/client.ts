@@ -4,6 +4,8 @@ import type {
   ApiModelProbe,
   ApiModelSettings,
   LocalModelSettings,
+  Preset,
+  PresetInput,
   LocalModelStatus,
   MeetingDetail,
   MeetingSummary,
@@ -95,6 +97,7 @@ export async function quietGet<T>(path: string): Promise<T> {
 const post = <T>(p: string, b: Json = {}) => request<T>("POST", p, b);
 const patch = <T>(p: string, b: Json) => request<T>("PATCH", p, b);
 const del = <T>(p: string) => request<T>("DELETE", p);
+const put = <T>(p: string, b: Json) => request<T>("PUT", p, b);
 
 export const api = {
   // auth
@@ -170,6 +173,10 @@ export const api = {
 
   // templates
   templates: () => get<{ templates: Template[] }>("/templates"),
+  presets: () => get<{ presets: Preset[] }>("/presets"),
+  createPreset: (b: PresetInput) => post<{ preset: Preset; presets: Preset[] }>("/presets", b),
+  updatePreset: (id: string, b: PresetInput) => put<{ preset: Preset; presets: Preset[] }>(`/presets/${id}`, b),
+  deletePreset: (id: string) => del<{ presets: Preset[] }>(`/presets/${id}`),
   createTemplate: (b: { name: string; description: string; body: string }) => post<{ template: Template }>("/templates", b),
   updateTemplate: (id: string, b: { name?: string; description?: string; body?: string }) =>
     patch<{ template: Template }>(`/templates/${id}`, b),
