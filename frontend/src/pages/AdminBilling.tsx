@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUp, CheckCircle2, Coins, ExternalLink, FileText, Plus, Receipt, RefreshCw, Store, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowUp, CheckCircle2, Coins, ExternalLink, Eye, FileText, Plus, Receipt, RefreshCw, Store, Trash2, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { api } from "../api/client";
 import type { AdminOrder, BillingSettings, CreditPackage, PaymentMethod } from "../api/types";
 import { useConfirm } from "../components/Modal";
@@ -242,6 +243,9 @@ export function AdminBilling() {
               {t("model.discard")}
             </button>
           )}
+          <Link className="btn btn-ghost" to="/billing?preview=1" title={dirty ? t("sales.previewSavedOnly") : undefined}>
+            <Eye /> {t("billing.previewAsBuyer")}
+          </Link>
           {form.enabled && form.packages.length === 0 && <span className="field-error">{t("sales.needPackage")}</span>}
           <span className="faint model-saved">
             {data.meta.saved && data.meta.updatedAt ? t("model.savedBy", { who: data.meta.updatedBy ?? "–", when: relative(data.meta.updatedAt, t, locale) }) : ""}
