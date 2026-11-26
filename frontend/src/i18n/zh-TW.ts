@@ -1160,6 +1160,8 @@ export const zhTW: Dict = {
     nowPaid: "訂單 {id} 已付款，點數已加值。",
   },
   security: {
+    noiseHint: "（直接用 IP 連線的掃描程式，以及已封鎖的位址；都已擋下，無害）",
+    showNoise: "顯示最近 24 小時 {n} 筆背景雜訊",
     autoReason: "自動封鎖，15 分鐘內：{what}",
     last24h: "最近 24 小時",
     tileSignIns: "密碼錯誤",

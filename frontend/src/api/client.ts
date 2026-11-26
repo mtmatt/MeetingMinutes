@@ -153,8 +153,10 @@ export const api = {
   adminRefreshOrder: (id: string) => post<{ order: Order }>(`/admin/orders/${encodeURIComponent(id)}/refresh`),
   adminCredits: (userId: string) => get<{ balance: number; ledger: LedgerEntry[] }>(`/admin/users/${encodeURIComponent(userId)}/credits`),
   adminSecurity: () => get<SecurityState>("/admin/security"),
-  adminSecurityEvents: (kind = "", ip = "", limit = 100) =>
-    get<{ events: SecurityEvent[] }>(`/admin/security/events?kind=${encodeURIComponent(kind)}&ip=${encodeURIComponent(ip)}&limit=${limit}`),
+  adminSecurityEvents: (kind = "", ip = "", limit = 100, noise = false) =>
+    get<{ events: SecurityEvent[]; hiddenNoise: number }>(
+      `/admin/security/events?kind=${encodeURIComponent(kind)}&ip=${encodeURIComponent(ip)}&limit=${limit}${noise ? "&noise=1" : ""}`,
+    ),
   adminSaveSecurity: (b: SecuritySettings) => put<{ settings: SecuritySettings }>("/admin/security", b),
   adminBlockIp: (ip: string, minutes: number | null, reason = "") => post<{ ok: true }>("/admin/security/blocks", { ip, minutes, reason }),
   adminUnblockIp: (ip: string) => del<{ ok: true }>(`/admin/security/blocks/${encodeURIComponent(ip)}`),

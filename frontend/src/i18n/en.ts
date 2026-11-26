@@ -1159,6 +1159,8 @@ export const en = {
     nowPaid: "Order {id} is paid; its points were added.",
   },
   security: {
+    noiseHint: "(scanners trying the bare IP address, and blocked addresses; refused, harmless)",
+    showNoise: "Show {n} background requests from the last 24 hours",
     autoReason: "Automatic, within 15 minutes: {what}",
     last24h: "The last 24 hours",
     tileSignIns: "Wrong passwords",
