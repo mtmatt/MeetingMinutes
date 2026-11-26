@@ -10,6 +10,11 @@ import { countRecordings } from "../lib/recordingStore";
  * reached here; while there are any, ask for them to be uploaded (or
  * downloaded) first, and move once they are gone.
  */
+/** The old port served the site because recordings were left here (a session cookie its handoff page set); not any more. */
+function leaveOldAddress() {
+  document.cookie = "mm_handoff=; Path=/; Max-Age=0; Secure; SameSite=Lax";
+}
+
 export function OriginHandoff() {
   const { t } = useI18n();
   const { siteOrigin } = useAuth();
@@ -32,6 +37,7 @@ export function OriginHandoff() {
     if (!target) return;
     const go = () => {
       setLeaving(true);
+      leaveOldAddress();
       const { pathname, search, hash } = window.location;
       window.location.replace(target + pathname + search + hash);
     };
@@ -76,6 +82,7 @@ export function OriginHandoff() {
                 className="btn btn-sm btn-ghost"
                 onClick={() => {
                   setLeaving(true);
+                  leaveOldAddress();
                   window.location.replace(target + window.location.pathname + window.location.search);
                 }}
                 disabled={leaving}
