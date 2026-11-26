@@ -448,6 +448,12 @@ Each worker reports what it can run and which API keys it has, and the server ha
 
 Settings people reuse can be kept as named presets: the language, the number of speakers, the vocabulary (names and terms the recogniser should spell your way, such as `NTU COOL、資工系`), the script, and whether and how to summarise. On **New recording**, choose a preset to fill all of them in; after changing settings, **Update** keeps them in that preset, or **Save as preset** makes a new one. The preset marked default is filled in whenever the page opens. **Settings → Presets** lists them, to change the default, rename or delete one. Presets are per person (up to 30), and changing one never touches recordings already added.
 
+## Usage dashboard
+
+**Usage** (in the account menu, at `/usage`) shows what a person used over the last 30 or 90 days (by day), 12 months or all time (by month): hours of recording transcribed, summaries and the tokens they read and wrote, and, on a prepaid account, the points they cost. The work is sorted by language, recording length, weekday of the meeting, summary template and summary model, with the meetings that used the most. It counts finished work on recordings still in the library (transcribing again counts again; deleted recordings are left out; failures are noted but not counted), in Taiwan time; every charge stays listed on the purchase page.
+
+Administrators can switch the page to any person, or to the whole site, which adds usage by person; **Admin → Users → ⋯ → View usage** opens it for one person.
+
 ## Sign-up and selling points (ECPay)
 
 By default only people an administrator invites have accounts, and everything is free for them. A site can also let anyone create an account and pay with prepaid points, bought through ECPay (綠界科技). Points pay for two things, at rates the administrator sets:

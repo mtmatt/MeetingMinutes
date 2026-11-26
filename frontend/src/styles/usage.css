@@ -1,0 +1,333 @@
+/* ------------------------------------------------------------ Usage dashboard */
+
+.usage-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: var(--space-5);
+}
+.usage-who {
+  width: auto;
+  min-width: 180px;
+  max-width: 100%;
+}
+.usage-body {
+  display: grid;
+  gap: 18px;
+  transition: opacity var(--dur-fast);
+}
+/* Switching period or person: the old figures stay, dimmed, until the new ones arrive. */
+.usage-body.is-fetching {
+  opacity: 0.6;
+}
+
+.usage-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.usage-tile {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-1);
+  min-width: 0;
+}
+.usage-tile-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.usage-tile-label svg {
+  width: 15px;
+  height: 15px;
+  color: var(--ink-3);
+}
+.usage-tile-value {
+  font-family: var(--font-display);
+  font-size: var(--step-3);
+  font-weight: 540;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.usage-tile-sub {
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+.usage-failed {
+  margin: -6px 0 0;
+  font-size: var(--step--1);
+}
+
+.usage-card {
+  padding: 18px 20px;
+  min-width: 0;
+}
+.usage-card .system-h {
+  margin-bottom: 4px;
+}
+.usage-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.usage-card-head .system-h {
+  margin: 0;
+}
+.usage-hint {
+  margin: 0 0 14px;
+  font-size: var(--step--1);
+}
+.usage-none {
+  margin: 0;
+  font-size: var(--step--1);
+}
+
+/* One series at a time: thin bars from the baseline, rounded at the data end. */
+.usage-chart {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 180px auto;
+  column-gap: 10px;
+  row-gap: 6px;
+}
+.usage-chart-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-size: var(--step--2);
+  font-variant-numeric: tabular-nums;
+  margin: -6px 0;
+}
+.usage-chart-plot {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+.usage-chart-plot.is-dense {
+  gap: 1px;
+}
+.usage-chart-grid {
+  position: absolute;
+  inset: 0;
+  border-top: 1px dashed var(--rule);
+  pointer-events: none;
+}
+.usage-bar {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+.usage-bar-fill {
+  display: block;
+  width: min(100%, 32px);
+  border-radius: 4px 4px 0 0;
+  background: var(--accent);
+  opacity: 0.7;
+  transition: opacity var(--dur-fast);
+}
+.usage-chart-plot.is-dense .usage-bar-fill {
+  border-radius: 2px 2px 0 0;
+}
+.usage-bar.is-hover .usage-bar-fill,
+.usage-bar:focus-visible .usage-bar-fill {
+  opacity: 1;
+}
+.usage-bar.is-hover {
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  border-radius: 4px 4px 0 0;
+}
+.usage-bar:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Inside the plot, at its top, so it never covers the figures above the chart. */
+.usage-tip {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  min-width: 180px;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-2, var(--shadow-1));
+  font-size: var(--step--1);
+  pointer-events: none;
+  z-index: 5;
+  white-space: nowrap;
+}
+.usage-tip.tip-left {
+  transform: translateX(calc(-100% + 14px));
+}
+.usage-tip.tip-right {
+  transform: translateX(-14px);
+}
+.usage-tip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--ink-2);
+}
+.usage-tip-row span:last-child {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.usage-chart-x {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--step--2);
+}
+
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+/* Ranked rows: the label and figures on one line, the share as a thin bar under them. */
+.usage-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.usage-bars-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: var(--step--1);
+}
+.usage-bars-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.usage-bars-value {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.usage-bars-track {
+  display: block;
+  height: 6px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.usage-bars-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.7;
+}
+
+.usage-table td {
+  vertical-align: top;
+}
+.usage-table td.num {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.usage-title {
+  max-width: 420px;
+  overflow-wrap: anywhere;
+}
+.usage-plan {
+  font-size: var(--step--2);
+}
+.usage-empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--ink-2);
+}
+.usage-empty svg {
+  width: 28px;
+  height: 28px;
+  color: var(--ink-3);
+}
+.usage-empty p {
+  margin: 0;
+}
+.usage-note {
+  margin: 0;
+  font-size: var(--step--1);
+  max-width: 80ch;
+}
+
+.billing-usage-link {
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+
+@media (max-width: 760px) {
+  .usage-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 480px) {
+  .usage-tiles {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .usage-tile {
+    padding: 12px 14px;
+  }
+  .usage-tile-value {
+    font-size: var(--step-2);
+  }
+  .usage-card {
+    padding: 14px 14px;
+  }
+  .usage-chart {
+    grid-template-rows: 150px auto;
+  }
+  /* On a phone the figures go under the label, so long template names are not cut short. */
+  .usage-bars-line {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+  }
+  .usage-bars-label {
+    white-space: normal;
+  }
+  .usage-bars-value {
+    text-align: left;
+  }
+  .usage-opt {
+    display: none;
+  }
+}

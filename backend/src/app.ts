@@ -10,6 +10,7 @@ import { securityWatch } from "./auth/securityWatch";
 import { isProbe } from "./services/security";
 import { adminRoutes } from "./routes/admin";
 import { billingRoutes, ecpayRoutes } from "./routes/billing";
+import { usageRoutes } from "./routes/usage";
 import { authRoutes, meRoutes } from "./routes/auth";
 import { eventRoutes } from "./routes/events";
 import { internalRoutes } from "./routes/internal";
@@ -111,6 +112,7 @@ export function createApp() {
   api.route("/templates", templateRoutes);
   api.route("/presets", presetRoutes);
   api.route("/billing", billingRoutes);
+  api.route("/usage", usageRoutes);
   api.route("/voices", voiceRoutes);
   api.route("/admin", adminRoutes);
   api.route("/events", eventRoutes);

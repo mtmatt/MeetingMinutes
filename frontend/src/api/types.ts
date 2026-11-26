@@ -548,6 +548,56 @@ export interface BillingInfo {
   ledger: LedgerEntry[];
 }
 
+// ------------------------------------------------------------------ usage
+
+export type UsageRange = "30d" | "90d" | "12m" | "all";
+
+export interface UsageGroup {
+  key: string;
+  count: number;
+  /** Seconds of recording. */
+  sec: number;
+  /** Thousandths of a point. */
+  points: number;
+}
+
+export interface UsageTokenGroup extends UsageGroup {
+  input: number;
+  output: number;
+}
+
+export interface UsageReport {
+  range: UsageRange;
+  by: "day" | "month";
+  from: number;
+  to: number;
+  showPoints: boolean;
+  totals: {
+    sec: number;
+    transcriptions: number;
+    meetings: number;
+    summaries: number;
+    inputTokens: number;
+    outputTokens: number;
+    unknownTokens: number;
+    pointsTranscription: number;
+    pointsSummary: number;
+    failedTranscriptions: number;
+    failedSummaries: number;
+  };
+  series: { key: string; sec: number; transcriptions: number; summaries: number; points: number }[];
+  languages: UsageGroup[];
+  lengths: UsageGroup[];
+  weekdays: UsageGroup[];
+  templates: UsageTokenGroup[];
+  models: UsageTokenGroup[];
+  top: { id: string; title: string; sec: number; transcriptions: number; summaries: number; points: number }[];
+  library: { meetings: number; bytes: number; sec: number };
+  byUser:
+    | { id: string | null; username: string | null; displayName: string | null; billing: string | null; sec: number; transcriptions: number; summaries: number; points: number }[]
+    | null;
+}
+
 export interface BillingSettings {
   registrationOpen: boolean;
   enabled: boolean;
