@@ -410,12 +410,56 @@
 }
 .sales-test-mail {
   display: flex;
+  align-items: center;
   gap: 8px;
   margin-top: 10px;
-  flex-wrap: wrap;
+  max-width: 380px;
 }
 .sales-test-mail .input {
-  width: min(320px, 100%);
+  flex: 1;
+  min-width: 0;
+}
+/* A round send button, as tall as the text field beside it (42px). */
+.send-round {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast),
+    transform var(--dur-fast),
+    opacity var(--dur-fast);
+}
+.send-round svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2.4;
+}
+.send-round:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.send-round:active:not(:disabled) {
+  transform: scale(0.94);
+}
+.send-round:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.send-round:disabled {
+  background: var(--surface-3);
+  color: var(--ink-4);
+  cursor: default;
+}
+.send-round .spinner {
+  border-color: color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
 }
 .sales-hint {
   margin: 0;
