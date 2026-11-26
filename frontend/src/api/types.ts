@@ -541,6 +541,8 @@ export interface BillingInfo {
   testMode: boolean;
   packages: CreditPackage[];
   methods: PaymentMethod[];
+  /** Points never expire. */
+  noExpiry: boolean;
   termsUrl: string | null;
   orders: Order[];
   ledger: LedgerEntry[];
@@ -552,6 +554,7 @@ export interface BillingSettings {
   rates: Rates;
   packages: CreditPackage[];
   methods: PaymentMethod[];
+  noExpiry: boolean;
   termsUrl: string;
 }
 

@@ -58,6 +58,30 @@ export function recordingFor(milli: number, perMinute: number, locale: Locale): 
   return locale === "zh-TW" ? `${m} 分鐘` : `${m} minutes`;
 }
 
+/**
+ * A typical hour of meeting, for prices people can picture: the recording, and one summary of
+ * it (the transcript and instructions read, the minutes written). Measured on real meetings:
+ * a 43-minute one read 21,895 tokens and wrote 7,651.
+ */
+export const TYPICAL_HOUR = { input: 30_000, output: 8_000 } as const;
+
+/** Points (not thousandths) for a typical hour of meeting: the recording and its summary. */
+export function pointsPerMeetingHour(rates: { perMinute: number; perKInput: number; perKOutput: number }): number {
+  return rates.perMinute * 60 + (TYPICAL_HOUR.input / 1000) * rates.perKInput + (TYPICAL_HOUR.output / 1000) * rates.perKOutput;
+}
+
+/** What `milli` points pay for in typical meetings, summaries included: "8.7 小時" / "52 minutes"; null when all is free. */
+export function meetingTimeFor(milli: number, rates: { perMinute: number; perKInput: number; perKOutput: number }, locale: Locale): string | null {
+  return recordingFor(milli, pointsPerMeetingHour(rates) / 60, locale);
+}
+
+/** "NT$11.5" / "NT$120": a price per hour, to a tenth of a dollar below NT$100. */
+export function twdApprox(n: number): string {
+  // Rounded here, half up, so 10.05 computed as 10.0499… still reads "10.1" wherever it is shown.
+  const f = n < 100 ? 10 : 1;
+  return "NT$" + (Math.round(n * f + 1e-6) / f).toLocaleString("en");
+}
+
 /** Thousandths of a point for `seconds` of recording (as the server charges it). */
 export function transcriptionCost(seconds: number, perMinute: number): number {
   return perMinute <= 0 ? 0 : Math.max(1, Math.ceil((seconds / 60) * perMinute * 1000 - 1e-6));

@@ -4,7 +4,7 @@
  * accountant before taking real payments: it is a draft, not legal advice.
  */
 
-export function termsTemplate(locale: "en" | "zh-TW", rates: { perMinute: number; perKInput: number; perKOutput: number }): string {
+export function termsTemplate(locale: "en" | "zh-TW", rates: { perMinute: number; perKInput: number; perKOutput: number }, noExpiry = false): string {
   const n = (x: number) => String(Number(x.toFixed(4)));
   if (locale === "en") {
     return `# Terms of sale and refund policy
@@ -32,7 +32,7 @@ Prices are in New Taiwan dollars and include tax. Payment is made on ECPay's pag
 
 ## 4. Validity
 
-Points 【do not expire / are valid for 【period】 from purchase】.
+${noExpiry ? "Points do not expire." : "Points 【do not expire / are valid for 【period】 from purchase】."}
 
 ## 5. Withdrawal and refunds
 
@@ -76,7 +76,7 @@ Contact us first at 【email address】. You may also call the consumer hotline 
 
 ## 四、點數效期
 
-點數【無使用期限／自購買日起【期間】內有效】。
+${noExpiry ? "點數無使用期限。" : "點數【無使用期限／自購買日起【期間】內有效】。"}
 
 ## 五、解除契約與退款
 

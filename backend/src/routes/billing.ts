@@ -57,6 +57,7 @@ billingRoutes.get("/", (c) => {
     testMode: config.ecpay.mode === "stage",
     packages: s.packages,
     methods: s.methods,
+    noExpiry: s.noExpiry,
     // Where the terms of sale are read ("/terms" on this site, or an outside address); buying needs them agreed to.
     termsUrl: termsLink(),
     orders: orders.map(publicOrder),

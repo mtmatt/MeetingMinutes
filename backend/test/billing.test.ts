@@ -425,6 +425,12 @@ describe("admin", () => {
     expect(info.ecpay).toMatchObject({ mode: "stage", merchantId: "3002607", testShop: true });
     const bad = await admin.req("PUT", "/api/admin/billing", { json: { ...info.settings, packages: [] } });
     expect(bad.status).toBe(422);
+    // "Points never expire" is off unless set, and reaches the purchase page once it is.
+    expect(info.settings.noExpiry).toBe(false);
+    const buyer = await signedUp("noexpiry");
+    expect((await admin.req("PUT", "/api/admin/billing", { json: { ...info.settings, noExpiry: true } })).status).toBe(200);
+    expect(((await (await buyer.get("/api/billing")).json()) as any).noExpiry).toBe(true);
+    expect((await admin.req("PUT", "/api/admin/billing", { json: { ...info.settings, noExpiry: false } })).status).toBe(200);
     expect((await admin.post("/api/admin/mail/test", { to: "admin@example.com" })).status).toBe(200);
     expect(lastMailTo("admin@example.com").subject).toContain("測試信");
     const orders = (await (await admin.get("/api/admin/orders?status=paid")).json()) as any;
