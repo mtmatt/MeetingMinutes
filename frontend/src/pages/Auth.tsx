@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, ArrowRight, KeyRound } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { AlertCircle, ArrowRight, CheckCircle2, KeyRound, MailCheck } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, api } from "../api/client";
 import { apiErrorMessage } from "../lib/errors";
@@ -80,8 +80,8 @@ function HelpContact({ contact }: { contact: string | null }) {
 }
 
 export function LoginPage() {
-  const { t } = useI18n();
-  const { setUser, helpContact } = useAuth();
+  const { t, locale } = useI18n();
+  const { setUser, helpContact, registration, passwordReset } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [username, setUsername] = useState("");
@@ -89,6 +89,19 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  // An account that signed up and has not confirmed its address: where the link went.
+  const [unverified, setUnverified] = useState<string | null>(null);
+  const [resent, setResent] = useState(false);
+
+  const resend = async () => {
+    if (!unverified) return;
+    try {
+      await api.resendVerification(unverified, locale);
+      setResent(true);
+    } catch (err) {
+      setError(apiErrorMessage(err, t));
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -98,13 +111,17 @@ export function LoginPage() {
     }
     setBusy(true);
     setError(null);
+    setUnverified(null);
     try {
       const { user } = await api.login(username.trim(), password);
       setUser(user);
       const next = params.get("next");
       navigate(next && next.startsWith("/") && !next.startsWith("//") ? next : "/", { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError && err.code === "bad_credentials" ? t("auth.badCredentials") : apiErrorMessage(err, t));
+      if (err instanceof ApiError && err.code === "email_unverified") {
+        setUnverified(typeof err.body.email === "string" ? err.body.email : "");
+        setResent(false);
+      } else setError(err instanceof ApiError && err.code === "bad_credentials" ? t("auth.badCredentials") : apiErrorMessage(err, t));
       setBusy(false);
     }
   };
@@ -116,12 +133,18 @@ export function LoginPage() {
       <form className="auth-form" onSubmit={submit} noValidate>
         <div>
           <h2>{t("auth.welcomeBack")}</h2>
-          <p className="auth-lede">
-            {t("auth.invitedOnlyShort")}{" "}
-            <button type="button" className="link-btn" onClick={toggleHelp} aria-expanded={showHelp} aria-controls="auth-help">
-              {t("auth.getHelp")}
-            </button>
-          </p>
+          {registration ? (
+            <p className="auth-lede">
+              {t("auth.noAccountYet")} <Link to="/register">{t("auth.createOne")}</Link>
+            </p>
+          ) : (
+            <p className="auth-lede">
+              {t("auth.invitedOnlyShort")}{" "}
+              <button type="button" className="link-btn" onClick={toggleHelp} aria-expanded={showHelp} aria-controls="auth-help">
+                {t("auth.getHelp")}
+              </button>
+            </p>
+          )}
         </div>
         <div className="field">
           <label htmlFor="username">{t("auth.username")}</label>
@@ -141,9 +164,15 @@ export function LoginPage() {
         <div className="field">
           <label htmlFor="password">
             <span>{t("auth.password")}</span>
-            <button type="button" className="link-btn" onClick={toggleHelp} aria-expanded={showHelp} aria-controls="auth-help">
-              {t("auth.forgot")}
-            </button>
+            {passwordReset ? (
+              <Link to="/forgot" className="link-btn">
+                {t("auth.forgot")}
+              </Link>
+            ) : (
+              <button type="button" className="link-btn" onClick={toggleHelp} aria-expanded={showHelp} aria-controls="auth-help">
+                {t("auth.forgot")}
+              </button>
+            )}
           </label>
           <input
             id="password"
@@ -161,6 +190,22 @@ export function LoginPage() {
         {error && (
           <div className="field-error" role="alert">
             <AlertCircle /> {error}
+          </div>
+        )}
+        {unverified != null && (
+          <div className="auth-help" role="alert">
+            <strong>{t("auth.unverifiedTitle")}</strong>
+            <p>{unverified ? t("auth.unverifiedBody", { email: unverified }) : t("auth.unverifiedBodyNoEmail")}</p>
+            {unverified &&
+              (resent ? (
+                <p className="auth-ok">
+                  <CheckCircle2 /> {t("auth.resent")}
+                </p>
+              ) : (
+                <button type="button" className="btn btn-sm" onClick={resend}>
+                  <MailCheck /> {t("auth.resend")}
+                </button>
+              ))}
           </div>
         )}
         <button className="btn btn-ink btn-lg btn-block" disabled={busy}>
@@ -389,6 +434,232 @@ export function InvitePage() {
             {busy && <span className="spinner" />}
             {isReset ? t("auth.setPassword") : t("auth.createAccount")}
           </button>
+        </form>
+      )}
+    </AuthLayout>
+  );
+}
+
+/** Creating an account with an email address (when the administrator opened sign-up). */
+export function RegisterPage() {
+  const { t, locale } = useI18n();
+  const { registration, loading } = useAuth();
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [resent, setResent] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (password !== confirm) return setError(t("auth.mismatch"));
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.register({ username: username.trim(), displayName: displayName.trim(), email: email.trim(), password, locale });
+      setSentTo(res.email);
+    } catch (err) {
+      setError(apiErrorMessage(err, t));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resend = async () => {
+    if (!sentTo) return;
+    try {
+      await api.resendVerification(sentTo, locale);
+      setResent(true);
+    } catch (err) {
+      setError(apiErrorMessage(err, t));
+    }
+  };
+
+  if (!loading && !registration) return <Navigate to="/login" replace />;
+
+  return (
+    <AuthLayout>
+      {sentTo ? (
+        <div className="auth-form">
+          <div>
+            <span className="auth-badge">
+              <MailCheck />
+            </span>
+            <h2>{t("auth.checkInbox")}</h2>
+            <p className="muted">{t("auth.checkInboxBody", { email: sentTo })}</p>
+          </div>
+          <p className="faint">{t("auth.checkInboxHint")}</p>
+          {error && (
+            <div className="field-error" role="alert">
+              <AlertCircle /> {error}
+            </div>
+          )}
+          {resent ? (
+            <p className="auth-ok">
+              <CheckCircle2 /> {t("auth.resent")}
+            </p>
+          ) : (
+            <button type="button" className="btn btn-lg btn-block" onClick={resend}>
+              {t("auth.resend")}
+            </button>
+          )}
+          <Link to="/login" className="btn btn-ink btn-lg btn-block">
+            {t("auth.goToSignIn")} <ArrowRight />
+          </Link>
+        </div>
+      ) : (
+        <form className="auth-form" onSubmit={submit}>
+          <div>
+            <h2>{t("auth.registerTitle")}</h2>
+            <p className="muted">{t("auth.registerLede")}</p>
+          </div>
+          <div className="field">
+            <label htmlFor="email">{t("auth.email")}</label>
+            <input id="email" className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+          </div>
+          <NewAccountFields {...{ username, setUsername, displayName, setDisplayName, password, setPassword, confirm, setConfirm }} />
+          {error && (
+            <div className="field-error" role="alert">
+              <AlertCircle /> {error}
+            </div>
+          )}
+          <button className="btn btn-primary btn-lg btn-block" disabled={busy}>
+            {busy && <span className="spinner" />}
+            {t("auth.createAccount")}
+          </button>
+          <p className="faint auth-foot">
+            {t("auth.haveAccount")} <Link to="/login">{t("auth.signIn")}</Link>
+          </p>
+        </form>
+      )}
+    </AuthLayout>
+  );
+}
+
+/** The link from the confirmation email. */
+export function VerifyEmailPage() {
+  const { t } = useI18n();
+  const { token = "" } = useParams();
+  const { user } = useAuth();
+  const [state, setState] = useState<{ kind: "busy" } | { kind: "ok"; username: string } | { kind: "error"; message: string }>({ kind: "busy" });
+  const sent = useRef(false);
+
+  useEffect(() => {
+    // Once, even under React's double effects in development: the link works one time.
+    if (sent.current) return;
+    sent.current = true;
+    api.verifyEmail(token).then(
+      (r) => setState({ kind: "ok", username: r.username }),
+      (err) => setState({ kind: "error", message: apiErrorMessage(err, t) }),
+    );
+  }, [token, t]);
+
+  return (
+    <AuthLayout>
+      <div className="auth-form">
+        {state.kind === "busy" ? (
+          <>
+            <div className="skeleton" style={{ height: 36, width: "60%" }} />
+            <div className="skeleton" style={{ height: 18, width: "80%" }} />
+          </>
+        ) : state.kind === "ok" ? (
+          <>
+            <div>
+              <span className="auth-badge ok">
+                <CheckCircle2 />
+              </span>
+              <h2>{t("auth.verifiedTitle")}</h2>
+              <p className="muted">{user ? t("auth.verifiedBodySignedIn") : t("auth.verifiedBody", { username: state.username })}</p>
+            </div>
+            <Link to={user ? "/settings" : "/login"} className="btn btn-ink btn-lg btn-block">
+              {user ? t("auth.backToSettings") : t("auth.goToSignIn")} <ArrowRight />
+            </Link>
+          </>
+        ) : (
+          <>
+            <div>
+              <h2>{t("auth.verifyFailedTitle")}</h2>
+              <p className="muted">{state.message}</p>
+            </div>
+            <Link to="/login" className="btn btn-ink btn-lg btn-block">
+              {t("auth.goToSignIn")} <ArrowRight />
+            </Link>
+          </>
+        )}
+      </div>
+    </AuthLayout>
+  );
+}
+
+/** "Forgot password": a reset link is emailed to the account's confirmed address. */
+export function ForgotPasswordPage() {
+  const { t, locale } = useI18n();
+  const { passwordReset, helpContact, loading } = useAuth();
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.forgotPassword(email.trim(), locale);
+      setSent(true);
+    } catch (err) {
+      setError(apiErrorMessage(err, t));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!loading && !passwordReset) return <Navigate to="/login" replace />;
+
+  return (
+    <AuthLayout>
+      {sent ? (
+        <div className="auth-form">
+          <div>
+            <span className="auth-badge">
+              <MailCheck />
+            </span>
+            <h2>{t("auth.checkInbox")}</h2>
+            <p className="muted">{t("auth.resetSentBody", { email: email.trim() })}</p>
+          </div>
+          <Link to="/login" className="btn btn-ink btn-lg btn-block">
+            {t("auth.goToSignIn")} <ArrowRight />
+          </Link>
+        </div>
+      ) : (
+        <form className="auth-form" onSubmit={submit}>
+          <div>
+            <h2>{t("auth.forgotTitle")}</h2>
+            <p className="muted">{t("auth.forgotLede")}</p>
+          </div>
+          <div className="field">
+            <label htmlFor="email">{t("auth.email")}</label>
+            <input id="email" className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+          </div>
+          {error && (
+            <div className="field-error" role="alert">
+              <AlertCircle /> {error}
+            </div>
+          )}
+          <button className="btn btn-primary btn-lg btn-block" disabled={busy || !email.trim()}>
+            {busy && <span className="spinner" />}
+            {t("auth.sendResetLink")}
+          </button>
+          <p className="faint auth-foot">
+            {t("auth.noEmailOnAccount")} <HelpContact contact={helpContact} />
+          </p>
+          <p className="faint auth-foot">
+            <Link to="/login">{t("auth.backToSignIn")}</Link>
+          </p>
         </form>
       )}
     </AuthLayout>

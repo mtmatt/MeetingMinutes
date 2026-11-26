@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, AudioLines, ChevronRight, Download, FileAudio, FileVideo, LogIn, Mic, Minus, Pause, Play, Plus, RefreshCw, FolderOpen, Square, Upload as UploadIcon, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, AudioLines, ChevronRight, Coins, Download, FileAudio, FileVideo, LogIn, Mic, Minus, Pause, Play, Plus, RefreshCw, FolderOpen, Square, Upload as UploadIcon, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import { useBlocker, useNavigate, useSearchParams } from "react-router";
 import { ApiError, api, uploadFile } from "../api/client";
@@ -16,6 +16,8 @@ import { takePendingFile } from "../lib/pendingFile";
 import { classifyUploadError, type UploadFailure } from "../lib/errors";
 import { useAuth } from "../lib/auth";
 import { downloadBlob } from "../lib/download";
+import { useBilling } from "../lib/billing";
+import { pointsText, transcriptionCost } from "../lib/format";
 
 const AUDIO = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "oga", "opus", "wma", "amr", "aiff", "aif", "caf", "weba"];
 const VIDEO = ["mp4", "mov", "mkv", "webm", "avi", "m4v", "wmv", "flv", "ts", "mts", "m2ts", "3gp", "mpeg", "mpg"];
@@ -267,6 +269,8 @@ export function UploadPage() {
           file: { name: file.name, size: file.size, type: file.type },
           options,
           summary: autoSummary && summary.prompt.trim() ? normalizeRequest(summary, templates?.templates ?? []) : null,
+          // So a prepaid account's minutes are checked before anything is sent.
+          durationSec: mediaDuration != null && mediaDuration > 0 ? mediaDuration : null,
         });
         target.current = { meetingId: meeting.id, chunkSize, file };
       } else {
@@ -410,6 +414,7 @@ export function UploadPage() {
                   {" · "}
                   {recording ? t("upload.recordedFormat") : extOf(file.name).toUpperCase()}
                 </div>
+                <CreditsLine durationSec={mediaDuration} />
               </div>
               {recording ? (
                 <>
@@ -748,6 +753,16 @@ function SubmitBar({
         <button className="btn btn-primary btn-lg" form="upload-form">
           {submitLabel}
         </button>
+      ) : failure.kind === "credits" ? (
+        <>
+          {/* A new tab: this page keeps the file, to send it once minutes are bought. */}
+          <a className="btn btn-lg" href="/billing" target="_blank" rel="noopener">
+            <Coins /> {t("upload.buyMinutes")}
+          </a>
+          <button className="btn btn-primary btn-lg" form="upload-form">
+            <RefreshCw /> {t("upload.retry")}
+          </button>
+        </>
       ) : failure.kind === "session" ? (
         <button type="button" className="btn btn-primary btn-lg" onClick={onSignIn}>
           <LogIn /> {t("upload.signInAgain")}
@@ -791,6 +806,28 @@ function SubmitBar({
   );
 }
 
+/** Prepaid accounts: what this recording will cost against what is left. */
+function CreditsLine({ durationSec }: { durationSec: number | null }) {
+  const { t, locale } = useI18n();
+  const { user } = useAuth();
+  const billing = useBilling(user?.billing === "prepaid");
+  if (user?.billing !== "prepaid" || !billing.data) return null;
+  const perMinute = billing.data.rates.perMinute;
+  // Free transcription: nothing to weigh.
+  if (perMinute <= 0) return null;
+  const available = billing.data.available ?? 0;
+  const need = durationSec != null ? transcriptionCost(durationSec, perMinute) : null;
+  const short = need != null && need > available;
+  return (
+    <div className={`file-card-credits ${short ? "is-short" : ""}`}>
+      <Coins />
+      {need != null
+        ? t("upload.creditsLine", { need: pointsText(need, locale), have: pointsText(available, locale) })
+        : t("upload.creditsLineUnknown", { have: pointsText(available, locale) })}
+    </div>
+  );
+}
+
 /** One line for the bottom bar: what went wrong, with the numbers that matter. */
 function failureHeadline(f: UploadFailure, t: TFn): string {
   switch (f.kind) {
@@ -804,12 +841,14 @@ function failureHeadline(f: UploadFailure, t: TFn): string {
       return f.message;
     case "session":
       return t("upload.failSession");
+    case "credits":
+      return t("upload.failCredits");
   }
 }
 
 /** Under the file: why it cannot be uploaded as-is, and what the options are. */
 function FailureDetail({ failure, isRecording, helpContact }: { failure: UploadFailure; isRecording: boolean; helpContact: string | null }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   let body: string;
   switch (failure.kind) {
     case "too-large":
@@ -822,6 +861,12 @@ function FailureDetail({ failure, isRecording, helpContact }: { failure: UploadF
       break;
     case "session":
       body = isRecording ? t("upload.sessionRecordingHelp") : t("upload.sessionFileHelp");
+      break;
+    case "credits":
+      body = t("upload.creditsHelp", {
+        need: pointsText(failure.needed, locale),
+        have: pointsText(failure.available, locale),
+      });
       break;
     default:
       body = isRecording ? t("upload.rejectedRecordingHelp") : t("upload.rejectedFileHelp");

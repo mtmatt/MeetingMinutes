@@ -329,4 +329,109 @@ export const migrations: string[] = [
   `,
   // The colour theme, with the account (like the language), instead of only in one browser.
   `ALTER TABLE users ADD COLUMN theme TEXT CHECK (theme IN ('system', 'light', 'dark'));`,
+  // Signing up with an email address, and paying with prepaid points: transcription by the
+  // minute of recording, summaries by the tokens the model read and wrote.
+  // Accounts from before (and invited ones) stay 'exempt': they are never charged.
+  `
+  ALTER TABLE users ADD COLUMN email TEXT;
+  ALTER TABLE users ADD COLUMN email_verified_at INTEGER;
+  ALTER TABLE users ADD COLUMN billing TEXT NOT NULL DEFAULT 'exempt' CHECK (billing IN ('exempt', 'prepaid'));
+  -- Prepaid points left, in thousandths of a point (rates may be fractions of a point).
+  ALTER TABLE users ADD COLUMN credits INTEGER NOT NULL DEFAULT 0;
+  CREATE UNIQUE INDEX users_email ON users(email COLLATE NOCASE) WHERE email IS NOT NULL;
+
+  -- A link sent to confirm an address: at sign-up, or when someone changes theirs.
+  CREATE TABLE email_verifications (
+    id         TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email      TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at    INTEGER
+  );
+  CREATE INDEX email_verifications_user ON email_verifications(user_id);
+
+  -- Every change of a balance (thousandths of a point), with the balance after it.
+  CREATE TABLE credit_ledger (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    delta       INTEGER NOT NULL,
+    balance     INTEGER NOT NULL,
+    kind        TEXT NOT NULL CHECK (kind IN ('purchase', 'transcription', 'summary', 'adjust')),
+    -- Usage: the meeting (it may since have been deleted, so its title is kept too),
+    -- and what was used: {"sec": 3600} or {"input": 12000, "output": 900}.
+    meeting_id  TEXT,
+    title       TEXT,
+    quantity    TEXT,
+    order_id    TEXT,
+    note        TEXT,
+    created_by  TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX credit_ledger_user ON credit_ledger(user_id, id DESC);
+
+  -- An order sent to ECPay; its id is the MerchantTradeNo.
+  CREATE TABLE payment_orders (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT REFERENCES users(id) ON DELETE SET NULL,
+    package_id   TEXT NOT NULL,
+    points       INTEGER NOT NULL,
+    amount       INTEGER NOT NULL,
+    item_name    TEXT NOT NULL,
+    status       TEXT NOT NULL CHECK (status IN ('pending', 'paid', 'failed')),
+    mode         TEXT NOT NULL CHECK (mode IN ('stage', 'production')),
+    merchant_id  TEXT NOT NULL,
+    -- From ECPay: its trade number, how it was paid, and for ATM / convenience-store
+    -- payments the account or code to pay to (JSON).
+    trade_no     TEXT,
+    payment_type TEXT,
+    payment_info TEXT,
+    error        TEXT,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    paid_at      INTEGER
+  );
+  CREATE INDEX payment_orders_user ON payment_orders(user_id, created_at DESC);
+  CREATE INDEX payment_orders_status ON payment_orders(status, created_at DESC);
+
+  -- The length the browser read from the file, to check a balance before anything is uploaded.
+  ALTER TABLE meetings ADD COLUMN declared_sec REAL;
+  -- Prepaid work: the points (thousandths) set aside while queued or running, and what was charged.
+  ALTER TABLE jobs ADD COLUMN hold INTEGER;
+  ALTER TABLE jobs ADD COLUMN charged INTEGER;
+  ALTER TABLE summaries ADD COLUMN hold INTEGER;
+  ALTER TABLE summaries ADD COLUMN charged INTEGER;
+  `,
+  // Security monitor: suspicious requests counted per kind, address, account tried and
+  // minute (a flood is a few rows), and addresses blocked automatically or by hand.
+  `
+  CREATE TABLE security_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind       TEXT NOT NULL,
+    severity   TEXT NOT NULL CHECK (severity IN ('info', 'warn', 'high')),
+    ip         TEXT NOT NULL,
+    username   TEXT NOT NULL DEFAULT '',
+    user_id    TEXT,
+    detail     TEXT,
+    count      INTEGER NOT NULL DEFAULT 1,
+    first_at   INTEGER NOT NULL,
+    last_at    INTEGER NOT NULL,
+    bucket     INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX security_events_bucket ON security_events(kind, ip, username, bucket);
+  CREATE INDEX security_events_time ON security_events(last_at DESC);
+  CREATE INDEX security_events_ip ON security_events(ip, last_at);
+  CREATE INDEX security_events_user ON security_events(username, kind, last_at);
+
+  CREATE TABLE ip_blocks (
+    ip         TEXT PRIMARY KEY,
+    reason     TEXT NOT NULL,
+    auto       INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    -- NULL: until an administrator removes it.
+    expires_at INTEGER,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL
+  );
+  `,
 ];

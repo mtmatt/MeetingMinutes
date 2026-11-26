@@ -1,9 +1,10 @@
-import { AudioLines, ChevronDown, FileText, Languages, Library, LogOut, Mic, Monitor, Moon, Plus, Settings, Shield, Sun, Upload } from "lucide-react";
+import { AudioLines, ChevronDown, Coins, FileText, Languages, Library, LogOut, Mic, Monitor, Moon, Plus, Settings, Shield, Sun, Upload } from "lucide-react";
 import { NavLink, useNavigate } from "react-router";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
-import { initials } from "../lib/format";
+import { initials, pointsText } from "../lib/format";
+import { useBilling } from "../lib/billing";
 import { useTheme, type ThemePref } from "../lib/theme";
 import { usePageContext } from "../lib/pageContext";
 import { Menu } from "./Menu";
@@ -15,6 +16,9 @@ export function Masthead() {
   const [theme, setTheme] = useTheme();
   const navigate = useNavigate();
   const context = usePageContext();
+  const prepaid = user?.billing === "prepaid";
+  const billing = useBilling(prepaid);
+  const available = billing.data?.available ?? null;
 
   const switchLocale = async (l: "en" | "zh-TW") => {
     setLocale(l);
@@ -59,6 +63,18 @@ export function Masthead() {
           </button>
         )}
         <div className="masthead-actions">
+          {prepaid && available != null && (
+            <NavLink
+              to="/billing"
+              // Low: less than ten minutes of recording.
+              className={`masthead-credits ${available < 10 * 1000 * (billing.data?.rates.perMinute || 1) ? "is-low" : ""}`}
+              title={t("billing.mastheadTitle")}
+              aria-label={t("billing.mastheadLabel", { points: pointsText(available, locale) })}
+            >
+              <Coins />
+              <span>{pointsText(available, locale)}</span>
+            </NavLink>
+          )}
           <Menu
             trigger={({ toggle, open }) => (
               <button className="btn btn-primary btn-sm masthead-new" onClick={toggle} aria-expanded={open} aria-haspopup="menu">
@@ -143,6 +159,11 @@ export function Masthead() {
                 <NavLink className="menu-item" to="/settings" onClick={close}>
                   <Settings /> {t("nav.settings")}
                 </NavLink>
+                {prepaid && (
+                  <NavLink className="menu-item" to="/billing" onClick={close}>
+                    <Coins /> {t("nav.billing")}
+                  </NavLink>
+                )}
                 {user?.role === "admin" && (
                   <NavLink className="menu-item" to="/admin" onClick={close}>
                     <Shield /> {t("nav.admin")}

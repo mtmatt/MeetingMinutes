@@ -10,6 +10,12 @@ export interface User {
   locale: Locale | null;
   /** Colour theme kept with the account; null until chosen. */
   theme: "system" | "light" | "dark" | null;
+  email: string | null;
+  emailVerified: boolean;
+  /** "prepaid": transcription and summaries are paid for with points; "exempt": free. */
+  billing: "exempt" | "prepaid";
+  /** Prepaid points left, in thousandths of a point. */
+  credits: number;
   createdAt: number;
   lastLoginAt: number | null;
 }
@@ -471,4 +477,150 @@ export interface ModelPull {
   done: boolean;
   error: string | null;
   startedAt: number;
+}
+
+// ------------------------------------------------------------------ billing
+
+export type PaymentMethod = "Credit" | "ATM" | "CVS";
+
+/** Points per minute of recording, and per thousand tokens a summary model reads and writes. */
+export interface Rates {
+  perMinute: number;
+  perKInput: number;
+  perKOutput: number;
+}
+
+export interface CreditPackage {
+  id: string;
+  points: number;
+  /** NT$, tax included. */
+  price: number;
+}
+
+export interface Order {
+  id: string;
+  packageId: string;
+  points: number;
+  amount: number;
+  itemName: string;
+  status: "pending" | "paid" | "failed";
+  mode: "stage" | "production";
+  /** ECPay's name for how it was paid, e.g. Credit_CreditCard, ATM_TAISHIN, CVS_CVS. */
+  paymentType: string | null;
+  /** ATM transfers and convenience-store codes: where to pay, until when. */
+  paymentInfo: { paymentType: string | null; bankCode: string | null; account: string | null; paymentNo: string | null; expireDate: string | null } | null;
+  error: string | null;
+  createdAt: number;
+  paidAt: number | null;
+}
+
+/** Amounts are thousandths of a point. */
+export interface LedgerEntry {
+  id: number;
+  delta: number;
+  balance: number;
+  kind: "purchase" | "transcription" | "summary" | "adjust";
+  meetingId: string | null;
+  title: string | null;
+  /** Transcription: {sec}; summary: {input, output} tokens. */
+  quantity: { sec?: number; input?: number; output?: number } | null;
+  orderId: string | null;
+  note: string | null;
+  createdAt: number;
+}
+
+export interface BillingInfo {
+  billing: "exempt" | "prepaid";
+  /** Thousandths of a point. */
+  balance: number;
+  held: number;
+  available: number | null;
+  rates: Rates;
+  onSale: boolean;
+  /** ECPay's test system: nothing is really charged. */
+  testMode: boolean;
+  packages: CreditPackage[];
+  methods: PaymentMethod[];
+  termsUrl: string | null;
+  orders: Order[];
+  ledger: LedgerEntry[];
+}
+
+export interface BillingSettings {
+  registrationOpen: boolean;
+  enabled: boolean;
+  rates: Rates;
+  packages: CreditPackage[];
+  methods: PaymentMethod[];
+  termsUrl: string;
+}
+
+export interface BillingAdminState {
+  settings: BillingSettings;
+  meta: { saved: boolean; updatedAt: number | null; updatedBy: string | null };
+  mail: { configured: boolean; transport: "smtp" | "log"; server: string | null; from: string };
+  ecpay: { mode: "stage" | "production"; merchantId: string; testShop: boolean; publicUrl: string | null };
+  stats: { paid: { mode: string; orders: number; amount: number; points: number }[]; prepaidAccounts: number; outstanding: number };
+}
+
+export interface AdminOrder extends Order {
+  user: { id: string; username: string | null; displayName: string | null } | null;
+}
+
+// ----------------------------------------------------------------- security
+
+export type SecurityEventKind =
+  | "login_failed"
+  | "rate_limited"
+  | "bad_token"
+  | "csrf"
+  | "probe"
+  | "worker_auth"
+  | "payment_signature"
+  | "wrong_host"
+  | "blocked"
+  | "account"
+  | "admin_new_ip";
+
+export interface SecuritySettings {
+  autoBlock: boolean;
+  blockMinutes: number;
+  allowlist: string[];
+  alerts: boolean;
+  alertEmails: string[];
+}
+
+export interface IpBlock {
+  ip: string;
+  reason: string;
+  auto: boolean;
+  createdAt: number;
+  /** null: until removed. */
+  expiresAt: number | null;
+  createdBy: string | null;
+}
+
+export interface SecurityState {
+  last24h: Partial<Record<SecurityEventKind, { count: number; addresses: number }>>;
+  daily: { date: number; total: number; kinds: Partial<Record<SecurityEventKind, number>> }[];
+  topIps: { ip: string; count: number; kinds: SecurityEventKind[]; lastAt: number; usernames: string[]; blocked: boolean }[];
+  blocks: IpBlock[];
+  settings: SecuritySettings;
+  defaults: SecuritySettings;
+  meta: { saved: boolean; updatedAt: number | null; updatedBy: string | null };
+  alerts: { mail: boolean; recipients: string[] };
+  yourIp: string;
+  trustProxy: boolean;
+}
+
+export interface SecurityEvent {
+  id: number;
+  kind: SecurityEventKind;
+  severity: "info" | "warn" | "high";
+  ip: string;
+  username: string | null;
+  detail: string | null;
+  count: number;
+  firstAt: number;
+  lastAt: number;
 }

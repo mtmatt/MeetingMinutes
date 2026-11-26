@@ -605,7 +605,21 @@ const SegmentText = memo(function SegmentText({
   );
 });
 
-function SegmentEditor({ seg, onDone }: { seg: Segment; onDone: (text: string | null) => void }) {
+/**
+ * One line of the transcript being edited. Enter saves, Escape cancels, Tab and
+ * Shift+Tab save and move to the next or previous line (so a whole passage can
+ * be corrected in one go).
+ */
+function SegmentEditor({
+  seg,
+  onDone,
+  onMove,
+}: {
+  seg: Segment;
+  onDone: (text: string | null) => void;
+  onMove: (text: string, step: 1 | -1) => void;
+}) {
+  const { t } = useI18n();
   const [text, setText] = useState(seg.text);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -622,6 +636,7 @@ function SegmentEditor({ seg, onDone }: { seg: Segment; onDone: (text: string | 
         ref={ref}
         className="textarea"
         value={text}
+        aria-label={t("meeting.editSegment")}
         onChange={(e) => {
           setText(e.target.value);
           e.target.style.height = "auto";
@@ -631,16 +646,19 @@ function SegmentEditor({ seg, onDone }: { seg: Segment; onDone: (text: string | 
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             onDone(text);
+          } else if (e.key === "Escape") onDone(null);
+          else if (e.key === "Tab" && !e.altKey && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            onMove(text, e.shiftKey ? -1 : 1);
           }
-          if (e.key === "Escape") onDone(null);
         }}
         rows={1}
       />
       <span className="seg-editor-actions">
-        <button className="icon-btn sm" onClick={() => onDone(null)} aria-label="Cancel">
+        <button className="icon-btn sm" onClick={() => onDone(null)} aria-label={t("common.cancel")} title={t("common.cancel")}>
           <X />
         </button>
-        <button className="icon-btn sm" aria-pressed="true" onClick={() => onDone(text)} aria-label="Save">
+        <button className="icon-btn sm" aria-pressed="true" onClick={() => onDone(text)} aria-label={t("common.save")} title={t("common.save")}>
           <Check />
         </button>
       </span>
@@ -767,8 +785,19 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
   const onSeek = useCallback((s: Segment) => seek(s.start, true), [seek]);
   const onEdit = useCallback((s: Segment) => setEditing(s.id), []);
 
+  /** Save the line being edited (if changed) and edit another one (null: stop editing). */
+  const commitAndEdit = (seg: Segment, text: string | null, next: number | null) => {
+    setEditing(next);
+    void saveText(seg, text);
+  };
+  /** Tab / Shift+Tab: the next or previous line of the whole transcript. */
+  const moveFrom = (seg: Segment, text: string, step: 1 | -1) => {
+    const i = meeting.segments.findIndex((x) => x.id === seg.id);
+    const next = meeting.segments[i + step];
+    commitAndEdit(seg, text, next ? next.id : null);
+  };
+
   const saveText = async (seg: Segment, text: string | null) => {
-    setEditing(null);
     if (text == null || text.trim() === seg.text) return;
     try {
       await api.updateSegment(meeting.id, seg.id, { text: text.trim() });
@@ -897,7 +926,11 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
                 {b.segments.map((s) => (
                   <Fragment key={s.id}>
                     {editing === s.id ? (
-                      <SegmentEditor seg={s} onDone={(text) => saveText(s, text)} />
+                      <SegmentEditor
+                        seg={s}
+                        onDone={(text) => commitAndEdit(s, text, null)}
+                        onMove={(text, step) => moveFrom(s, text, step)}
+                      />
                     ) : (
                       <SegmentText seg={s} active={s.id === activeId} query={q} onSeek={onSeek} onEdit={onEdit} />
                     )}

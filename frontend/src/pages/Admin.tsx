@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cpu, HardDrive, KeyRound, Link2, MoreHorizontal, Plus, ShieldCheck, Trash2, UserCheck, UserMinus, UserX } from "lucide-react";
+import { Coins, Cpu, HardDrive, KeyRound, Link2, MoreHorizontal, Plus, ShieldCheck, Trash2, UserCheck, UserMinus, UserX } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api/client";
 import type { AdminUser, Invite, Role, WorkerInfo } from "../api/types";
@@ -9,13 +9,15 @@ import { useToast } from "../components/Toast";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { diarizationReason } from "../lib/errors";
-import { bytes, initials, relative, until } from "../lib/format";
+import { bytes, initials, pointsText, relative, until } from "../lib/format";
 import { useSummaryEngine } from "../lib/summaryEngine";
 import { VENDOR_NAMES } from "../components/SummaryComposer";
 import { StoragePolicy } from "./AdminStorage";
 import { WorkerKeys } from "./AdminWorkerKeys";
 import { SummaryModel } from "./AdminSummaryModel";
 import { Transcription } from "./AdminTranscription";
+import { AdminBilling } from "./AdminBilling";
+import { AdminSecurity } from "./AdminSecurity";
 
 function CopyLink({ url }: { url: string }) {
   const { t } = useI18n();
@@ -45,9 +47,10 @@ function Users() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin", "users"], queryFn: api.adminUsers });
   const [resetFor, setResetFor] = useState<{ name: string; url: string } | null>(null);
+  const [creditsFor, setCreditsFor] = useState<AdminUser | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ["admin", "users"] });
 
-  const update = async (u: AdminUser, b: { role?: Role; disabled?: boolean }) => {
+  const update = async (u: AdminUser, b: { role?: Role; disabled?: boolean; billing?: "exempt" | "prepaid" }) => {
     try {
       await api.adminUpdateUser(u.id, b);
       await refresh();
@@ -89,6 +92,7 @@ function Users() {
               <th>{t("auth.displayName")}</th>
               <th>{t("admin.role")}</th>
               <th>{t("admin.status")}</th>
+              <th>{t("admin.billingCol")}</th>
               <th style={{ textAlign: "right" }}>{t("admin.meetings")}</th>
               <th>{t("admin.lastLogin")}</th>
               <th />
@@ -122,6 +126,14 @@ function Users() {
                     {u.disabled ? t("admin.disabled") : t("admin.active")}
                   </span>
                 </td>
+                <td>
+                  {u.billing === "prepaid" ? (
+                    <span className={`mono ${u.credits <= 0 ? "faint" : ""}`}>{pointsText(u.credits, locale)}</span>
+                  ) : (
+                    <span className="faint">{t("admin.freeAccount")}</span>
+                  )}
+                  {u.email && <div className="faint admin-user-email">{u.email}</div>}
+                </td>
                 <td className="mono" style={{ textAlign: "right" }}>
                   {u.meetings}
                 </td>
@@ -153,6 +165,13 @@ function Users() {
                           <button className="menu-item" onClick={act(() => resetLink(u))}>
                             <KeyRound /> {t("admin.resetLink")}
                           </button>
+                          <div className="menu-sep" />
+                          <button className="menu-item" onClick={act(() => setCreditsFor(u))}>
+                            <Coins /> {t("admin.adjustMinutes")}
+                          </button>
+                          <button className="menu-item" onClick={act(() => update(u, { billing: u.billing === "prepaid" ? "exempt" : "prepaid" }))}>
+                            <Coins /> {u.billing === "prepaid" ? t("admin.makeFree") : t("admin.makePrepaid")}
+                          </button>
                           {u.id !== me?.id && (
                             <button className="menu-item" onClick={act(() => update(u, { disabled: !u.disabled }))}>
                               {u.disabled ? <UserCheck /> : <UserX />} {u.disabled ? t("admin.enable") : t("admin.disable")}
@@ -176,6 +195,7 @@ function Users() {
           </tbody>
         </table>
       </div>
+      {creditsFor && <AdjustMinutes user={creditsFor} onClose={() => setCreditsFor(null)} onDone={refresh} />}
       {resetFor && (
         <Modal title={t("admin.resetLink")} onClose={() => setResetFor(null)}>
           <p>{t("admin.resetLinkBody", { name: resetFor.name })}</p>
@@ -489,9 +509,68 @@ function System() {
   );
 }
 
+/** Add or take away a person's minutes (a gift, a correction, a refund made in ECPay's back office). */
+function AdjustMinutes({ user, onClose, onDone }: { user: AdminUser; onClose: () => void; onDone: () => void }) {
+  const { t, locale } = useI18n();
+  const toast = useToast();
+  const [minutes, setMinutes] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  // Points, to a thousandth.
+  const n = Math.round(Number(minutes) * 1000) / 1000;
+  const ok = minutes.trim() !== "" && Number.isFinite(n) && n !== 0 && note.trim().length > 0;
+  const save = async () => {
+    setBusy(true);
+    try {
+      const r = await api.adminAdjustCredits(user.id, n, note.trim());
+      toast.show(t("admin.minutesAdjusted", { name: user.displayName, balance: pointsText(r.balance, locale) }));
+      onDone();
+      onClose();
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title={t("admin.adjustMinutesTitle", { name: user.displayName })}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            {t("common.cancel")}
+          </button>
+          <button type="button" className="btn btn-ink" onClick={save} disabled={busy || !ok}>
+            {busy && <span className="spinner" />} {t("common.save")}
+          </button>
+        </>
+      }
+    >
+      <p className="muted">{t("admin.adjustMinutesBody", { balance: pointsText(user.credits, locale) })}</p>
+      {user.billing !== "prepaid" && <p className="faint">{t("admin.adjustMinutesExempt")}</p>}
+      <div className="field">
+        <label htmlFor="adjust-minutes">{t("admin.adjustMinutesField")}</label>
+        <input id="adjust-minutes" className="input mono" type="number" step="any" value={minutes} onChange={(e) => setMinutes(e.target.value)} autoFocus placeholder="100 / -20" />
+      </div>
+      <div className="field">
+        <label htmlFor="adjust-note">{t("admin.adjustNote")}</label>
+        <input id="adjust-note" className="input" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("admin.adjustNotePlaceholder")} />
+      </div>
+    </Modal>
+  );
+}
+
+const TABS = ["users", "invites", "asr", "model", "sales", "security", "system"] as const;
+type Tab = (typeof TABS)[number];
+
 export function AdminPage() {
   const { t } = useI18n();
-  const [tab, setTab] = useState<"users" | "invites" | "asr" | "model" | "system">("users");
+  // ?tab=security: the link in a security alert email.
+  const [tab, setTab] = useState<Tab>(() => {
+    const asked = new URLSearchParams(window.location.search).get("tab");
+    return TABS.includes(asked as Tab) ? (asked as Tab) : "users";
+  });
   return (
     <div className="admin">
       <div className="page-head">
@@ -505,7 +584,7 @@ export function AdminPage() {
         )}
       </div>
       <div className="tabs admin-tabs" role="tablist">
-        {(["users", "invites", "asr", "model", "system"] as const).map((k) => (
+        {TABS.map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
             {t(`admin.${k}`)}
           </button>
@@ -516,6 +595,8 @@ export function AdminPage() {
         {tab === "invites" && <Invites />}
         {tab === "asr" && <Transcription />}
         {tab === "model" && <SummaryModel />}
+        {tab === "sales" && <AdminBilling />}
+        {tab === "security" && <AdminSecurity />}
         {tab === "system" && <System />}
       </div>
     </div>

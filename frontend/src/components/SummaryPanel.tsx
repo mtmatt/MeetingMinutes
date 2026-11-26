@@ -1,5 +1,5 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, ChevronDown, ClipboardCopy, Copy, ExternalLink, FileText, MoreHorizontal, Pencil, RefreshCw, ScrollText, Sparkles, Square, Trash2, Users } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, Check, Coins, ChevronDown, ClipboardCopy, Copy, ExternalLink, FileText, MoreHorizontal, Pencil, RefreshCw, ScrollText, Sparkles, Square, Trash2, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -7,7 +7,7 @@ import { api } from "../api/client";
 import type { MeetingDetail, Summary, SummaryRequest } from "../api/types";
 import { useI18n, type TKey } from "../i18n";
 import { useAuth } from "../lib/auth";
-import { clock, relative } from "../lib/format";
+import { clock, pointsText, relative } from "../lib/format";
 import { usePlayer } from "../lib/player";
 import { copyRichText, exportToGoogleDocs, GoogleDocsError, loadGoogleSignIn, NEW_GOOGLE_DOC, summaryDocument, type GoogleDocsFailure } from "../lib/googleDocs";
 import { downloadText, linkTimestamps, safeFileName, summaryMarkdown, type SummaryExport } from "../lib/summaryExport";
@@ -239,6 +239,40 @@ function Writing({ summary, onCancel }: { summary: Summary; onCancel: () => void
 }
 
 
+/** Prepaid accounts: what the summary will probably cost, against what is left. */
+function SummaryCost({ meetingId, prompt }: { meetingId: string; prompt: string }) {
+  const { t, locale } = useI18n();
+  const { user } = useAuth();
+  const prepaid = user?.billing === "prepaid";
+  const [debounced, setDebounced] = useState(prompt);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(prompt), 400);
+    return () => clearTimeout(id);
+  }, [prompt]);
+  const { data } = useQuery({
+    queryKey: ["summary-estimate", meetingId, debounced],
+    queryFn: () => api.summaryEstimate(meetingId, debounced),
+    enabled: prepaid && !!debounced.trim(),
+    staleTime: 60_000,
+  });
+  if (!prepaid || data?.credits == null) return null;
+  if (data.credits === 0) return <p className="composer-cost faint">{t("summary.costFree")}</p>;
+  const short = data.available != null && data.credits > data.available;
+  return (
+    <p className={`composer-cost ${short ? "is-short" : "faint"}`}>
+      <Coins />
+      {short
+        ? t("summary.costShort", { cost: pointsText(data.credits, locale), have: pointsText(data.available ?? 0, locale) })
+        : t("summary.cost", { cost: pointsText(data.credits, locale), have: pointsText(data.available ?? 0, locale) })}
+      {short && (
+        <a href="/billing" target="_blank" rel="noopener">
+          {t("upload.buyMinutes")}
+        </a>
+      )}
+    </p>
+  );
+}
+
 export function Composer({ meeting, onClose, initial }: { meeting: MeetingDetail; onClose: () => void; initial?: SummaryRequest }) {
   const engine = useSummaryEngine();
   const { t, locale } = useI18n();
@@ -281,6 +315,7 @@ export function Composer({ meeting, onClose, initial }: { meeting: MeetingDetail
     >
       <p className="composer-note">{t(meeting.summaries.length ? "summary.regenerateNote" : "summary.firstNote", { engine: engine.name })}</p>
       <SummaryComposer value={value} onChange={setValue} />
+      <SummaryCost meetingId={meeting.id} prompt={normalizeRequest(value, templates?.templates ?? []).prompt} />
       <DataFlowNote />
     </Modal>
   );

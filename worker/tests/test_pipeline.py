@@ -128,3 +128,24 @@ def test_fingerprint_failure_keeps_the_transcript(two_speaker_wav, tmp_path):
     assert result["speakers"] == ["SPK_7", "SPK_2"]
     assert result["diarization"]["status"] == "ok"
     assert result["voices"] == {}
+
+
+def test_prepaid_minutes_limit_the_recording(two_speaker_wav, tmp_path, monkeypatch):
+    from mm_worker import audio
+    from mm_worker.worker import job_credit_limit
+
+    spec = JobSpec(str(two_speaker_wav), str(tmp_path), {"language": "auto", "diarize": False})
+    run = lambda credit_sec: run_job(spec, report=lambda s, p: True, transcriber=FakeTranscriber(), diarizer=None, credit_sec=credit_sec)  # noqa: E731
+    # The 11-second recording is refused before any speech is recognised when the balance pays for 5 seconds...
+    transcriber = FakeTranscriber()
+    with pytest.raises(audio.MediaError, match="Not enough points: the recording is 0.2 minutes long"):
+        run_job(spec, report=lambda s, p: True, transcriber=transcriber, diarizer=None, credit_sec=5)
+    assert transcriber.calls == []
+    # ...and transcribed when it pays for all of it (or there is no limit).
+    assert run(11)["durationSec"] == pytest.approx(11, abs=0.05)
+    assert run(None)["segments"]
+    # A file whose header does not give its length is stopped while decoding.
+    monkeypatch.setattr(audio, "probe", lambda p: audio.MediaInfo(duration=None, has_audio=True, has_video=False))
+    with pytest.raises(audio.MediaError, match="longer than the 0 minutes the balance pays for"):
+        run(5)
+    assert job_credit_limit({"credits": {"maxSec": 90}}) == 90 and job_credit_limit({}) is None and job_credit_limit({"credits": {"maxSec": "x"}}) == 0.0

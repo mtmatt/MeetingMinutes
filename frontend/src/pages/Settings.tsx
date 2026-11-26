@@ -29,6 +29,84 @@ function Section({ title, lede, children }: { title: string; lede?: string; chil
   );
 }
 
+/** The account's email address: used for "Forgot password" (and receipts). Changing it sends a link to the new one. */
+function EmailSection() {
+  const { t } = useI18n();
+  const { user, passwordReset } = useAuth();
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  // Email cannot be sent from this site: nothing to confirm an address with.
+  if (!passwordReset) return null;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const r = await api.changeEmail(email.trim(), password);
+      setPassword("");
+      setEditing(false);
+      if (r.sent) setSentTo(email.trim());
+      else toast.show(t("settings.emailUnchanged"));
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Section title={t("settings.email")} lede={t("settings.emailLede")}>
+      <div className="settings-form">
+        <div className="settings-email-current">
+          {user?.email ? (
+            <>
+              <span className="mono">{user.email}</span>
+              {user.emailVerified ? <span className="pill ok">{t("settings.emailVerified")}</span> : <span className="pill warn">{t("settings.emailUnverified")}</span>}
+            </>
+          ) : (
+            <span className="muted">{t("settings.noEmail")}</span>
+          )}
+        </div>
+        {sentTo && (
+          <div className="callout" role="status">
+            <span>{t("settings.emailSent", { email: sentTo })}</span>
+          </div>
+        )}
+        {editing ? (
+          <form className="settings-form" onSubmit={submit}>
+            <div className="field">
+              <label htmlFor="new-email">{t("settings.newEmail")}</label>
+              <input id="new-email" className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+            </div>
+            <div className="field">
+              <label htmlFor="email-password">{t("settings.currentPassword")}</label>
+              <input id="email-password" className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </div>
+            <div className="settings-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setEditing(false)}>
+                {t("common.cancel")}
+              </button>
+              <button className="btn btn-ink" disabled={busy || !email.trim() || !password}>
+                {busy && <span className="spinner" />} {t("settings.sendConfirmation")}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div>
+            <button type="button" className="btn" onClick={() => { setEditing(true); setSentTo(null); setEmail(user?.email ?? ""); }}>
+              {user?.email ? t("settings.changeEmail") : t("settings.addEmail")}
+            </button>
+          </div>
+        )}
+      </div>
+    </Section>
+  );
+}
+
 export function SettingsPage() {
   const { t, locale, setLocale } = useI18n();
   const { user, setUser } = useAuth();
@@ -113,6 +191,8 @@ export function SettingsPage() {
           </div>
         </form>
       </Section>
+
+      <EmailSection />
 
       <Section title={t("settings.preferences")}>
         <div className="settings-form">

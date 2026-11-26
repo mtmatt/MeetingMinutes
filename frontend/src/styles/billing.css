@@ -1,0 +1,813 @@
+/* ---------------------------------------------------------------------------
+   Minutes: the balance, packages, payment instructions and history; the
+   balance in the masthead; the upload page's cost line; sign-up pages; and
+   Admin → Sales.
+   ------------------------------------------------------------------------- */
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.table th.num {
+  text-align: right;
+}
+.nowrap {
+  white-space: nowrap;
+}
+.inline-icon {
+  width: 12px;
+  height: 12px;
+  display: inline;
+  vertical-align: -1px;
+}
+.ok-icon {
+  color: var(--ok);
+}
+.warn-icon {
+  color: var(--warn);
+}
+
+/* ------------------------------------------------------------ billing page */
+
+.billing {
+  max-width: 980px;
+}
+.billing > .rule-double {
+  margin-bottom: var(--space-6);
+}
+.billing-section {
+  padding: var(--space-6) 0;
+  border-top: 1px solid var(--rule);
+}
+.billing-section h2 {
+  font-size: var(--h2-size);
+  margin-bottom: var(--space-4);
+}
+.billing-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+.billing-section-head h2 {
+  margin-bottom: 0;
+}
+
+.billing-balance {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  gap: 16px 40px;
+  padding-bottom: var(--space-6);
+}
+.billing-balance-main {
+  display: grid;
+  gap: 4px;
+}
+.billing-balance-value {
+  font-family: var(--font-display);
+  font-size: var(--step-5);
+  font-weight: 520;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.billing-balance-value.is-empty {
+  color: var(--ink-3);
+}
+.billing-balance-side {
+  display: grid;
+  gap: 6px;
+  font-size: var(--step--1);
+  color: var(--ink-2);
+  max-width: 52ch;
+}
+.billing-balance-side svg {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+}
+
+.billing-packages {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+}
+.billing-package {
+  display: grid;
+  gap: 6px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-1);
+}
+.billing-package-minutes {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.billing-package-number {
+  font-family: var(--font-display);
+  font-size: var(--step-4);
+  font-weight: 540;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.billing-package-unit {
+  color: var(--ink-2);
+}
+.billing-package-hours,
+.billing-package-each {
+  font-size: var(--step--1);
+}
+.billing-package-each {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 22px;
+}
+.billing-package-price {
+  font-size: var(--step-2);
+  font-weight: 600;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.billing-package .btn {
+  margin-top: 10px;
+}
+.billing-pay-note {
+  margin-top: var(--space-4);
+  font-size: var(--step--1);
+  max-width: 70ch;
+}
+.billing-pay-note a {
+  color: var(--ink-2);
+}
+
+.billing-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  margin-bottom: var(--space-5);
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+}
+.billing-banner > svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin-top: 2px;
+}
+.billing-banner > div {
+  flex: 1;
+  min-width: 0;
+}
+.billing-banner strong {
+  display: block;
+  font-size: var(--step-0);
+}
+.billing-banner p {
+  margin: 4px 0 0;
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.billing-banner > .btn {
+  flex: none;
+  align-self: center;
+}
+.billing-banner.ok {
+  background: var(--ok-soft);
+  border-color: transparent;
+}
+.billing-banner.ok > svg {
+  color: var(--ok);
+}
+.billing-banner.danger {
+  background: var(--danger-soft);
+  border-color: transparent;
+}
+.billing-banner.danger > svg {
+  color: var(--danger);
+}
+.billing-banner.info {
+  background: var(--info-soft);
+  border-color: transparent;
+}
+.billing-banner.info > svg {
+  color: var(--info);
+}
+.billing-codes {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 10px 0 0;
+  font-size: var(--step-0);
+}
+.billing-codes dt {
+  color: var(--ink-3);
+  font-size: var(--step--1);
+  align-self: center;
+}
+.billing-codes dd {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+.billing-history td {
+  padding-top: 11px;
+  padding-bottom: 11px;
+}
+.billing-history-kind {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.billing-history-kind svg {
+  margin-top: 3px;
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+  flex: none;
+}
+.billing-history a {
+  color: var(--ink);
+}
+.billing-plus {
+  color: var(--ok);
+}
+
+@media (max-width: 640px) {
+  .billing-balance {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .billing-banner {
+    flex-wrap: wrap;
+  }
+  .billing-banner > .btn {
+    margin-left: 34px;
+  }
+}
+
+/* ----------------------------------------------------- masthead, upload page */
+
+.masthead-credits {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--rule);
+  color: var(--ink-2);
+  font-size: var(--step--1);
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background var(--dur-fast),
+    border-color var(--dur-fast);
+}
+.masthead-credits svg {
+  width: 14px;
+  height: 14px;
+}
+.masthead-credits:hover,
+.masthead-credits.active {
+  background: var(--surface-2);
+  border-color: var(--rule-strong);
+  color: var(--ink);
+}
+.masthead-credits.is-low {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+}
+@media (max-width: 720px) {
+  .masthead-credits {
+    padding: 0 9px;
+  }
+}
+
+.file-card-credits {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.file-card-credits svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+.file-card-credits.is-short {
+  color: var(--warn);
+  font-weight: 550;
+}
+
+/* ---------------------------------------------------------- sign-up pages */
+
+.auth-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  margin-bottom: 14px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+.auth-badge svg {
+  width: 22px;
+  height: 22px;
+}
+.auth-badge.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.auth-ok {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--ok);
+  font-size: var(--step--1);
+  font-weight: 550;
+}
+.auth-ok svg {
+  width: 15px;
+  height: 15px;
+}
+.auth-help .btn {
+  justify-self: start;
+  margin-top: 4px;
+}
+.auth-foot {
+  margin: 0;
+  font-size: var(--step--1);
+  text-align: center;
+}
+.auth-foot a {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------- settings */
+
+.settings-email-current {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ----------------------------------------------------------- Admin → Sales */
+
+.admin-billing {
+  display: grid;
+  gap: 18px;
+}
+.sales-status-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+}
+.system-h + .sales-status-row {
+  border-top: 0;
+  padding-top: 0;
+}
+.sales-status-row > svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  margin-top: 2px;
+}
+.sales-status-row strong {
+  font-size: var(--step--1);
+  overflow-wrap: anywhere;
+}
+.sales-status-row p {
+  margin: 3px 0 0;
+  font-size: var(--step--1);
+  max-width: 80ch;
+  overflow-wrap: anywhere;
+}
+.sales-test-mail {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.sales-test-mail .input {
+  width: min(320px, 100%);
+}
+.sales-hint {
+  margin: 0;
+  font-size: var(--step--1);
+  max-width: 80ch;
+}
+
+.sales-packages {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 4px;
+  max-width: 560px;
+}
+.sales-packages-head,
+.sales-package {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 88px 36px;
+  gap: 10px;
+  align-items: center;
+}
+.sales-packages-head {
+  font-size: var(--step--2);
+}
+.sales-packages > .btn {
+  justify-self: start;
+}
+.sales-packages p {
+  margin: 0;
+  font-size: var(--step--1);
+}
+.sales-methods {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  border: 0;
+  padding: 0;
+  margin: 10px 0 4px;
+}
+.sales-methods legend {
+  width: 100%;
+  margin-bottom: 6px;
+}
+.sales-methods .field-hint {
+  width: 100%;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--step--1);
+  cursor: pointer;
+}
+.check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+.sales-filter {
+  justify-self: start;
+  margin: 6px 0;
+}
+.sales-order-id {
+  font-size: var(--step--2);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+.sales-test-pill {
+  margin-left: 6px;
+}
+.admin-user-email {
+  font-size: var(--step--2);
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .sales-packages-head,
+  .sales-package {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px;
+  }
+  .sales-packages-head span:nth-child(3),
+  .sales-package > span {
+    display: none;
+  }
+}
+
+/* -------------------------------------------------------- Admin → Security */
+
+.admin-security {
+  display: grid;
+  gap: 18px;
+}
+.security-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.security-tile {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-1);
+}
+.security-tile-label {
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.security-tile-value {
+  font-family: var(--font-display);
+  font-size: var(--step-4);
+  font-weight: 540;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.security-tile-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+.security-tile-sub svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.security-tile.is-serious {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--rule));
+}
+.security-tile.is-serious .security-tile-sub {
+  color: var(--danger);
+}
+.security-caption {
+  margin: -4px 0 0;
+  font-size: var(--step--1);
+  max-width: 90ch;
+}
+
+/* One series: suspicious requests per day. Bars are the ink at low weight; hover shows the breakdown. */
+.security-chart {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 160px auto;
+  column-gap: 10px;
+  row-gap: 6px;
+}
+.security-chart-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-size: var(--step--2);
+  font-variant-numeric: tabular-nums;
+  margin: -6px 0;
+}
+.security-chart-plot {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+.security-chart-grid {
+  position: absolute;
+  inset: 0;
+  border-top: 1px dashed var(--rule);
+  pointer-events: none;
+}
+.security-bar {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+.security-bar-fill {
+  display: block;
+  width: min(100%, 28px);
+  min-height: 0;
+  border-radius: 4px 4px 0 0;
+  background: var(--ink-3);
+  opacity: 0.55;
+  transition: opacity var(--dur-fast);
+}
+.security-bar.is-hover .security-bar-fill,
+.security-bar:focus-visible .security-bar-fill {
+  opacity: 1;
+}
+.security-bar:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.security-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  min-width: 170px;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-2, var(--shadow-1));
+  font-size: var(--step--1);
+  pointer-events: none;
+  z-index: 5;
+  white-space: nowrap;
+}
+.security-tip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--ink-2);
+}
+.security-chart-x {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--step--2);
+}
+
+.security-table td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  vertical-align: top;
+}
+.security-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.security-tried {
+  font-size: var(--step--2);
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.security-you {
+  margin-left: 6px;
+}
+.security-detail {
+  max-width: 360px;
+  overflow-wrap: anywhere;
+  font-size: var(--step--1);
+}
+.security-empty {
+  margin: 0;
+  font-size: var(--step--1);
+}
+.security-blocks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.security-blocks li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.security-block-ip {
+  font-weight: 600;
+  margin-right: 8px;
+}
+.security-block-why {
+  font-size: var(--step--2);
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+.security-block-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto minmax(140px, 1.4fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+.security-events-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.security-events-head .system-h {
+  margin: 0;
+}
+.security-hint {
+  margin: 0;
+  font-size: var(--step--1);
+  max-width: 80ch;
+}
+.security-minutes .input {
+  width: 120px;
+}
+
+@media (max-width: 860px) {
+  .security-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .security-block-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 480px) {
+  .security-tiles {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .security-tile {
+    padding: 12px 14px;
+  }
+  .security-block-form {
+    grid-template-columns: 1fr;
+  }
+}
+/* Near the chart's edges the tooltip opens inwards, so it is never cut off. */
+.security-tip.tip-left {
+  transform: translateX(calc(-100% + 14px));
+}
+.security-tip.tip-right {
+  transform: translateX(-14px);
+}
+
+/* The summary composer: what a prepaid summary will cost. */
+.composer-cost {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin: 12px 0 0;
+  font-size: var(--step--1);
+}
+.composer-cost svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.composer-cost.is-short {
+  color: var(--warn);
+  font-weight: 550;
+}
+.composer-cost a {
+  color: inherit;
+  font-weight: 600;
+}
+.billing-balance-hours {
+  font-size: var(--step--1);
+}
+.billing-rates {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 14px;
+  margin: 0;
+}
+.billing-rates dt {
+  color: var(--ink-3);
+}
+.billing-rates dd {
+  margin: 0;
+}
+.billing-history-title {
+  display: block;
+}
+.billing-history-what {
+  display: block;
+  font-size: var(--step--2);
+}
+.sales-rates {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 6px;
+}
+.sales-rates-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 760px) {
+  .sales-rates-fields {
+    grid-template-columns: 1fr;
+  }
+}

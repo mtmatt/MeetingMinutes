@@ -6,7 +6,10 @@ import { existsSync, statSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
 import { config } from "./config";
 import { csrfGuard, hostGuard, withClientIp } from "./auth/middleware";
+import { securityWatch } from "./auth/securityWatch";
+import { isProbe } from "./services/security";
 import { adminRoutes } from "./routes/admin";
+import { billingRoutes, ecpayRoutes } from "./routes/billing";
 import { authRoutes, meRoutes } from "./routes/auth";
 import { eventRoutes } from "./routes/events";
 import { internalRoutes } from "./routes/internal";
@@ -27,6 +30,9 @@ const GOOGLE_APIS = "https://www.googleapis.com";
  * load Google's sign-in script, talk to Drive, and keep a handle on the
  * sign-in pop-up (which reports the token back with postMessage).
  */
+/** ECPay's checkout page, which the purchase form is posted to. */
+const ECPAY_CHECKOUT = { stage: "https://payment-stage.ecpay.com.tw", production: "https://payment.ecpay.com.tw" } as const;
+
 export function securityHeaders({ google }: { google: boolean }) {
   const extra = (...src: string[]) => (google ? src : []);
   return secureHeaders({
@@ -41,7 +47,8 @@ export function securityHeaders({ google }: { google: boolean }) {
       ...(google ? { frameSrc: ["'self'", GOOGLE_SIGN_IN] } : {}),
       frameAncestors: ["'none'"],
       baseUri: ["'self'"],
-      formAction: ["'self'"],
+      // Buying points posts a form to ECPay.
+      formAction: ["'self'", ECPAY_CHECKOUT[config.ecpay.mode]],
       objectSrc: ["'none'"],
     },
     strictTransportSecurity: config.cookieSecure ? "max-age=31536000; includeSubDomains" : false,
@@ -64,15 +71,18 @@ export function securityHeaders({ google }: { google: boolean }) {
 export function createApp() {
   const app = new Hono<AppEnv>();
 
-  // First, so a request for another host learns nothing about the site.
+  // Before anything: blocked addresses are refused, and every answer is watched for signs of an attack.
+  app.use(securityWatch);
+  // Then, so a request for another host learns nothing about the site.
   app.use(hostGuard);
   app.use(securityHeaders({ google: !!config.googleClientId }));
   app.use(withClientIp);
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) {
-      const code = (err.cause as { code?: string } | undefined)?.code ?? "error";
-      return c.json({ error: err.message, code }, err.status);
+      const cause = err.cause as { code?: string; extra?: Record<string, unknown> } | undefined;
+      c.set("errorCode", cause?.code);
+      return c.json({ ...(cause?.extra ?? {}), error: err.message, code: cause?.code ?? "error" }, err.status);
     }
     console.error("[http] unhandled error:", err);
     return c.json({ error: "Internal server error.", code: "internal" }, 500);
@@ -82,6 +92,9 @@ export function createApp() {
 
   // Worker API: bearer-token auth, no cookies, no CSRF concerns.
   app.route("/internal", internalRoutes);
+  // ECPay's notifications and people coming back from its page: form posts that
+  // carry no session or client header; their signature is checked instead.
+  app.route("/api/billing/ecpay", ecpayRoutes);
 
   const api = new Hono<AppEnv>();
   // JSON (a meeting with its transcript is ~100 KB) shrinks about tenfold. Event
@@ -97,6 +110,7 @@ export function createApp() {
   api.route("/meetings", meetingRoutes);
   api.route("/templates", templateRoutes);
   api.route("/presets", presetRoutes);
+  api.route("/billing", billingRoutes);
   api.route("/voices", voiceRoutes);
   api.route("/admin", adminRoutes);
   api.route("/events", eventRoutes);
@@ -114,6 +128,8 @@ export function createApp() {
       // A malformed escape ("/%E0%A4%A"): a bad request, not a server error with a stack trace in the log.
       return c.text("Bad request.", 400);
     }
+    // Scanners asking for WordPress, .env files and the like: a plain 404 (and the security monitor counts them).
+    if (isProbe(urlPath)) return c.text("Not found.", 404);
     if (!existsSync(indexHtml)) {
       return c.text("Frontend not built. Run `bun run build` in the repository root, or use the Vite dev server.", 503);
     }

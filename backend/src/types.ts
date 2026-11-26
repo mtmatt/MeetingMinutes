@@ -15,6 +15,12 @@ export interface UserRow {
   last_login_at: number | null;
   /** Recognise speakers by voice and remember the voices this user names. */
   voice_recognition: number;
+  email: string | null;
+  email_verified_at: number | null;
+  /** "exempt": never charged (invited accounts, and all from before billing); "prepaid": pays with points. */
+  billing: "exempt" | "prepaid";
+  /** Prepaid points left, in thousandths of a point. */
+  credits: number;
 }
 
 export interface SessionRow {
@@ -53,6 +59,8 @@ export interface SummaryRequest {
 
 export interface MeetingRow {
   id: string;
+  /** The length the browser read from the file when it was added (seconds), if it could. */
+  declared_sec: number | null;
   owner_id: string;
   title: string;
   occurred_at: number | null;
@@ -137,6 +145,9 @@ export type SummaryStatus = "queued" | "running" | "done" | "failed" | "canceled
 
 export interface SummaryRow {
   id: string;
+  /** Prepaid: points (thousandths) set aside while queued or running, and charged when done. */
+  hold: number | null;
+  charged: number | null;
   meeting_id: string;
   created_by: string | null;
   template_id: string | null;
@@ -185,6 +196,9 @@ export interface JobRow {
   claimed_at: number | null;
   heartbeat_at: number | null;
   finished_at: number | null;
+  /** Prepaid transcriptions: points (thousandths) set aside while the job is queued or running, and charged. */
+  hold: number | null;
+  charged: number | null;
 }
 
 export type AppEnv = {
@@ -192,6 +206,10 @@ export type AppEnv = {
     user: UserRow;
     session: SessionRow;
     clientIp: string;
+    /** The error code an answer carried (set by app.onError), for the security monitor. */
+    errorCode: string | undefined;
+    /** The username a sign-in tried, for the security monitor. */
+    attemptedUser: string | undefined;
     /** On the worker API: a worker on this machine (shared token) or a remote one (its key). */
     worker: { local: boolean; keyId: string | null };
   };

@@ -269,6 +269,17 @@ REMOTE_UPLOADS = ("playback.m4a", "peaks.json")
 DOWNLOAD_SHARE = 0.10
 
 
+def job_credit_limit(job: dict) -> Optional[float]:
+    """The most audio (seconds) a prepaid owner's minutes pay for, or None (no limit)."""
+    credits = job.get("credits")
+    if not isinstance(credits, dict) or credits.get("maxSec") is None:
+        return None
+    try:
+        return max(0.0, float(credits["maxSec"]))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def is_retryable(exc: BaseException) -> bool:
     if isinstance(exc, MediaError):
         return False
@@ -484,6 +495,7 @@ class _JobRunner:
                     max_segment_sec=self.cfg.max_segment_sec,
                     diarizer_unavailable=diarizer_unavailable,
                     max_audio_sec=self.cfg.max_audio_sec,
+                    credit_sec=job_credit_limit(job),
                 )
                 summary = f"{len(result['segments'])} segments, {len(result['speakers'])} speakers"
             else:

@@ -106,14 +106,32 @@ def _dominant_language(langs: List[str], weights: List[float]) -> Optional[str]:
     return top
 
 
-def _decode(media_path: str, progress: Progress, max_audio_sec: Optional[float]) -> Tuple[np.ndarray, "audio.MediaInfo"]:
+def credits_message(duration: Optional[float], credit_sec: float) -> str:
+    """Why a prepaid account's recording is not transcribed (the site matches "Not enough points")."""
+    have = int(max(0.0, credit_sec) // 60)
+    if duration:
+        return f"Not enough points: the recording is {duration / 60:.1f} minutes long, the balance pays for {have}."
+    return f"Not enough points: the recording is longer than the {have} minutes the balance pays for."
+
+
+def _decode(
+    media_path: str, progress: Progress, max_audio_sec: Optional[float], credit_sec: Optional[float] = None
+) -> Tuple[np.ndarray, "audio.MediaInfo"]:
     progress("decoding", 0.0, force=True)
     info = audio.probe(media_path)
     if not info.has_audio:
         raise audio.MediaError("The file has no audio track.")
     if max_audio_sec and info.duration and info.duration > max_audio_sec:
         raise audio.MediaError(f"The recording is longer than the {max_audio_sec / 3600:g}-hour limit (MAX_AUDIO_HOURS).")
-    wav = audio.decode_pcm(media_path, progress=lambda f: progress("decoding", f), duration=info.duration, max_seconds=max_audio_sec)
+    # A prepaid account: stop before any speech is recognised if its minutes do not cover the
+    # recording (a second of slack for rounding between the browser's length and ffmpeg's).
+    limit, too_long = max_audio_sec, None
+    if credit_sec is not None:
+        if info.duration and info.duration > credit_sec + 1:
+            raise audio.MediaError(credits_message(info.duration, credit_sec))
+        if not max_audio_sec or credit_sec + 1 < max_audio_sec:
+            limit, too_long = credit_sec + 1, credits_message(None, credit_sec)
+    wav = audio.decode_pcm(media_path, progress=lambda f: progress("decoding", f), duration=info.duration, max_seconds=limit, too_long=too_long)
     if len(wav) / audio.SAMPLE_RATE < 0.5:
         raise audio.MediaError("The recording is shorter than half a second.")
     return wav, info
@@ -142,13 +160,15 @@ def run_job(
     max_segment_sec: float = 30.0,
     diarizer_unavailable: Optional[str] = None,
     max_audio_sec: Optional[float] = None,
+    credit_sec: Optional[float] = None,
 ) -> dict:
-    """Transcribe one job. ``diarizer_unavailable`` is why there is no diarizer, if there is none."""
+    """Transcribe one job. ``diarizer_unavailable`` is why there is no diarizer, if there is none.
+    ``credit_sec``: the most audio the owner's prepaid minutes pay for (None: no limit)."""
     opts = job.options
     out_dir = Path(job.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     progress = Progress(report)
-    wav, info = _decode(job.media_path, progress, max_audio_sec)
+    wav, info = _decode(job.media_path, progress, max_audio_sec, credit_sec)
     sr = audio.SAMPLE_RATE
     duration = len(wav) / sr
     log.info("decoded %.1fs of audio (video=%s)", duration, info.has_video)

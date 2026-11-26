@@ -46,3 +46,9 @@ export const loginIpLimiter = new RateLimiter(20, 15 * 60 * 1000);
 export const loginUserLimiter = new RateLimiter(8, 15 * 60 * 1000);
 /** Invite / setup token attempts per IP. */
 export const tokenLimiter = new RateLimiter(30, 15 * 60 * 1000);
+/** Sign-ups per client IP. */
+export const registerLimiter = new RateLimiter(10, 60 * 60 * 1000);
+/** Messages to one address (verification, password reset), so the site cannot be used to flood someone's inbox. */
+export const mailToLimiter = new RateLimiter(3, 60 * 60 * 1000);
+/** Requests that send mail, per client IP. */
+export const mailIpLimiter = new RateLimiter(20, 60 * 60 * 1000);
