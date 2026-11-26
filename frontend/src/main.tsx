@@ -16,6 +16,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router";
 import { preloadPages, router } from "./App";
+import { installImeGuard } from "./lib/imeGuard";
 import { ConfirmProvider } from "./components/Modal";
 import { OriginHandoff } from "./components/OriginHandoff";
 import { ToastProvider } from "./components/Toast";
@@ -33,6 +34,8 @@ const queryClient = new QueryClient({
   },
 });
 
+// Enter and Escape typed into an input method are not the page's.
+installImeGuard();
 preloadPages(window.location.pathname);
 prefetchPageData(queryClient, window.location.pathname);
 
