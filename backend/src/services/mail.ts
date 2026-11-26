@@ -148,21 +148,21 @@ export function resetMail(to: string, link: string, locale: MailLocale, username
 export function receiptMail(
   to: string,
   locale: MailLocale,
-  order: { id: string; minutes: number; amount: number; method: string | null },
-  balanceMinutes: number,
+  order: { id: string; points: number; amount: number; method: string | null },
+  balancePoints: number,
   link: string,
 ): Mail {
   if (locale === "en") {
     return {
       to,
-      subject: `${SITE}: payment received (${order.minutes} minutes)`,
-      text: `Thank you. Your payment was received.\n\nOrder: ${order.id}\nAmount: NT$${order.amount}\nAdded: ${order.minutes} minutes of transcription\nBalance now: ${balanceMinutes} minutes\n\nYour purchases and usage: ${link}`,
+      subject: `${SITE}: payment received (${order.points} points)`,
+      text: `Thank you. Your payment was received.\n\nOrder: ${order.id}\nAmount: NT$${order.amount}\nAdded: ${order.points} points\nBalance now: ${balancePoints} points\n\nYour purchases and usage: ${link}`,
     };
   }
   return {
     to,
-    subject: `${SITE}：付款完成（${order.minutes} 分鐘）`,
-    text: `感謝購買，款項已收到。\n\n訂單編號：${order.id}\n金額：新台幣 ${order.amount} 元\n加值：轉錄 ${order.minutes} 分鐘\n目前餘額：${balanceMinutes} 分鐘\n\n購買與使用紀錄：${link}`,
+    subject: `${SITE}：付款完成（${order.points} 點）`,
+    text: `感謝購買，款項已收到。\n\n訂單編號：${order.id}\n金額：新台幣 ${order.amount} 元\n加值：${order.points} 點\n目前餘額：${balancePoints} 點\n\n購買與使用紀錄：${link}`,
   };
 }
 

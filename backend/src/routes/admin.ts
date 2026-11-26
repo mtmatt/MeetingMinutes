@@ -54,7 +54,7 @@ import {
   workerApiKeys,
 } from "../services/transcriberSettings";
 import type { AppEnv, MeetingRow, UserRow } from "../types";
-import { addCredits, ledger, publicLedgerEntry } from "../services/credits";
+import { MILLI, addCredits, ledger, publicLedgerEntry } from "../services/credits";
 import { billingSettings, billingSettingsMeta, billingSettingsSchema, saveBillingSettings } from "../services/billingSettings";
 import { getOrder, publicEcpayInfo, publicOrder, queryOrder, type OrderRow } from "../services/ecpay";
 import { MailError, mailLocale, publicMailInfo, sendMail, testMail } from "../services/mail";
@@ -106,7 +106,7 @@ adminRoutes.patch("/users/:id", async (c) => {
       role: z.enum(["admin", "member"]).optional(),
       disabled: z.boolean().optional(),
       displayName: z.string().trim().min(1).max(80).optional(),
-      /** "prepaid": pays for transcription with minutes; "exempt": free. */
+      /** "prepaid": pays for transcription and summaries with points; "exempt": free. */
       billing: z.enum(["exempt", "prepaid"]).optional(),
     }),
   );
@@ -450,23 +450,24 @@ adminRoutes.put("/worker-profiles/:id", async (c) => {
 
 // ---------------------------------------------------------------- billing
 
-/** Sign-up, minutes on sale, packages; and whether email and ECPay are ready for them. */
+/** Sign-up, rates, points on sale, packages; and whether email and ECPay are ready for them. */
 adminRoutes.get("/billing", (c) => {
   const paid = db
-    .query<{ mode: string; n: number; amount: number | null; minutes: number | null }, []>(
-      "SELECT mode, COUNT(*) AS n, SUM(amount) AS amount, SUM(minutes) AS minutes FROM payment_orders WHERE status = 'paid' GROUP BY mode",
+    .query<{ mode: string; n: number; amount: number | null; points: number | null }, []>(
+      "SELECT mode, COUNT(*) AS n, SUM(amount) AS amount, SUM(points) AS points FROM payment_orders WHERE status = 'paid' GROUP BY mode",
     )
     .all();
-  const prepaid = db.query<{ n: number; sec: number | null }, []>("SELECT COUNT(*) AS n, SUM(credit_sec) AS sec FROM users WHERE billing = 'prepaid'").get()!;
+  const prepaid = db.query<{ n: number; credits: number | null }, []>("SELECT COUNT(*) AS n, SUM(credits) AS credits FROM users WHERE billing = 'prepaid'").get()!;
   return c.json({
     settings: billingSettings(),
     meta: billingSettingsMeta(),
     mail: publicMailInfo(),
     ecpay: publicEcpayInfo(),
     stats: {
-      paid: paid.map((p) => ({ mode: p.mode, orders: p.n, amount: p.amount ?? 0, minutes: p.minutes ?? 0 })),
+      paid: paid.map((p) => ({ mode: p.mode, orders: p.n, amount: p.amount ?? 0, points: p.points ?? 0 })),
       prepaidAccounts: prepaid.n,
-      outstandingSec: prepaid.sec ?? 0,
+      // Thousandths of a point.
+      outstanding: prepaid.credits ?? 0,
     },
   });
 });
@@ -513,20 +514,21 @@ adminRoutes.post("/orders/:id/refresh", async (c) => {
 adminRoutes.get("/users/:id/credits", (c) => {
   const target = findUserById(c.req.param("id"));
   if (!target) httpError(404, "User not found.", "not_found");
-  return c.json({ balanceSec: target.credit_sec, ledger: ledger(target.id, 200).map(publicLedgerEntry) });
+  return c.json({ balance: target.credits, ledger: ledger(target.id, 200).map(publicLedgerEntry) });
 });
 
-/** Add or take away minutes by hand (a refund made in ECPay's back office, a gift, a correction). */
+/** Add or take away points by hand (a refund made in ECPay's back office, a gift, a correction). */
 adminRoutes.post("/users/:id/credits", async (c) => {
   const target = findUserById(c.req.param("id"));
   if (!target) httpError(404, "User not found.", "not_found");
   const input = await body(
     c,
-    z.object({ minutes: z.number().int().min(-1_000_000).max(1_000_000).refine((n) => n !== 0), note: z.string().trim().min(1).max(200) }),
+    // Points, to a thousandth.
+    z.object({ points: z.number().min(-1_000_000).max(1_000_000).refine((n) => Math.round(n * MILLI) !== 0), note: z.string().trim().min(1).max(200) }),
     SMALL_JSON_LIMIT_BYTES,
   );
-  const balanceSec = db.transaction(() => addCredits(target.id, input.minutes * 60, { kind: "adjust", note: input.note, createdBy: c.get("user").id }))();
-  return c.json({ balanceSec, user: publicUser(findUserById(target.id)!) });
+  const balance = db.transaction(() => addCredits(target.id, Math.round(input.points * MILLI), { kind: "adjust", note: input.note, createdBy: c.get("user").id }))();
+  return c.json({ balance, user: publicUser(findUserById(target.id)!) });
 });
 
 // --------------------------------------------------------------- security

@@ -1,14 +1,14 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
-import { addCredits, costOf, jobCreditLimit } from "./credits";
+import { CreditsError, MILLI, chargeTranscription, jobCreditLimit, summaryHold } from "./credits";
 import { open } from "node:fs/promises";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { config } from "../config";
 import { db, now } from "../db";
 import { newId, parseJson } from "../lib/util";
-import type { JobKind, JobRow, MeetingRow, SegmentRow, SpeakerRow, SummaryRequest, SummaryRow, TranscribeOptions } from "../types";
+import type { JobKind, JobRow, MeetingRow, SegmentRow, SpeakerRow, SummaryRequest, SummaryRow, TranscribeOptions, UserRow } from "../types";
 import { publish } from "./events";
-import { enqueueSummary, summaryPublic } from "./summarizer";
+import { enqueueSummary, summaryInputTokens, summaryPublic } from "./summarizer";
 import {
   announceSummaryChanges,
   completeVoiceprint,
@@ -318,21 +318,21 @@ export async function deleteMeeting(m: MeetingRow) {
 // -------------------------------------------------------------- job queue
 
 /**
- * Queue (again) the transcription of a meeting. `holdSec`: for a prepaid owner,
- * the seconds set aside for it (see credits.ts); null for an exempt one.
+ * Queue (again) the transcription of a meeting. `hold`: for a prepaid owner,
+ * the points set aside for it (see credits.ts); null when nothing is.
  */
-export function enqueueTranscription(m: MeetingRow, holdSec: number | null = null) {
+export function enqueueTranscription(m: MeetingRow, hold: number | null = null) {
   removeIncoming(m.id);
   db.transaction(() => {
     db.query("UPDATE jobs SET status = 'canceled', finished_at = $t WHERE meeting_id = $m AND status IN ('queued','running')").run({
       m: m.id,
       t: now(),
     });
-    db.query("INSERT INTO jobs (id, meeting_id, status, created_at, hold_sec) VALUES ($id, $m, 'queued', $t, $h)").run({
+    db.query("INSERT INTO jobs (id, meeting_id, status, created_at, hold) VALUES ($id, $m, 'queued', $t, $h)").run({
       id: newId(12),
       m: m.id,
       t: now(),
-      h: holdSec,
+      h: hold,
     });
     db.query(
       "UPDATE meetings SET status = 'queued', stage = NULL, progress = 0, error = NULL, updated_at = $t WHERE id = $id",
@@ -358,7 +358,7 @@ export interface ClaimedJob {
   asr?: JobAsrSettings;
   /** Transcriptions and voiceprints: who separates speakers (and so which model makes voice fingerprints). */
   diarization?: { engine: "local" | "cpu" | "pyannoteai" };
-  /** Prepaid owners: the most audio (seconds) their minutes pay for; a longer recording is refused before speech is recognised. */
+  /** Prepaid owners: the most audio (seconds) their points pay for; a longer recording is refused before speech is recognised. */
   credits?: { maxSec: number };
 }
 
@@ -416,7 +416,7 @@ export function claimJob(
       t,
     });
     touchMeeting(m);
-    const maxSec = jobCreditLimit(m.owner_id, m.id, job.hold_sec);
+    const maxSec = jobCreditLimit(m.owner_id, m.id, job.hold);
     return {
       ...base,
       options: { ...DEFAULT_OPTIONS, ...parseJson<Partial<TranscribeOptions>>(m.options, {}) },
@@ -536,7 +536,7 @@ export function completeJob(jobId: string, workerId: string, result: TranscriptR
       });
     });
     storeTranscriptVoices(getMeeting(m)!, previous, result.voiceModel, result.voices);
-    chargeTranscription(job, result.durationSec);
+    chargeJob(job, result.durationSec);
     db.query(
       `UPDATE meetings SET status = 'ready', stage = NULL, progress = 1, error = NULL, duration_sec = $d, language = $lang,
          has_video = $hv, has_playback = $hp, has_peaks = $hk, diarization = $dz, transcribed_at = $t, updated_at = $t WHERE id = $id`,
@@ -560,20 +560,31 @@ export function completeJob(jobId: string, workerId: string, result: TranscriptR
     const auto = parseJson<SummaryRequest | null>(m.auto_summary, null);
     // Auto-summarise only once: the first successful transcription.
     const hasSummary = db.query<{ n: number }, { m: string }>("SELECT COUNT(*) AS n FROM summaries WHERE meeting_id = $m").get({ m: m.id })?.n;
-    if (auto && auto.prompt.trim() && !hasSummary) enqueueSummary(m, m.owner_id, auto);
+    if (auto && auto.prompt.trim() && !hasSummary) enqueueAutoSummary(m, auto);
   }
   return true;
 }
 
 /** A prepaid owner pays for a finished transcription by its real length (in the completing transaction). */
-function chargeTranscription(job: JobRow, durationSec: number) {
-  if (job.hold_sec == null) return;
+function chargeJob(job: JobRow, durationSec: number) {
+  if (job.hold == null) return;
   const m = getMeeting(job.meeting_id);
-  const owner = m ? db.query<{ billing: string }, { id: string }>("SELECT billing FROM users WHERE id = $id").get({ id: m.owner_id }) : null;
-  if (!m || owner?.billing !== "prepaid") return;
-  const cost = costOf(durationSec);
-  addCredits(m.owner_id, -cost, { kind: "usage", meetingId: m.id, title: m.title });
-  db.query("UPDATE jobs SET charged_sec = $c WHERE id = $id").run({ id: job.id, c: cost });
+  if (!m) return;
+  const cost = chargeTranscription(m.owner_id, m, durationSec);
+  if (cost != null) db.query("UPDATE jobs SET charged = $c WHERE id = $id").run({ id: job.id, c: cost });
+}
+
+/** The summary asked for when the recording was added: paid for like one asked for later, or recorded as refused. */
+function enqueueAutoSummary(m: MeetingRow, req: SummaryRequest) {
+  const owner = db.query<UserRow, { id: string }>("SELECT * FROM users WHERE id = $id").get({ id: m.owner_id });
+  if (!owner) return;
+  try {
+    enqueueSummary(m, owner.id, req, summaryHold(owner, summaryInputTokens(m, req.prompt)));
+  } catch (e) {
+    if (!(e instanceof CreditsError)) throw e;
+    const pts = (n: number) => (n / MILLI).toFixed(1);
+    enqueueSummary(m, owner.id, req, null, `Not enough points for the summary: it needs about ${pts(e.needed)}, ${pts(e.available)} left. Buy points, then write it again.`);
+  }
 }
 
 export function failJob(jobId: string, workerId: string, error: string, retryable: boolean): boolean {

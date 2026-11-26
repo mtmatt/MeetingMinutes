@@ -329,14 +329,15 @@ export const migrations: string[] = [
   `,
   // The colour theme, with the account (like the language), instead of only in one browser.
   `ALTER TABLE users ADD COLUMN theme TEXT CHECK (theme IN ('system', 'light', 'dark'));`,
-  // Signing up with an email address, and paying for transcription with prepaid minutes.
+  // Signing up with an email address, and paying with prepaid points: transcription by the
+  // minute of recording, summaries by the tokens the model read and wrote.
   // Accounts from before (and invited ones) stay 'exempt': they are never charged.
   `
   ALTER TABLE users ADD COLUMN email TEXT;
   ALTER TABLE users ADD COLUMN email_verified_at INTEGER;
   ALTER TABLE users ADD COLUMN billing TEXT NOT NULL DEFAULT 'exempt' CHECK (billing IN ('exempt', 'prepaid'));
-  -- Seconds of recording this person may still have transcribed (prepaid accounts).
-  ALTER TABLE users ADD COLUMN credit_sec INTEGER NOT NULL DEFAULT 0;
+  -- Prepaid points left, in thousandths of a point (rates may be fractions of a point).
+  ALTER TABLE users ADD COLUMN credits INTEGER NOT NULL DEFAULT 0;
   CREATE UNIQUE INDEX users_email ON users(email COLLATE NOCASE) WHERE email IS NOT NULL;
 
   -- A link sent to confirm an address: at sign-up, or when someone changes theirs.
@@ -351,16 +352,18 @@ export const migrations: string[] = [
   );
   CREATE INDEX email_verifications_user ON email_verifications(user_id);
 
-  -- Every change of a balance, with the balance after it.
+  -- Every change of a balance (thousandths of a point), with the balance after it.
   CREATE TABLE credit_ledger (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    delta_sec   INTEGER NOT NULL,
-    balance_sec INTEGER NOT NULL,
-    kind        TEXT NOT NULL CHECK (kind IN ('purchase', 'usage', 'adjust')),
-    -- Usage: the meeting (it may since have been deleted, so its title is kept too).
+    delta       INTEGER NOT NULL,
+    balance     INTEGER NOT NULL,
+    kind        TEXT NOT NULL CHECK (kind IN ('purchase', 'transcription', 'summary', 'adjust')),
+    -- Usage: the meeting (it may since have been deleted, so its title is kept too),
+    -- and what was used: {"sec": 3600} or {"input": 12000, "output": 900}.
     meeting_id  TEXT,
     title       TEXT,
+    quantity    TEXT,
     order_id    TEXT,
     note        TEXT,
     created_by  TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -373,7 +376,7 @@ export const migrations: string[] = [
     id           TEXT PRIMARY KEY,
     user_id      TEXT REFERENCES users(id) ON DELETE SET NULL,
     package_id   TEXT NOT NULL,
-    minutes      INTEGER NOT NULL,
+    points       INTEGER NOT NULL,
     amount       INTEGER NOT NULL,
     item_name    TEXT NOT NULL,
     status       TEXT NOT NULL CHECK (status IN ('pending', 'paid', 'failed')),
@@ -394,9 +397,11 @@ export const migrations: string[] = [
 
   -- The length the browser read from the file, to check a balance before anything is uploaded.
   ALTER TABLE meetings ADD COLUMN declared_sec REAL;
-  -- Prepaid transcriptions: the seconds set aside while queued or running, and what was charged.
-  ALTER TABLE jobs ADD COLUMN hold_sec INTEGER;
-  ALTER TABLE jobs ADD COLUMN charged_sec INTEGER;
+  -- Prepaid work: the points (thousandths) set aside while queued or running, and what was charged.
+  ALTER TABLE jobs ADD COLUMN hold INTEGER;
+  ALTER TABLE jobs ADD COLUMN charged INTEGER;
+  ALTER TABLE summaries ADD COLUMN hold INTEGER;
+  ALTER TABLE summaries ADD COLUMN charged INTEGER;
   `,
   // Security monitor: suspicious requests counted per kind, address, account tried and
   // minute (a flood is a few rows), and addresses blocked automatically or by hand.

@@ -5,24 +5,24 @@ import { api } from "../api/client";
 import type { AdminOrder, BillingSettings, CreditPackage, PaymentMethod } from "../api/types";
 import { useConfirm } from "../components/Modal";
 import { useToast } from "../components/Toast";
-import { useI18n } from "../i18n";
+import { useI18n, type TKey } from "../i18n";
 import { useAuth } from "../lib/auth";
-import { dateTime, minutesText, relative, twd } from "../lib/format";
+import { dateTime, pointsText, relative, twd } from "../lib/format";
 
 const METHODS: PaymentMethod[] = ["Credit", "ATM", "CVS"];
 const METHOD_LABEL = { Credit: "billing.methodCredit", ATM: "billing.methodATM", CVS: "billing.methodCVS" } as const;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** "m60", "m60-2"…: a package id nobody has to type. */
-function packageId(minutes: number, taken: string[]): string {
-  const base = `m${minutes}`;
+function packageId(points: number, taken: string[]): string {
+  const base = `p${points}`;
   let id = base;
   for (let i = 2; taken.includes(id); i++) id = `${base}-${i}`;
   return id;
 }
 
 /**
- * Admin → Sales: whether people may sign up on their own, the minutes on sale
+ * Admin → Sales: whether people may sign up on their own, what work costs in points, the points on sale
  * and how they are paid, with what email and ECPay need, and the orders.
  */
 export function AdminBilling() {
@@ -40,9 +40,11 @@ export function AdminBilling() {
 
   if (!data || !form) return <div className="skeleton" style={{ height: 320 }} />;
   const dirty = !same(form, data.settings);
-  const packagesOk = form.packages.every((p) => Number.isInteger(p.minutes) && p.minutes > 0 && Number.isInteger(p.price) && p.price > 0);
+  const packagesOk = form.packages.every((p) => Number.isInteger(p.points) && p.points > 0 && Number.isInteger(p.price) && p.price > 0);
+  const rate = (x: number) => Number.isFinite(x) && x >= 0 && x <= 1000;
+  const ratesOk = rate(form.rates.perMinute) && rate(form.rates.perKInput) && rate(form.rates.perKOutput);
   const termsOk = !form.termsUrl || /^https?:\/\/\S+$/.test(form.termsUrl);
-  const canSave = dirty && packagesOk && termsOk && form.methods.length > 0 && (!form.enabled || form.packages.length > 0);
+  const canSave = dirty && packagesOk && ratesOk && termsOk && form.methods.length > 0 && (!form.enabled || form.packages.length > 0);
   const live = data.ecpay.mode === "production";
 
   const setPackage = (i: number, patch: Partial<CreditPackage>) =>
@@ -56,8 +58,8 @@ export function AdminBilling() {
     }
     setBusy(true);
     try {
-      // Ids follow the minutes, so each package keeps one name in the orders.
-      const packages = form.packages.map((p, i, all) => (p.id ? p : { ...p, id: packageId(p.minutes, all.map((x) => x.id)) }));
+      // Ids follow the points, so each package keeps one name in the orders.
+      const packages = form.packages.map((p, i, all) => (p.id ? p : { ...p, id: packageId(p.points, all.map((x) => x.id)) }));
       const next = await api.adminSaveBilling({ ...form, packages });
       qc.setQueryData(["admin", "billing"], { ...data, ...next });
       setForm(next.settings);
@@ -125,9 +127,11 @@ export function AdminBilling() {
           <span className="switch-label">{t("sales.enabled")}</span>
         </label>
 
+        <RatesEditor rates={form.rates} onChange={(rates) => setForm({ ...form, rates })} />
+
         <div className="sales-packages">
           <div className="sales-packages-head faint smallcaps">
-            <span>{t("sales.minutes")}</span>
+            <span>{t("sales.points")}</span>
             <span>{t("sales.price")}</span>
             <span>{t("sales.perMinute")}</span>
             <span />
@@ -139,9 +143,9 @@ export function AdminBilling() {
                 type="number"
                 min={1}
                 step={1}
-                aria-label={t("sales.minutes")}
-                value={Number.isFinite(p.minutes) ? p.minutes : ""}
-                onChange={(e) => setPackage(i, { minutes: e.target.value === "" ? Number.NaN : Math.round(Number(e.target.value)) })}
+                aria-label={t("sales.points")}
+                value={Number.isFinite(p.points) ? p.points : ""}
+                onChange={(e) => setPackage(i, { points: e.target.value === "" ? Number.NaN : Math.round(Number(e.target.value)) })}
               />
               <input
                 className="input mono"
@@ -152,7 +156,7 @@ export function AdminBilling() {
                 value={Number.isFinite(p.price) ? p.price : ""}
                 onChange={(e) => setPackage(i, { price: e.target.value === "" ? Number.NaN : Math.round(Number(e.target.value)) })}
               />
-              <span className="mono faint">{p.minutes > 0 && p.price > 0 ? `NT$${(p.price / p.minutes).toFixed(2)}` : "–"}</span>
+              <span className="mono faint">{p.points > 0 && p.price > 0 ? `NT$${(p.price / p.points).toFixed(2)}` : "–"}</span>
               <button
                 type="button"
                 className="icon-btn"
@@ -171,7 +175,7 @@ export function AdminBilling() {
               className="btn btn-sm"
               onClick={() => {
                 const last = form.packages[form.packages.length - 1];
-                setForm({ ...form, packages: [...form.packages, { id: "", minutes: last ? last.minutes * 2 : 60, price: last ? last.price * 2 : 100 }] });
+                setForm({ ...form, packages: [...form.packages, { id: "", points: last ? last.points * 2 : 100, price: last ? last.price * 2 : 100 }] });
               }}
             >
               <Plus /> {t("sales.addPackage")}
@@ -230,18 +234,54 @@ export function AdminBilling() {
         </h3>
         <dl className="kv">
           <dt>{t("sales.revenue")}</dt>
-          <dd>{paidLive ? t("sales.revenueValue", { n: paidLive.orders, amount: twd(paidLive.amount), minutes: paidLive.minutes.toLocaleString() }) : t("storage.none")}</dd>
+          <dd>{paidLive ? t("sales.revenueValue", { n: paidLive.orders, amount: twd(paidLive.amount), points: paidLive.points.toLocaleString() }) : t("storage.none")}</dd>
           {paidTest && (
             <>
               <dt>{t("sales.revenueTest")}</dt>
-              <dd>{t("sales.revenueValue", { n: paidTest.orders, amount: twd(paidTest.amount), minutes: paidTest.minutes.toLocaleString() })}</dd>
+              <dd>{t("sales.revenueValue", { n: paidTest.orders, amount: twd(paidTest.amount), points: paidTest.points.toLocaleString() })}</dd>
             </>
           )}
           <dt>{t("sales.prepaidAccounts")}</dt>
-          <dd>{t("sales.prepaidValue", { n: data.stats.prepaidAccounts, minutes: minutesText(data.stats.outstandingSec, locale) })}</dd>
+          <dd>{t("sales.prepaidValue", { n: data.stats.prepaidAccounts, points: pointsText(data.stats.outstanding, locale) })}</dd>
         </dl>
         <Orders />
       </section>
+    </div>
+  );
+}
+
+/** Points per minute of recording and per thousand summary tokens, with what typical work then costs. */
+function RatesEditor({ rates, onChange }: { rates: BillingSettings["rates"]; onChange: (r: BillingSettings["rates"]) => void }) {
+  const { t, locale } = useI18n();
+  const field = (key: keyof BillingSettings["rates"], label: TKey, hint: TKey) => (
+    <div className="field">
+      <label htmlFor={`rate-${key}`}>{t(label)}</label>
+      <input
+        id={`rate-${key}`}
+        className="input mono"
+        type="number"
+        min={0}
+        step="any"
+        value={Number.isFinite(rates[key]) ? rates[key] : ""}
+        aria-invalid={!(Number.isFinite(rates[key]) && rates[key] >= 0)}
+        onChange={(e) => onChange({ ...rates, [key]: e.target.value === "" ? Number.NaN : Number(e.target.value) })}
+      />
+      <span className="field-hint">{t(hint)}</span>
+    </div>
+  );
+  // An hour's meeting: about 20,000 tokens read (transcript and instructions) and 2,000 written.
+  const hour = rates.perMinute * 60 * 1000;
+  const summary = 20 * rates.perKInput * 1000 + 2 * rates.perKOutput * 1000;
+  return (
+    <div className="sales-rates">
+      <div className="sales-rates-fields">
+        {field("perMinute", "sales.ratePerMinute", "sales.ratePerMinuteHint")}
+        {field("perKInput", "sales.ratePerKInput", "sales.ratePerKInputHint")}
+        {field("perKOutput", "sales.ratePerKOutput", "sales.ratePerKOutputHint")}
+      </div>
+      {Number.isFinite(hour) && Number.isFinite(summary) && (
+        <p className="faint sales-hint">{t("sales.rateExample", { transcription: pointsText(hour, locale), summary: pointsText(summary, locale) })}</p>
+      )}
     </div>
   );
 }
@@ -325,7 +365,7 @@ function Orders() {
               <tr>
                 <th>{t("billing.when")}</th>
                 <th>{t("sales.buyer")}</th>
-                <th className="num">{t("sales.minutes")}</th>
+                <th className="num">{t("sales.points")}</th>
                 <th className="num">{t("sales.price")}</th>
                 <th>{t("admin.status")}</th>
                 <th />
@@ -339,7 +379,7 @@ function Orders() {
                     <div className="faint mono sales-order-id">{o.id}</div>
                   </td>
                   <td>{o.user ? `${o.user.displayName} (@${o.user.username})` : <span className="faint">{t("sales.deletedUser")}</span>}</td>
-                  <td className="num mono">{o.minutes.toLocaleString()}</td>
+                  <td className="num mono">{o.points.toLocaleString()}</td>
                   <td className="num mono">{twd(o.amount)}</td>
                   <td>
                     <span className={`pill ${o.status === "paid" ? "ok" : o.status === "failed" ? "danger" : "warn"}`}>{t(`sales.status_${o.status}`)}</span>

@@ -9,7 +9,7 @@ import { useToast } from "../components/Toast";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { diarizationReason } from "../lib/errors";
-import { bytes, initials, minutesText, relative, until } from "../lib/format";
+import { bytes, initials, pointsText, relative, until } from "../lib/format";
 import { useSummaryEngine } from "../lib/summaryEngine";
 import { VENDOR_NAMES } from "../components/SummaryComposer";
 import { StoragePolicy } from "./AdminStorage";
@@ -128,7 +128,7 @@ function Users() {
                 </td>
                 <td>
                   {u.billing === "prepaid" ? (
-                    <span className={`mono ${u.creditSec <= 0 ? "faint" : ""}`}>{minutesText(u.creditSec, locale)}</span>
+                    <span className={`mono ${u.credits <= 0 ? "faint" : ""}`}>{pointsText(u.credits, locale)}</span>
                   ) : (
                     <span className="faint">{t("admin.freeAccount")}</span>
                   )}
@@ -516,13 +516,14 @@ function AdjustMinutes({ user, onClose, onDone }: { user: AdminUser; onClose: ()
   const [minutes, setMinutes] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const n = Math.round(Number(minutes));
+  // Points, to a thousandth.
+  const n = Math.round(Number(minutes) * 1000) / 1000;
   const ok = minutes.trim() !== "" && Number.isFinite(n) && n !== 0 && note.trim().length > 0;
   const save = async () => {
     setBusy(true);
     try {
       const r = await api.adminAdjustCredits(user.id, n, note.trim());
-      toast.show(t("admin.minutesAdjusted", { name: user.displayName, balance: minutesText(r.balanceSec, locale) }));
+      toast.show(t("admin.minutesAdjusted", { name: user.displayName, balance: pointsText(r.balance, locale) }));
       onDone();
       onClose();
     } catch (e) {
@@ -546,11 +547,11 @@ function AdjustMinutes({ user, onClose, onDone }: { user: AdminUser; onClose: ()
         </>
       }
     >
-      <p className="muted">{t("admin.adjustMinutesBody", { balance: minutesText(user.creditSec, locale) })}</p>
+      <p className="muted">{t("admin.adjustMinutesBody", { balance: pointsText(user.credits, locale) })}</p>
       {user.billing !== "prepaid" && <p className="faint">{t("admin.adjustMinutesExempt")}</p>}
       <div className="field">
         <label htmlFor="adjust-minutes">{t("admin.adjustMinutesField")}</label>
-        <input id="adjust-minutes" className="input mono" type="number" step={1} value={minutes} onChange={(e) => setMinutes(e.target.value)} autoFocus placeholder="60 / -30" />
+        <input id="adjust-minutes" className="input mono" type="number" step="any" value={minutes} onChange={(e) => setMinutes(e.target.value)} autoFocus placeholder="100 / -20" />
       </div>
       <div className="field">
         <label htmlFor="adjust-note">{t("admin.adjustNote")}</label>

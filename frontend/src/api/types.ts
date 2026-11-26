@@ -12,10 +12,10 @@ export interface User {
   theme: "system" | "light" | "dark" | null;
   email: string | null;
   emailVerified: boolean;
-  /** "prepaid": transcription is paid for with minutes (creditSec); "exempt": free. */
+  /** "prepaid": transcription and summaries are paid for with points; "exempt": free. */
   billing: "exempt" | "prepaid";
-  /** Seconds of recording the prepaid balance pays for. */
-  creditSec: number;
+  /** Prepaid points left, in thousandths of a point. */
+  credits: number;
   createdAt: number;
   lastLoginAt: number | null;
 }
@@ -483,9 +483,16 @@ export interface ModelPull {
 
 export type PaymentMethod = "Credit" | "ATM" | "CVS";
 
+/** Points per minute of recording, and per thousand tokens a summary model reads and writes. */
+export interface Rates {
+  perMinute: number;
+  perKInput: number;
+  perKOutput: number;
+}
+
 export interface CreditPackage {
   id: string;
-  minutes: number;
+  points: number;
   /** NT$, tax included. */
   price: number;
 }
@@ -493,7 +500,7 @@ export interface CreditPackage {
 export interface Order {
   id: string;
   packageId: string;
-  minutes: number;
+  points: number;
   amount: number;
   itemName: string;
   status: "pending" | "paid" | "failed";
@@ -507,13 +514,16 @@ export interface Order {
   paidAt: number | null;
 }
 
+/** Amounts are thousandths of a point. */
 export interface LedgerEntry {
   id: number;
-  deltaSec: number;
-  balanceSec: number;
-  kind: "purchase" | "usage" | "adjust";
+  delta: number;
+  balance: number;
+  kind: "purchase" | "transcription" | "summary" | "adjust";
   meetingId: string | null;
   title: string | null;
+  /** Transcription: {sec}; summary: {input, output} tokens. */
+  quantity: { sec?: number; input?: number; output?: number } | null;
   orderId: string | null;
   note: string | null;
   createdAt: number;
@@ -521,9 +531,11 @@ export interface LedgerEntry {
 
 export interface BillingInfo {
   billing: "exempt" | "prepaid";
-  balanceSec: number;
-  heldSec: number;
-  availableSec: number | null;
+  /** Thousandths of a point. */
+  balance: number;
+  held: number;
+  available: number | null;
+  rates: Rates;
   onSale: boolean;
   /** ECPay's test system: nothing is really charged. */
   testMode: boolean;
@@ -537,6 +549,7 @@ export interface BillingInfo {
 export interface BillingSettings {
   registrationOpen: boolean;
   enabled: boolean;
+  rates: Rates;
   packages: CreditPackage[];
   methods: PaymentMethod[];
   termsUrl: string;
@@ -547,7 +560,7 @@ export interface BillingAdminState {
   meta: { saved: boolean; updatedAt: number | null; updatedBy: string | null };
   mail: { configured: boolean; transport: "smtp" | "log"; server: string | null; from: string };
   ecpay: { mode: "stage" | "production"; merchantId: string; testShop: boolean; publicUrl: string | null };
-  stats: { paid: { mode: string; orders: number; amount: number; minutes: number }[]; prepaidAccounts: number; outstandingSec: number };
+  stats: { paid: { mode: string; orders: number; amount: number; points: number }[]; prepaidAccounts: number; outstanding: number };
 }
 
 export interface AdminOrder extends Order {

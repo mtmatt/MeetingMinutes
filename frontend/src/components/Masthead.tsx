@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
-import { initials, minutesText } from "../lib/format";
+import { initials, pointsText } from "../lib/format";
 import { useBilling } from "../lib/billing";
 import { useTheme, type ThemePref } from "../lib/theme";
 import { usePageContext } from "../lib/pageContext";
@@ -18,7 +18,7 @@ export function Masthead() {
   const context = usePageContext();
   const prepaid = user?.billing === "prepaid";
   const billing = useBilling(prepaid);
-  const available = billing.data?.availableSec ?? null;
+  const available = billing.data?.available ?? null;
 
   const switchLocale = async (l: "en" | "zh-TW") => {
     setLocale(l);
@@ -66,12 +66,13 @@ export function Masthead() {
           {prepaid && available != null && (
             <NavLink
               to="/billing"
-              className={`masthead-credits ${available < 600 ? "is-low" : ""}`}
+              // Low: less than ten minutes of recording.
+              className={`masthead-credits ${available < 10 * 1000 * (billing.data?.rates.perMinute || 1) ? "is-low" : ""}`}
               title={t("billing.mastheadTitle")}
-              aria-label={t("billing.mastheadLabel", { minutes: minutesText(available, locale) })}
+              aria-label={t("billing.mastheadLabel", { points: pointsText(available, locale) })}
             >
               <Coins />
-              <span>{minutesText(available, locale)}</span>
+              <span>{pointsText(available, locale)}</span>
             </NavLink>
           )}
           <Menu

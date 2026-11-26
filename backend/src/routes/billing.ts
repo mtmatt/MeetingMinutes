@@ -5,7 +5,7 @@ import { requireUser } from "../auth/middleware";
 import { RateLimiter } from "../auth/ratelimit";
 import { db } from "../db";
 import { httpError } from "../lib/util";
-import { availableSec, heldSec, ledger, publicLedgerEntry } from "../services/credits";
+import { availableCredits, heldCredits, ledger, publicLedgerEntry } from "../services/credits";
 import { billingSettings } from "../services/billingSettings";
 import {
   applyPaymentInfo,
@@ -45,9 +45,12 @@ billingRoutes.get("/", (c) => {
     .all({ u: user.id });
   return c.json({
     billing: user.billing,
-    balanceSec: user.credit_sec,
-    heldSec: heldSec(user.id),
-    availableSec: user.billing === "prepaid" ? availableSec(user.id) : null,
+    // Thousandths of a point.
+    balance: user.credits,
+    held: heldCredits(user.id),
+    available: user.billing === "prepaid" ? availableCredits(user.id) : null,
+    // Points per minute of recording and per thousand summary tokens read and written.
+    rates: s.rates,
     onSale: billingOpen(),
     // ECPay's test system: nothing is really charged.
     testMode: config.ecpay.mode === "stage",

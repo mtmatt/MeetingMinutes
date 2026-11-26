@@ -107,11 +107,11 @@ def _dominant_language(langs: List[str], weights: List[float]) -> Optional[str]:
 
 
 def credits_message(duration: Optional[float], credit_sec: float) -> str:
-    """Why a prepaid account's recording is not transcribed (the site matches "Not enough minutes")."""
+    """Why a prepaid account's recording is not transcribed (the site matches "Not enough points")."""
     have = int(max(0.0, credit_sec) // 60)
     if duration:
-        return f"Not enough minutes: the recording is {duration / 60:.1f} minutes long, the balance pays for {have}."
-    return f"Not enough minutes: the recording is longer than the {have} minutes the balance pays for."
+        return f"Not enough points: the recording is {duration / 60:.1f} minutes long, the balance pays for {have}."
+    return f"Not enough points: the recording is longer than the {have} minutes the balance pays for."
 
 
 def _decode(

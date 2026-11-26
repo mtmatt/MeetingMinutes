@@ -138,7 +138,7 @@ def test_prepaid_minutes_limit_the_recording(two_speaker_wav, tmp_path, monkeypa
     run = lambda credit_sec: run_job(spec, report=lambda s, p: True, transcriber=FakeTranscriber(), diarizer=None, credit_sec=credit_sec)  # noqa: E731
     # The 11-second recording is refused before any speech is recognised when the balance pays for 5 seconds...
     transcriber = FakeTranscriber()
-    with pytest.raises(audio.MediaError, match="Not enough minutes: the recording is 0.2 minutes long"):
+    with pytest.raises(audio.MediaError, match="Not enough points: the recording is 0.2 minutes long"):
         run_job(spec, report=lambda s, p: True, transcriber=transcriber, diarizer=None, credit_sec=5)
     assert transcriber.calls == []
     # ...and transcribed when it pays for all of it (or there is no limit).

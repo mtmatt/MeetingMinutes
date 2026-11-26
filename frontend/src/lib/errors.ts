@@ -12,7 +12,7 @@ export function describeFailure(error: string | null | undefined): { key: TKey; 
   }
   if (/out of memory|cuda|could not load models/.test(e)) return { key: "failure.gpu", canRetry: true, reupload: false };
   if (/stopped responding|exited unexpectedly|shut down/.test(e)) return { key: "failure.interrupted", canRetry: true, reupload: false };
-  if (/not enough minutes/.test(e)) return { key: "failure.credits", canRetry: true, reupload: false };
+  if (/not enough (points|minutes)/.test(e)) return { key: "failure.credits", canRetry: true, reupload: false };
   return { key: "failure.generic", canRetry: true, reupload: true };
 }
 
@@ -66,8 +66,8 @@ export type UploadFailure =
   | { kind: "rejected"; message: string }
   /** Signed out while uploading. */
   | { kind: "session" }
-  /** A prepaid account without enough minutes for this recording. */
-  | { kind: "credits"; availableSec: number; neededSec: number };
+  /** A prepaid account without enough points for this recording (thousandths of a point). */
+  | { kind: "credits"; available: number; needed: number };
 
 export function classifyUploadError(err: unknown, fileSize: number, limit: number | null, t: TFn): UploadFailure {
   if (!(err instanceof ApiError)) return { kind: "retry", reason: "network" };
@@ -80,8 +80,8 @@ export function classifyUploadError(err: unknown, fileSize: number, limit: numbe
   }
   if (err.status === 413) return { kind: "server-limit" };
   if (err.code === "insufficient_credits") {
-    const b = err.body as { availableSec?: unknown; neededSec?: unknown };
-    return { kind: "credits", availableSec: Number(b.availableSec) || 0, neededSec: Number(b.neededSec) || 0 };
+    const b = err.body as { availableCredits?: unknown; neededCredits?: unknown };
+    return { kind: "credits", available: Number(b.availableCredits) || 0, needed: Number(b.neededCredits) || 0 };
   }
   if (err.status === 401) return { kind: "session" };
   if (err.status === 0 || err.code === "network") return { kind: "retry", reason: "network" };

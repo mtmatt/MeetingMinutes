@@ -17,7 +17,7 @@ import { classifyUploadError, type UploadFailure } from "../lib/errors";
 import { useAuth } from "../lib/auth";
 import { downloadBlob } from "../lib/download";
 import { useBilling } from "../lib/billing";
-import { minutesText } from "../lib/format";
+import { pointsText, transcriptionCost } from "../lib/format";
 
 const AUDIO = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "oga", "opus", "wma", "amr", "aiff", "aif", "caf", "weba"];
 const VIDEO = ["mp4", "mov", "mkv", "webm", "avi", "m4v", "wmv", "flv", "ts", "mts", "m2ts", "3gp", "mpeg", "mpg"];
@@ -812,14 +812,18 @@ function CreditsLine({ durationSec }: { durationSec: number | null }) {
   const { user } = useAuth();
   const billing = useBilling(user?.billing === "prepaid");
   if (user?.billing !== "prepaid" || !billing.data) return null;
-  const available = billing.data.availableSec ?? 0;
-  const short = durationSec != null && Math.ceil(durationSec) > available;
+  const perMinute = billing.data.rates.perMinute;
+  // Free transcription: nothing to weigh.
+  if (perMinute <= 0) return null;
+  const available = billing.data.available ?? 0;
+  const need = durationSec != null ? transcriptionCost(durationSec, perMinute) : null;
+  const short = need != null && need > available;
   return (
     <div className={`file-card-credits ${short ? "is-short" : ""}`}>
       <Coins />
-      {durationSec != null
-        ? t("upload.creditsLine", { need: minutesText(Math.ceil(durationSec), locale), have: minutesText(available, locale) })
-        : t("upload.creditsLineUnknown", { have: minutesText(available, locale) })}
+      {need != null
+        ? t("upload.creditsLine", { need: pointsText(need, locale), have: pointsText(available, locale) })
+        : t("upload.creditsLineUnknown", { have: pointsText(available, locale) })}
     </div>
   );
 }
@@ -860,8 +864,8 @@ function FailureDetail({ failure, isRecording, helpContact }: { failure: UploadF
       break;
     case "credits":
       body = t("upload.creditsHelp", {
-        need: minutesText(failure.neededSec, locale),
-        have: minutesText(failure.availableSec, locale),
+        need: pointsText(failure.needed, locale),
+        have: pointsText(failure.available, locale),
       });
       break;
     default:

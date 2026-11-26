@@ -98,9 +98,9 @@ export function publicUser(u: UserRow) {
     theme: u.theme,
     email: u.email,
     emailVerified: !!u.email_verified_at,
-    /** "prepaid": transcription is paid for with minutes (creditSec); "exempt": free. */
+    /** "prepaid": transcription and summaries are paid for with points (credits, in thousandths); "exempt": free. */
     billing: u.billing,
-    creditSec: u.credit_sec,
+    credits: u.credits,
     createdAt: u.created_at,
     lastLoginAt: u.last_login_at,
   };

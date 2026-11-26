@@ -17,9 +17,10 @@ export interface UserRow {
   voice_recognition: number;
   email: string | null;
   email_verified_at: number | null;
-  /** "exempt": never charged (invited accounts, and all from before billing); "prepaid": pays with minutes. */
+  /** "exempt": never charged (invited accounts, and all from before billing); "prepaid": pays with points. */
   billing: "exempt" | "prepaid";
-  credit_sec: number;
+  /** Prepaid points left, in thousandths of a point. */
+  credits: number;
 }
 
 export interface SessionRow {
@@ -144,6 +145,9 @@ export type SummaryStatus = "queued" | "running" | "done" | "failed" | "canceled
 
 export interface SummaryRow {
   id: string;
+  /** Prepaid: points (thousandths) set aside while queued or running, and charged when done. */
+  hold: number | null;
+  charged: number | null;
   meeting_id: string;
   created_by: string | null;
   template_id: string | null;
@@ -192,9 +196,9 @@ export interface JobRow {
   claimed_at: number | null;
   heartbeat_at: number | null;
   finished_at: number | null;
-  /** Prepaid transcriptions: seconds set aside while the job is queued or running. */
-  hold_sec: number | null;
-  charged_sec: number | null;
+  /** Prepaid transcriptions: points (thousandths) set aside while the job is queued or running, and charged. */
+  hold: number | null;
+  charged: number | null;
 }
 
 export type AppEnv = {

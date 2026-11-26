@@ -146,15 +146,17 @@ export const api = {
   adminTestMail: (to: string) => post<{ ok: true }>("/admin/mail/test", { to }),
   adminOrders: (status = "") => get<{ orders: AdminOrder[] }>(`/admin/orders${status ? `?status=${status}` : ""}`),
   adminRefreshOrder: (id: string) => post<{ order: Order }>(`/admin/orders/${encodeURIComponent(id)}/refresh`),
-  adminCredits: (userId: string) => get<{ balanceSec: number; ledger: LedgerEntry[] }>(`/admin/users/${encodeURIComponent(userId)}/credits`),
+  adminCredits: (userId: string) => get<{ balance: number; ledger: LedgerEntry[] }>(`/admin/users/${encodeURIComponent(userId)}/credits`),
   adminSecurity: () => get<SecurityState>("/admin/security"),
   adminSecurityEvents: (kind = "", ip = "", limit = 100) =>
     get<{ events: SecurityEvent[] }>(`/admin/security/events?kind=${encodeURIComponent(kind)}&ip=${encodeURIComponent(ip)}&limit=${limit}`),
   adminSaveSecurity: (b: SecuritySettings) => put<{ settings: SecuritySettings }>("/admin/security", b),
   adminBlockIp: (ip: string, minutes: number | null, reason = "") => post<{ ok: true }>("/admin/security/blocks", { ip, minutes, reason }),
   adminUnblockIp: (ip: string) => del<{ ok: true }>(`/admin/security/blocks/${encodeURIComponent(ip)}`),
-  adminAdjustCredits: (userId: string, minutes: number, note: string) =>
-    post<{ balanceSec: number; user: User }>(`/admin/users/${encodeURIComponent(userId)}/credits`, { minutes, note }),
+  adminAdjustCredits: (userId: string, points: number, note: string) =>
+    post<{ balance: number; user: User }>(`/admin/users/${encodeURIComponent(userId)}/credits`, { points, note }),
+  summaryEstimate: (meetingId: string, prompt: string) =>
+    post<{ credits: number | null; available?: number }>(`/meetings/${meetingId}/summaries/estimate`, { prompt }),
   login: (username: string, password: string) => post<{ user: User }>("/auth/login", { username, password }),
   logout: () => post<{ ok: true }>("/auth/logout"),
   setup: (b: { setupToken: string; username: string; displayName: string; password: string }) =>

@@ -3,7 +3,8 @@ import { db, now } from "../db";
 import { formatClock, newId, parseJson } from "../lib/util";
 import type { MeetingRow, OutputLanguage, SegmentRow, SpeakerRow, SummaryRequest, SummaryRow, TranscribeOptions } from "../types";
 import { LlmError, type ChatTarget } from "./llm";
-import { summarizeLocally } from "./localSummary";
+import { estimateTokens, summarizeLocally } from "./localSummary";
+import { chargeSummary } from "./credits";
 import { PROVIDER_INFO, providerKey, providerKeyValues } from "./summaryApis";
 import { publish } from "./events";
 import { currentSpeakerNames, parseNameMap, reconcileSpeakerNames, type NameMap } from "./speakerNames";
@@ -102,6 +103,12 @@ Detected language: ${meeting.language ?? "unknown"}
   };
 }
 
+/** About how many tokens a summary of this meeting makes the model read, before it is written. */
+export function summaryInputTokens(meeting: MeetingRow, userPrompt: string): number {
+  const p = summaryPromptParts(meeting, userPrompt, "auto");
+  return estimateTokens([p.system, p.instructions, p.metadata, ...p.transcript].join("\n"));
+}
+
 export function summaryPublic(s: SummaryRow) {
   return {
     id: s.id,
@@ -123,13 +130,22 @@ export function summaryPublic(s: SummaryRow) {
   };
 }
 
-export function enqueueSummary(meeting: MeetingRow, userId: string, req: SummaryRequest): SummaryRow {
+/**
+ * Queue a summary. `hold`: for a prepaid person, the points set aside for it
+ * (see credits.ts). `refused`: it cannot be written (not enough points for an
+ * automatic summary): recorded as failed with this reason, so the person sees why.
+ */
+export function enqueueSummary(meeting: MeetingRow, userId: string, req: SummaryRequest, hold: number | null = null, refused: string | null = null): SummaryRow {
   const tpl = req.templateId ? getTemplateFor(userId, req.templateId) : null;
   const id = newId(12);
   db.query(
-    `INSERT INTO summaries (id, meeting_id, created_by, template_id, template_name, prompt, output_language, status, created_at)
-     VALUES ($id, $m, $u, $tid, $tname, $prompt, $lang, 'queued', $t)`,
+    `INSERT INTO summaries (id, meeting_id, created_by, template_id, template_name, prompt, output_language, status, created_at, hold, error, finished_at)
+     VALUES ($id, $m, $u, $tid, $tname, $prompt, $lang, $status, $t, $hold, $error, $finished)`,
   ).run({
+    status: refused ? "failed" : "queued",
+    hold,
+    error: refused,
+    finished: refused ? now() : null,
     id,
     m: meeting.id,
     u: userId,
@@ -275,17 +291,28 @@ async function execute(summary: SummaryRow, ctrl: AbortController) {
     const written: NameMap = Object.fromEntries(speakers.map((s) => [s.key, s.name]));
     const { content, names } = reconcileSpeakerNames(text, written, currentSpeakerNames(meeting.id));
 
-    db.query(
-      `UPDATE summaries SET status = 'done', content = $content, speaker_names = $names, model = $model, usage = $usage, error = NULL, finished_at = $t
-       WHERE id = $id AND status = 'running'`,
-    ).run({
-      id: summary.id,
-      content,
-      names: JSON.stringify(names),
-      model: result.model,
-      usage: result.usage ? JSON.stringify(result.usage) : null,
-      t: now(),
-    });
+    db.transaction(() => {
+      const done = db
+        .query(
+          `UPDATE summaries SET status = 'done', content = $content, speaker_names = $names, model = $model, usage = $usage, error = NULL, finished_at = $t
+           WHERE id = $id AND status = 'running'`,
+        )
+        .run({
+          id: summary.id,
+          content,
+          names: JSON.stringify(names),
+          model: result.model,
+          usage: result.usage ? JSON.stringify(result.usage) : null,
+          t: now(),
+        });
+      // A prepaid person pays for the tokens the model reported (estimated when it reported none).
+      if (done.changes && summary.hold != null && summary.created_by) {
+        const input = result.usage?.input_tokens ?? summaryInputTokens(meeting, summary.prompt);
+        const output = result.usage?.output_tokens ?? estimateTokens(result.text);
+        const cost = chargeSummary(summary.created_by, meeting, input, output);
+        if (cost != null) db.query("UPDATE summaries SET charged = $c WHERE id = $id").run({ id: summary.id, c: cost });
+      }
+    })();
   } catch (e) {
     const canceled = ctrl.signal.aborted;
     db.query(

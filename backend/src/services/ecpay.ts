@@ -3,7 +3,7 @@ import { config } from "../config";
 import { db, now } from "../db";
 import { parseJson } from "../lib/util";
 import { findUserById } from "../auth/service";
-import { addCredits } from "./credits";
+import { MILLI, addCredits } from "./credits";
 import { billingSettings, PAYMENT_METHODS, type CreditPackage } from "./billingSettings";
 import { mailLocale, receiptMail, sendMailLater } from "./mail";
 
@@ -15,7 +15,7 @@ import { mailLocale, receiptMail, sendMailLater } from "./mail";
  * 2. The person pays on ECPay's page: card, ATM transfer or a convenience-store code.
  * 3. ECPay tells the server, machine to machine (ReturnURL), when money has
  *    been received. Only a notification whose signature, shop and amount check
- *    out adds minutes, and an order adds them once however often it is reported.
+ *    out adds points, and an order adds them once however often it is reported.
  *    For ATM and store payments ECPay first sends the account or code to pay to
  *    (PaymentInfoURL); the money comes days later, in another notification.
  * 4. The browser comes back (OrderResultURL) with the same signed result, which
@@ -32,7 +32,7 @@ export interface OrderRow {
   id: string;
   user_id: string | null;
   package_id: string;
-  minutes: number;
+  points: number;
   amount: number;
   item_name: string;
   status: "pending" | "paid" | "failed";
@@ -99,11 +99,11 @@ export function createOrder(userId: string, pkg: CreditPackage, locale: "en" | "
   const id = orderId();
   const t = now();
   // Shown on ECPay's page and on card statements (at most 200 characters, no # which ECPay uses to separate items).
-  const itemName = locale === "en" ? `Meeting Minutes transcription ${pkg.minutes} min` : `會議紀錄轉錄 ${pkg.minutes} 分鐘`;
+  const itemName = locale === "en" ? `Meeting Minutes ${pkg.points} points` : `會議紀錄點數 ${pkg.points} 點`;
   db.query(
-    `INSERT INTO payment_orders (id, user_id, package_id, minutes, amount, item_name, status, mode, merchant_id, created_at, updated_at)
+    `INSERT INTO payment_orders (id, user_id, package_id, points, amount, item_name, status, mode, merchant_id, created_at, updated_at)
      VALUES ($id, $u, $p, $m, $a, $name, 'pending', $mode, $mid, $t, $t)`,
-  ).run({ id, u: userId, p: pkg.id, m: pkg.minutes, a: pkg.price, name: itemName, mode: config.ecpay.mode, mid: config.ecpay.merchantId, t });
+  ).run({ id, u: userId, p: pkg.id, m: pkg.points, a: pkg.price, name: itemName, mode: config.ecpay.mode, mid: config.ecpay.merchantId, t });
   return getOrder(id)!;
 }
 
@@ -138,7 +138,7 @@ export type ApplyOutcome = "paid" | "already_paid" | "pending" | "failed" | "ign
 
 /**
  * Apply a signed result from ECPay (notification, browser return, or query).
- * Adds the order's minutes the first time it is reported paid.
+ * Adds the order's points the first time it is reported paid.
  */
 export function applyResult(fields: Record<string, string>, source: "notify" | "result" | "query", base: string | null = config.publicUrl || null): { outcome: ApplyOutcome; order: OrderRow | null; reason?: string } {
   const order = getOrder(fields.MerchantTradeNo ?? "");
@@ -148,12 +148,12 @@ export function applyResult(fields: Record<string, string>, source: "notify" | "
   const paid = source === "query" ? fields.TradeStatus === "1" : fields.RtnCode === "1";
   const amount = Number(source === "query" ? fields.TradeAmt : (fields.TradeAmt ?? fields.TotalAmount));
   if (paid && amount !== order.amount) {
-    console.error(`[ecpay] order ${order.id}: paid NT$${amount}, expected NT$${order.amount}; not adding minutes`);
+    console.error(`[ecpay] order ${order.id}: paid NT$${amount}, expected NT$${order.amount}; not adding points`);
     return { outcome: "ignored", order, reason: "amount mismatch" };
   }
   // ECPay's test back office can "simulate" a payment; on a real shop that is not money.
   if (paid && fields.SimulatePaid === "1" && order.mode === "production") {
-    console.warn(`[ecpay] order ${order.id}: a simulated payment on the production shop; not adding minutes`);
+    console.warn(`[ecpay] order ${order.id}: a simulated payment on the production shop; not adding points`);
     return { outcome: "ignored", order, reason: "simulated payment" };
   }
   const t = now();
@@ -181,16 +181,16 @@ export function applyResult(fields: Record<string, string>, source: "notify" | "
       .run({ id: order.id, t, tn: fields.TradeNo ?? null, pt: fields.PaymentType ?? null });
     if (res.changes === 0) return false;
     if (order.user_id) {
-      balance = addCredits(order.user_id, order.minutes * 60, { kind: "purchase", orderId: order.id, note: `NT$${order.amount}` });
+      balance = addCredits(order.user_id, order.points * MILLI, { kind: "purchase", orderId: order.id, note: `NT$${order.amount}` });
     }
     return true;
   })();
   const updated = getOrder(order.id)!;
   if (!credited) return { outcome: "already_paid", order: updated };
-  console.log(`[ecpay] order ${order.id} paid (${source}): +${order.minutes} min for user ${order.user_id ?? "(deleted)"}`);
+  console.log(`[ecpay] order ${order.id} paid (${source}): +${order.points} points for user ${order.user_id ?? "(deleted)"}`);
   const user = order.user_id ? findUserById(order.user_id) : null;
   if (user?.email && balance != null && base) {
-    sendMailLater(receiptMail(user.email, mailLocale(user.locale), { id: order.id, minutes: order.minutes, amount: order.amount, method: updated.payment_type }, Math.floor(balance / 60), `${base}/billing`));
+    sendMailLater(receiptMail(user.email, mailLocale(user.locale), { id: order.id, points: order.points, amount: order.amount, method: updated.payment_type }, Math.floor(balance / MILLI), `${base}/billing`));
   }
   return { outcome: "paid", order: updated };
 }
@@ -248,7 +248,7 @@ export function publicOrder(o: OrderRow) {
   return {
     id: o.id,
     packageId: o.package_id,
-    minutes: o.minutes,
+    points: o.points,
     amount: o.amount,
     itemName: o.item_name,
     status: o.status,

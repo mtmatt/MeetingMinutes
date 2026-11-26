@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { requireCredits } from "../services/credits";
+import { availableCredits, rates, requireSummaryCredits, requireTranscriptionCredits, summaryEstimate } from "../services/credits";
+import { estimateTokens } from "../services/localSummary";
 import { existsSync, statSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
@@ -28,7 +29,7 @@ import {
 } from "../services/meetings";
 import { currentSpeakerNames, parseNameMap, reconcileSpeakerNames, renameSpeaker } from "../services/speakerNames";
 import { enqueueVoiceprint, recognitionEnabled, speakerNamed, speakerVoiceAction } from "../services/voices";
-import { cancelSummary, enqueueSummary, renderTranscript, summaryPublic } from "../services/summarizer";
+import { cancelSummary, enqueueSummary, renderTranscript, summaryInputTokens, summaryPublic } from "../services/summarizer";
 import { getTemplateFor } from "../services/templates";
 import type { AppEnv, MeetingRow, SegmentRow, SpeakerRow, SummaryRow, TranscribeOptions } from "../types";
 import { body } from "./validate";
@@ -122,7 +123,7 @@ meetingRoutes.post("/", async (c) => {
       }),
       options: optionsSchema.default(DEFAULT_OPTIONS),
       summary: summaryRequestSchema.nullable().default(null),
-      // The length the browser read from the file, if it could: a prepaid account's minutes are checked before uploading.
+      // The length the browser read from the file, if it could: a prepaid account's points are checked before uploading.
       durationSec: z.number().positive().max(7 * 24 * 3600).nullable().default(null),
     }),
   );
@@ -148,7 +149,7 @@ meetingRoutes.post("/", async (c) => {
     httpError(422, "Minimum speakers cannot exceed maximum speakers.", "invalid_input");
   }
 
-  requireCredits(user, input.durationSec);
+  requireTranscriptionCredits(user, input.durationSec);
 
   const id = shortId();
   const t = now();
@@ -226,7 +227,7 @@ meetingRoutes.post("/:id/upload/complete", (c) => {
   if (size !== m.media_size || m.media_received !== m.media_size) {
     return c.json({ error: "Upload incomplete.", code: "incomplete", received: size }, 409);
   }
-  enqueueTranscription(m, requireCredits(c.get("user"), m.declared_sec, m.id));
+  enqueueTranscription(m, requireTranscriptionCredits(c.get("user"), m.declared_sec, m.id));
   return c.json({ meeting: meetingSummary(getOwnedMeeting(m.id, c.get("user").id)!) });
 });
 
@@ -273,7 +274,7 @@ meetingRoutes.post("/:id/retranscribe", async (c) => {
   if (m.status === "uploading") httpError(409, "The upload has not finished.", "not_ready");
   const input = await body(c, z.object({ options: optionsSchema.optional(), resetSpeakerNames: z.boolean().default(false) }));
   // Transcribing again runs again, so it is paid for again; the length is known from the first time.
-  const hold = requireCredits(c.get("user"), m.duration_sec ?? m.declared_sec, m.id);
+  const hold = requireTranscriptionCredits(c.get("user"), m.duration_sec ?? m.declared_sec, m.id);
   if (input.options) {
     db.query("UPDATE meetings SET options = $o WHERE id = $id").run({ id: m.id, o: JSON.stringify(input.options) });
   }
@@ -496,8 +497,21 @@ meetingRoutes.post("/:id/summaries", async (c) => {
   if (active >= MAX_ACTIVE_SUMMARIES) {
     httpError(429, `You already have ${active} summaries in progress. Wait for one to finish.`, "too_many_summaries");
   }
-  const s = enqueueSummary(m, user.id, input);
+  // A prepaid account: what the summary is likely to cost is set aside, and refused (402) when it cannot be paid.
+  const hold = requireSummaryCredits(user, summaryInputTokens(m, input.prompt));
+  const s = enqueueSummary(m, user.id, input, hold);
   return c.json({ summary: summaryPublic(s) }, 201);
+});
+
+/** What a summary of this meeting is likely to cost a prepaid person (thousandths of a point), before asking for it. */
+meetingRoutes.post("/:id/summaries/estimate", async (c) => {
+  const user = c.get("user");
+  const m = owned(c, c.req.param("id"));
+  if (m.status !== "ready" || user.billing !== "prepaid") return c.json({ credits: null });
+  const input = await body(c, z.object({ prompt: z.string().max(20_000) }));
+  const r = rates();
+  if (r.perKInput <= 0 && r.perKOutput <= 0) return c.json({ credits: 0 });
+  return c.json({ credits: summaryEstimate(summaryInputTokens(m, input.prompt), r), available: availableCredits(user.id) });
 });
 
 meetingRoutes.post("/:id/summaries/:sid/cancel", (c) => {

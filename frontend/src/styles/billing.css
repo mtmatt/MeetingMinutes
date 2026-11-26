@@ -226,10 +226,11 @@
 }
 .billing-history-kind {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
 }
 .billing-history-kind svg {
+  margin-top: 3px;
   width: 14px;
   height: 14px;
   color: var(--ink-3);
@@ -749,4 +750,64 @@
 }
 .security-tip.tip-right {
   transform: translateX(-14px);
+}
+
+/* The summary composer: what a prepaid summary will cost. */
+.composer-cost {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin: 12px 0 0;
+  font-size: var(--step--1);
+}
+.composer-cost svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.composer-cost.is-short {
+  color: var(--warn);
+  font-weight: 550;
+}
+.composer-cost a {
+  color: inherit;
+  font-weight: 600;
+}
+.billing-balance-hours {
+  font-size: var(--step--1);
+}
+.billing-rates {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 14px;
+  margin: 0;
+}
+.billing-rates dt {
+  color: var(--ink-3);
+}
+.billing-rates dd {
+  margin: 0;
+}
+.billing-history-title {
+  display: block;
+}
+.billing-history-what {
+  display: block;
+  font-size: var(--step--2);
+}
+.sales-rates {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 6px;
+}
+.sales-rates-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 760px) {
+  .sales-rates-fields {
+    grid-template-columns: 1fr;
+  }
 }

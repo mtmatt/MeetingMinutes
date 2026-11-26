@@ -47,7 +47,7 @@ export function securityHeaders({ google }: { google: boolean }) {
       ...(google ? { frameSrc: ["'self'", GOOGLE_SIGN_IN] } : {}),
       frameAncestors: ["'none'"],
       baseUri: ["'self'"],
-      // Buying minutes posts a form to ECPay.
+      // Buying points posts a form to ECPay.
       formAction: ["'self'", ECPAY_CHECKOUT[config.ecpay.mode]],
       objectSrc: ["'none'"],
     },

@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowRight, CheckCircle2, Clock, Coins, CreditCard, ExternalLink, Landmark, RefreshCw, Store } from "lucide-react";
+import { AlertCircle, ArrowRight, CheckCircle2, Clock, Coins, CreditCard, ExternalLink, FileText, Landmark, RefreshCw, Store } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api } from "../api/client";
@@ -8,10 +8,10 @@ import { useToast } from "../components/Toast";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { paymentKind, submitCheckout, useBilling } from "../lib/billing";
-import { dateTime, minutesText, twd } from "../lib/format";
+import { clock, dateTime, pointsNumber, pointsText, recordingFor, twd } from "../lib/format";
 
 /**
- * Prepaid minutes: the balance, the packages on sale (paid on ECPay's page),
+ * Prepaid points: the balance and what it pays for, the packages on sale (paid on ECPay's page),
  * orders waiting for an ATM transfer or a convenience-store payment, and every
  * purchase and transcription that changed the balance.
  */
@@ -57,22 +57,40 @@ export function BillingPage() {
 
 function Balance({ b }: { b: BillingInfo }) {
   const { t, locale } = useI18n();
-  const available = b.availableSec ?? b.balanceSec;
+  const available = b.available ?? b.balance;
+  const hours = recordingFor(available, b.rates.perMinute, locale);
   return (
     <section className="billing-balance" aria-label={t("billing.balance")}>
       <div className="billing-balance-main">
         <span className="smallcaps faint">{t("billing.available")}</span>
-        <span className={`billing-balance-value ${available <= 0 ? "is-empty" : ""}`}>{minutesText(available, locale)}</span>
+        <span className={`billing-balance-value ${available <= 0 ? "is-empty" : ""}`}>{pointsText(available, locale)}</span>
+        {hours && available > 0 && <span className="faint billing-balance-hours">{t("billing.transcribesAbout", { time: hours })}</span>}
       </div>
       <div className="billing-balance-side">
-        {b.heldSec > 0 && (
+        {b.held > 0 && (
           <span>
-            <Clock /> {t("billing.held", { held: minutesText(b.heldSec, locale), total: minutesText(b.balanceSec, locale) })}
+            <Clock /> {t("billing.held", { held: pointsText(b.held, locale), total: pointsText(b.balance, locale) })}
           </span>
         )}
+        <Rates rates={b.rates} />
         <span className="faint">{t("billing.howCharged")}</span>
       </div>
     </section>
+  );
+}
+
+/** What each kind of work costs, in the reader's words. */
+function Rates({ rates }: { rates: BillingInfo["rates"] }) {
+  const { t, locale } = useI18n();
+  const n = (x: number) => x.toLocaleString(locale === "zh-TW" ? "zh-TW" : "en", { maximumFractionDigits: 3 });
+  const summaryFree = rates.perKInput <= 0 && rates.perKOutput <= 0;
+  return (
+    <dl className="billing-rates">
+      <dt>{t("billing.rateTranscription")}</dt>
+      <dd>{rates.perMinute > 0 ? t("billing.ratePerMinute", { n: n(rates.perMinute) }) : t("billing.rateFree")}</dd>
+      <dt>{t("billing.rateSummary")}</dt>
+      <dd>{summaryFree ? t("billing.rateFree") : t("billing.ratePerTokens", { input: n(rates.perKInput), output: n(rates.perKOutput) })}</dd>
+    </dl>
   );
 }
 
@@ -89,7 +107,7 @@ function Packages({ b }: { b: BillingInfo }) {
       </section>
     );
   }
-  const cheapest = Math.min(...b.packages.map((p) => p.price / p.minutes));
+  const cheapest = Math.min(...b.packages.map((p) => p.price / p.points));
 
   const buy = async (p: CreditPackage) => {
     setBusy(p.id);
@@ -111,17 +129,18 @@ function Packages({ b }: { b: BillingInfo }) {
       </div>
       <div className="billing-packages">
         {b.packages.map((p) => {
-          const unit = p.price / p.minutes;
+          const unit = p.price / p.points;
+          const hours = recordingFor(p.points * 1000, b.rates.perMinute, locale);
           return (
             <div key={p.id} className="billing-package">
               <div className="billing-package-minutes">
-                <span className="billing-package-number">{p.minutes.toLocaleString()}</span>
-                <span className="billing-package-unit">{t("billing.minutesUnit")}</span>
+                <span className="billing-package-number">{p.points.toLocaleString()}</span>
+                <span className="billing-package-unit">{t("billing.pointsUnit")}</span>
               </div>
-              <div className="billing-package-hours faint">{t("billing.hours", { h: (p.minutes / 60).toLocaleString(locale, { maximumFractionDigits: 1 }) })}</div>
+              <div className="billing-package-hours faint">{hours ? t("billing.transcribesAbout", { time: hours }) : "\u00a0"}</div>
               <div className="billing-package-price">{twd(p.price)}</div>
               <div className="billing-package-each faint">
-                {t("billing.perMinute", { price: unit.toLocaleString("en", { maximumFractionDigits: 2 }) })}
+                {t("billing.perPoint", { price: unit.toLocaleString("en", { maximumFractionDigits: 2 }) })}
                 {b.packages.length > 1 && unit === cheapest && <span className="pill ok">{t("billing.bestValue")}</span>}
               </div>
               <button type="button" className="btn btn-primary btn-block" onClick={() => buy(p)} disabled={busy != null}>
@@ -199,7 +218,7 @@ function OrderBanner({ id }: { id: string }) {
       <div className="billing-banner ok" role="status">
         <CheckCircle2 />
         <div>
-          <strong>{t("billing.paidTitle", { minutes: order.minutes })}</strong>
+          <strong>{t("billing.paidTitle", { points: order.points.toLocaleString() })}</strong>
           <p>{t("billing.paidBody", { id: order.id })}</p>
         </div>
         <Link className="btn btn-sm btn-ink" to="/new">
@@ -276,7 +295,7 @@ function PaymentInstructions({ order, highlight = false }: { order: Order; highl
             </>
           )}
         </dl>
-        <p className="faint">{t("billing.instructionsNote", { minutes: order.minutes })}</p>
+        <p className="faint">{t("billing.instructionsNote", { points: order.points.toLocaleString() })}</p>
       </div>
     </div>
   );
@@ -284,6 +303,15 @@ function PaymentInstructions({ order, highlight = false }: { order: Order; highl
 
 function History({ ledger }: { ledger: LedgerEntry[] }) {
   const { t, locale } = useI18n();
+  const n = (x: number) => x.toLocaleString(locale === "zh-TW" ? "zh-TW" : "en");
+  /** What the work was: "Transcription · 1:31" / "Summary · 12,000 tokens read, 900 written". */
+  const what = (e: LedgerEntry): string => {
+    if (e.kind === "purchase") return t("billing.purchase", { note: e.note ?? "" });
+    if (e.kind === "adjust") return t("billing.adjust", { note: e.note ?? "" });
+    const q = e.quantity;
+    if (e.kind === "transcription") return q?.sec != null ? t("billing.usedTranscription", { time: clock(q.sec) }) : t("billing.usage");
+    return q?.input != null ? t("billing.usedSummary", { input: n(q.input), output: n(q.output ?? 0) }) : t("billing.usageSummary");
+  };
   return (
     <section className="billing-section">
       <h2>{t("billing.history")}</h2>
@@ -303,25 +331,22 @@ function History({ ledger }: { ledger: LedgerEntry[] }) {
                 <td className="nowrap faint">{dateTime(e.createdAt, locale)}</td>
                 <td>
                   <span className="billing-history-kind">
-                    {e.kind === "purchase" ? <Coins /> : e.kind === "usage" ? <Clock /> : <RefreshCw />}
-                    {e.kind === "usage" ? (
-                      e.meetingId ? (
-                        <Link to={`/m/${e.meetingId}`}>{e.title ?? t("billing.usage")}</Link>
-                      ) : (
-                        (e.title ?? t("billing.usage"))
-                      )
-                    ) : e.kind === "purchase" ? (
-                      t("billing.purchase", { note: e.note ?? "" })
-                    ) : (
-                      t("billing.adjust", { note: e.note ?? "" })
-                    )}
+                    {e.kind === "purchase" ? <Coins /> : e.kind === "transcription" ? <Clock /> : e.kind === "summary" ? <FileText /> : <RefreshCw />}
+                    <span>
+                      {(e.kind === "transcription" || e.kind === "summary") && e.title && (
+                        <span className="billing-history-title">
+                          {e.meetingId ? <Link to={`/m/${e.meetingId}`}>{e.title}</Link> : e.title}
+                        </span>
+                      )}
+                      <span className={e.kind === "transcription" || e.kind === "summary" ? "faint billing-history-what" : ""}>{what(e)}</span>
+                    </span>
                   </span>
                 </td>
-                <td className={`num mono ${e.deltaSec < 0 ? "" : "billing-plus"}`}>
-                  {e.deltaSec > 0 ? "+" : ""}
-                  {minutesText(e.deltaSec, locale)}
+                <td className={`num mono ${e.delta < 0 ? "" : "billing-plus"}`}>
+                  {e.delta > 0 ? "+" : ""}
+                  {pointsNumber(e.delta, locale, true)}
                 </td>
-                <td className="num mono faint">{minutesText(e.balanceSec, locale)}</td>
+                <td className="num mono faint">{pointsNumber(e.balance, locale, true)}</td>
               </tr>
             ))}
           </tbody>

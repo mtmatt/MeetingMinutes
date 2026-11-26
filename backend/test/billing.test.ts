@@ -3,7 +3,7 @@ import { db } from "../src/db";
 import { checkMacValue, taipeiTime } from "../src/services/ecpay";
 import { outbox } from "../src/services/mail";
 import { mailIpLimiter, registerLimiter } from "../src/auth/ratelimit";
-import { Client, adminClient, memberClient, worker } from "./helpers";
+import { Client, adminClient, memberClient, waitFor, worker } from "./helpers";
 
 const PASSWORD = "a long enough password";
 
@@ -13,9 +13,11 @@ async function openSignUp(extra: Record<string, unknown> = {}) {
     json: {
       registrationOpen: true,
       enabled: true,
+      // A point a minute of recording; a tenth of a point per thousand tokens read, half a point per thousand written.
+      rates: { perMinute: 1, perKInput: 0.1, perKOutput: 0.5 },
       packages: [
-        { id: "m60", minutes: 60, price: 150 },
-        { id: "m300", minutes: 300, price: 600 },
+        { id: "m60", points: 60, price: 150 },
+        { id: "m300", points: 300, price: 600 },
       ],
       methods: ["Credit", "ATM", "CVS"],
       termsUrl: "",
@@ -63,7 +65,7 @@ async function postEcpay(path: string, form: string) {
 async function buy(c: Client, packageId = "m60") {
   const res = await c.post("/api/billing/orders", { packageId });
   expect(res.status).toBe(201);
-  return (await res.json()) as { order: { id: string; amount: number; minutes: number }; checkout: { action: string; fields: Record<string, string> } };
+  return (await res.json()) as { order: { id: string; amount: number; points: number }; checkout: { action: string; fields: Record<string, string> } };
 }
 
 const paid = (id: string, amount: number, extra: Record<string, string> = {}) =>
@@ -121,7 +123,7 @@ describe("signing up", () => {
     expect((await c.post("/api/auth/verify-email", { token })).status).toBe(404);
     expect((await c.post("/api/auth/login", { username: "rita", password: PASSWORD })).status).toBe(200);
     const me = (await (await c.get("/api/me")).json()) as any;
-    expect(me.user).toMatchObject({ email: "rita@example.com", emailVerified: true, billing: "prepaid", creditSec: 0, role: "member" });
+    expect(me.user).toMatchObject({ email: "rita@example.com", emailVerified: true, billing: "prepaid", credits: 0, role: "member" });
   });
 
   test("with an address that has an account looks the same, and tells its owner", async () => {
@@ -154,7 +156,7 @@ describe("buying minutes", () => {
   test("an order is a signed form for ECPay's test shop, and a paid notification adds its minutes once", async () => {
     const c = await signedUp("buyer");
     const info = (await (await c.get("/api/billing")).json()) as any;
-    expect(info).toMatchObject({ billing: "prepaid", balanceSec: 0, onSale: true });
+    expect(info).toMatchObject({ billing: "prepaid", balance: 0, onSale: true, rates: { perMinute: 1, perKInput: 0.1, perKOutput: 0.5 } });
     expect(info.packages.map((p: any) => p.id)).toEqual(["m60", "m300"]);
 
     const { order, checkout } = await buy(c);
@@ -173,7 +175,7 @@ describe("buying minutes", () => {
     expect(await refused.text()).toBe("0|CheckMacValue Error");
     // The amount must be the order's.
     expect(await (await postEcpay("notify", paid(order.id, 1))).text()).toBe("1|OK");
-    expect(((await (await c.get("/api/me")).json()) as any).user.creditSec).toBe(0);
+    expect(((await (await c.get("/api/me")).json()) as any).user.credits).toBe(0);
 
     const res = await postEcpay("notify", paid(order.id, 150));
     expect(await res.text()).toBe("1|OK");
@@ -183,10 +185,10 @@ describe("buying minutes", () => {
     expect(back.status).toBe(303);
     expect(back.headers.get("location")).toBe(`/billing?order=${order.id}`);
     const after = (await (await c.get("/api/billing")).json()) as any;
-    expect(after.balanceSec).toBe(3600);
+    expect(after.balance).toBe(60_000);
     expect(after.orders[0]).toMatchObject({ id: order.id, status: "paid", paymentType: "Credit_CreditCard" });
     expect(after.ledger.filter((e: any) => e.kind === "purchase")).toHaveLength(1);
-    expect(lastMailTo("buyer@example.com").subject).toContain("payment received (60 minutes)");
+    expect(lastMailTo("buyer@example.com").subject).toContain("payment received (60 points)");
   });
 
   test("ATM transfers show the account to pay to until the money arrives", async () => {
@@ -197,7 +199,7 @@ describe("buying minutes", () => {
     const pending = (await (await c.get(`/api/billing/orders/${order.id}`)).json()) as any;
     expect(pending.order).toMatchObject({ status: "pending", paymentInfo: { bankCode: "812", account: "9103522175887271", expireDate: "2026/11/29" } });
     await postEcpay("notify", paid(order.id, 600, { PaymentType: "ATM_TAISHIN" }));
-    expect(((await (await c.get("/api/billing")).json()) as any).balanceSec).toBe(300 * 60);
+    expect(((await (await c.get("/api/billing")).json()) as any).balance).toBe(300_000);
   });
 
   test("an account that is not charged cannot buy, and orders are each person's own", async () => {
@@ -247,11 +249,11 @@ describe("paying for transcription", () => {
     const c = await signedUp("payer");
     const none = await upload(c, 30);
     expect(none.status).toBe(402);
-    expect(none.body).toMatchObject({ code: "insufficient_credits", availableSec: 0, neededSec: 30 });
+    expect(none.body).toMatchObject({ code: "insufficient_credits", availableCredits: 0, neededCredits: 500, what: "transcription" });
 
     const admin = await adminClient();
     const me = ((await (await c.get("/api/me")).json()) as any).user;
-    const gift = await admin.post(`/api/admin/users/${me.id}/credits`, { minutes: 2, note: "Welcome" });
+    const gift = await admin.post(`/api/admin/users/${me.id}/credits`, { points: 2, note: "Welcome" });
     expect(gift.status).toBe(200);
 
     // Longer than the balance: refused before uploading.
@@ -261,17 +263,18 @@ describe("paying for transcription", () => {
     // The 90 s are set aside: a second recording cannot spend them too.
     const second = await upload(c, 60);
     expect(second.status).toBe(402);
-    expect(second.body).toMatchObject({ availableSec: 30 });
-    expect(((await (await c.get("/api/billing")).json()) as any).heldSec).toBe(90);
+    expect(second.body).toMatchObject({ availableCredits: 500, neededCredits: 1000 });
+    expect(((await (await c.get("/api/billing")).json()) as any).held).toBe(1500);
 
     const job = await claimFor(first.id!);
-    // The worker is told how much audio the minutes pay for.
+    // The worker is told how much audio the points pay for.
     expect(job.credits).toEqual({ maxSec: 120 });
     expect((await worker.call(`/jobs/${job.jobId}/complete`, { workerId: "gpu-billing", result: RESULT(91.2) })).status).toBe(200);
     const after = (await (await c.get("/api/billing")).json()) as any;
-    expect(after.balanceSec).toBe(120 - 92);
-    expect(after.heldSec).toBe(0);
-    expect(after.ledger[0]).toMatchObject({ kind: "usage", deltaSec: -92, balanceSec: 28, meetingId: first.id, title: "Paid sync" });
+    // 91.2 s at a point a minute: 1.52 points.
+    expect(after.balance).toBe(2000 - 1520);
+    expect(after.held).toBe(0);
+    expect(after.ledger[0]).toMatchObject({ kind: "transcription", delta: -1520, balance: 480, meetingId: first.id, title: "Paid sync", quantity: { sec: 91 } });
 
     // Transcribing again is paid again, by the length now known.
     const again = await c.post(`/api/meetings/${first.id}/retranscribe`, {});
@@ -282,12 +285,12 @@ describe("paying for transcription", () => {
     const c = await signedUp("unlucky");
     const admin = await adminClient();
     const me = ((await (await c.get("/api/me")).json()) as any).user;
-    await admin.post(`/api/admin/users/${me.id}/credits`, { minutes: 5, note: "Test" });
+    await admin.post(`/api/admin/users/${me.id}/credits`, { points: 5, note: "Test" });
     const { id } = await upload(c, 60);
     const job = await claimFor(id!);
-    await worker.call(`/jobs/${job.jobId}/fail`, { workerId: "gpu-billing", error: "Not enough minutes: the recording is 6.0 minutes long, the balance pays for 5.", retryable: false });
+    await worker.call(`/jobs/${job.jobId}/fail`, { workerId: "gpu-billing", error: "Not enough points: the recording is 6.0 minutes long, the balance pays for 5.", retryable: false });
     const after = (await (await c.get("/api/billing")).json()) as any;
-    expect(after).toMatchObject({ balanceSec: 300, heldSec: 0 });
+    expect(after).toMatchObject({ balance: 5000, held: 0 });
   });
 
   test("invited accounts are never limited or charged", async () => {
@@ -298,7 +301,7 @@ describe("paying for transcription", () => {
     expect(job.credits).toBeUndefined();
     await worker.call(`/jobs/${job.jobId}/complete`, { workerId: "gpu-billing", result: RESULT(5000) });
     const me = ((await (await member.get("/api/me")).json()) as any).user;
-    expect(me).toMatchObject({ billing: "exempt", creditSec: 0 });
+    expect(me).toMatchObject({ billing: "exempt", credits: 0 });
   });
 
   test("an admin can switch an account to free and back", async () => {
@@ -310,7 +313,77 @@ describe("paying for transcription", () => {
     await admin.patch(`/api/admin/users/${me.id}`, { billing: "prepaid" });
     expect((await upload(c, 600)).status).toBe(402);
     const ledger = (await (await admin.get(`/api/admin/users/${me.id}/credits`)).json()) as any;
-    expect(ledger.balanceSec).toBe(0);
+    expect(ledger.balance).toBe(0);
+  });
+});
+
+describe("paying for summaries", () => {
+  test("a summary is set aside by its estimate and charged by the tokens the model reported", async () => {
+    const c = await signedUp("summariser");
+    const admin = await adminClient();
+    const me = ((await (await c.get("/api/me")).json()) as any).user;
+    await admin.post(`/api/admin/users/${me.id}/credits`, { points: 3, note: "Test" });
+    const { id } = await upload(c, 60);
+    const job = await claimFor(id!);
+    await worker.call(`/jobs/${job.jobId}/complete`, { workerId: "gpu-billing", result: RESULT(60) });
+    expect(((await (await c.get("/api/billing")).json()) as any).balance).toBe(2000);
+
+    // The estimate: the transcript and instructions as read (with room), and a long answer.
+    const est = (await (await c.post(`/api/meetings/${id}/summaries/estimate`, { prompt: "Summarise." })).json()) as any;
+    expect(est.credits).toBeGreaterThan(2000);
+    // More than the 2 points left: refused before any model is asked.
+    const refused = await c.post(`/api/meetings/${id}/summaries`, { prompt: "Summarise.", outputLanguage: "en", templateId: null });
+    expect(refused.status).toBe(402);
+    expect(((await refused.json()) as any).what).toBe("summary");
+
+    await admin.post(`/api/admin/users/${me.id}/credits`, { points: 10, note: "More" });
+    const ok = await c.post(`/api/meetings/${id}/summaries`, { prompt: "Summarise.", outputLanguage: "en", templateId: null });
+    expect(ok.status).toBe(201);
+    const sid = ((await ok.json()) as any).summary.id;
+    const held = ((await (await c.get("/api/billing")).json()) as any).held;
+    expect(held).toBe(est.credits);
+    await waitFor(async () => (((await (await c.get(`/api/meetings/${id}`)).json()) as any).meeting.summaries.find((s: any) => s.id === sid)?.status === "done"));
+    const after = (await (await c.get("/api/billing")).json()) as any;
+    // The stand-in model reports 100 tokens read and 20 written: 100 × 0.1 + 20 × 0.5 = 20 thousandths.
+    expect(after.held).toBe(0);
+    expect(after.ledger[0]).toMatchObject({ kind: "summary", delta: -20, quantity: { input: 100, output: 20 } });
+    expect(after.balance).toBe(12_000 - 20);
+  });
+
+  test("an automatic summary the points cannot pay for is recorded as refused, with the reason", async () => {
+    const c = await signedUp("auto-summary");
+    const admin = await adminClient();
+    const me = ((await (await c.get("/api/me")).json()) as any).user;
+    // Exactly the recording: nothing left for the summary.
+    await admin.post(`/api/admin/users/${me.id}/credits`, { points: 1, note: "Test" });
+    const res = await c.post("/api/meetings", {
+      title: "Auto",
+      file: { name: "a.m4a", size: 1024, type: "audio/mp4" },
+      durationSec: 60,
+      summary: { prompt: "Summarise.", outputLanguage: "en", templateId: null },
+    });
+    expect(res.status).toBe(201);
+    const { meeting } = (await res.json()) as any;
+    await c.req("PUT", `/api/meetings/${meeting.id}/upload?offset=0`, { body: new Uint8Array(1024), headers: { "content-type": "application/octet-stream" } });
+    await c.post(`/api/meetings/${meeting.id}/upload/complete`);
+    const job = await claimFor(meeting.id);
+    await worker.call(`/jobs/${job.jobId}/complete`, { workerId: "gpu-billing", result: RESULT(60) });
+    const d = ((await (await c.get(`/api/meetings/${meeting.id}`)).json()) as any).meeting;
+    expect(d.summaries[0]).toMatchObject({ status: "failed" });
+    expect(d.summaries[0].error).toContain("Not enough points for the summary");
+  });
+
+  test("free summaries when their rates are 0, and nothing for exempt accounts", async () => {
+    const admin = await openSignUp({ rates: { perMinute: 1, perKInput: 0, perKOutput: 0 } });
+    const c = await signedUp("free-summaries");
+    await openSignUp({ rates: { perMinute: 1, perKInput: 0, perKOutput: 0 } });
+    const me = ((await (await c.get("/api/me")).json()) as any).user;
+    await admin.post(`/api/admin/users/${me.id}/credits`, { points: 1, note: "Test" });
+    const { id } = await upload(c, 60);
+    const job = await claimFor(id!);
+    await worker.call(`/jobs/${job.jobId}/complete`, { workerId: "gpu-billing", result: RESULT(60) });
+    expect((await c.post(`/api/meetings/${id}/summaries`, { prompt: "Summarise.", outputLanguage: "en", templateId: null })).status).toBe(201);
+    await openSignUp();
   });
 });
 

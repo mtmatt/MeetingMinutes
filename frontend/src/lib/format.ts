@@ -27,17 +27,40 @@ export function duration(sec: number | null | undefined, locale: Locale): string
 }
 
 /**
- * Prepaid minutes: "42 分鐘" / "42 min"; under ten minutes with one decimal
- * ("1.5 min"), so a short balance does not read as zero. Rounded down: a
- * balance never looks larger than it is.
+ * Points, from thousandths: "42.5" ("42.5 點" with pointsText). Small amounts
+ * keep more decimals ("0.02" for a short summary), large ones none. Rounded
+ * towards zero: a balance never looks larger than it is.
  */
-export function minutesText(sec: number, locale: Locale): string {
-  const m = sec / 60;
-  const abs = Math.abs(m);
-  const n = abs < 10 ? Math.floor(abs * 10) / 10 : Math.floor(abs);
-  const sign = m < 0 && n > 0 ? "-" : "";
-  const shown = sign + n.toLocaleString(locale === "zh-TW" ? "zh-TW" : "en");
-  return locale === "zh-TW" ? `${shown} 分鐘` : `${shown} min`;
+export function pointsNumber(milli: number, locale: Locale, exact = false): string {
+  const p = milli / 1000;
+  const abs = Math.abs(p);
+  // Exact (the ledger): every thousandth that was charged; otherwise a readable figure.
+  const digits = exact ? 3 : abs >= 100 ? 0 : abs >= 1 ? 1 : 3;
+  const f = 10 ** digits;
+  const n = Math.floor(abs * f + 1e-9) / f;
+  return (p < 0 && n > 0 ? "-" : "") + n.toLocaleString(locale === "zh-TW" ? "zh-TW" : "en", { maximumFractionDigits: digits });
+}
+
+export function pointsText(milli: number, locale: Locale): string {
+  const n = pointsNumber(milli, locale);
+  return locale === "zh-TW" ? `${n} 點` : `${n} pts`;
+}
+
+/** What `milli` points transcribe at `perMinute`: "2.5 小時" / "40 minutes"; null when transcription is free. */
+export function recordingFor(milli: number, perMinute: number, locale: Locale): string | null {
+  if (perMinute <= 0) return null;
+  const minutes = Math.max(0, milli) / 1000 / perMinute;
+  if (minutes >= 60) {
+    const h = Math.floor((minutes / 60) * 10) / 10;
+    return locale === "zh-TW" ? `${h.toLocaleString("zh-TW")} 小時` : `${h.toLocaleString("en")} hours`;
+  }
+  const m = Math.floor(minutes);
+  return locale === "zh-TW" ? `${m} 分鐘` : `${m} minutes`;
+}
+
+/** Thousandths of a point for `seconds` of recording (as the server charges it). */
+export function transcriptionCost(seconds: number, perMinute: number): number {
+  return perMinute <= 0 ? 0 : Math.max(1, Math.ceil((seconds / 60) * perMinute * 1000 - 1e-6));
 }
 
 /** "NT$1,200" */
