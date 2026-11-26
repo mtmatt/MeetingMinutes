@@ -16,6 +16,7 @@ import {
 } from "../auth/accounts";
 import { alreadyRegisteredMail, mailConfigured, mailLocale, MailError, resetMail, sendMail, verifyMail } from "../services/mail";
 import { billingSettings } from "../services/billingSettings";
+import { termsLink, termsText, termsUpdatedAt } from "../services/terms";
 import {
   SESSION_COOKIE,
   countUsers,
@@ -100,7 +101,16 @@ authRoutes.get("/state", (c) => {
     // Whether the sign-in page offers "Create an account" and "Forgot password".
     registration: registrationOpen(),
     passwordReset: mailConfigured(),
+    // The terms of sale, on this site or elsewhere, for the sign-up page to link.
+    termsUrl: termsLink(),
   });
+});
+
+/** The terms of sale written on the admin page; public, for buyers and payment providers to read. */
+authRoutes.get("/terms", (c) => {
+  const markdown = termsText();
+  if (!markdown.trim()) httpError(404, "This site has no terms of sale.", "not_found");
+  return c.json({ markdown, updatedAt: termsUpdatedAt() });
 });
 
 /** People may create their own accounts: the admin opened sign-up and email can be sent to confirm addresses. */

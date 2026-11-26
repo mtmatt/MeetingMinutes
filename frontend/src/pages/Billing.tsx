@@ -98,6 +98,9 @@ function Packages({ b }: { b: BillingInfo }) {
   const { t, locale } = useI18n();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  // With terms of sale, buying waits for the box to be ticked (it also waives the 7-day withdrawal).
+  const [agreed, setAgreed] = useState(false);
+  const needsAgreement = !!b.termsUrl;
 
   if (!b.onSale || b.packages.length === 0) {
     return (
@@ -112,7 +115,7 @@ function Packages({ b }: { b: BillingInfo }) {
   const buy = async (p: CreditPackage) => {
     setBusy(p.id);
     try {
-      const { checkout } = await api.createOrder(p.id, locale);
+      const { checkout } = await api.createOrder(p.id, locale, agreed);
       submitCheckout(checkout);
       // The page is leaving for ECPay; keep the button busy until it does.
     } catch (e) {
@@ -127,6 +130,19 @@ function Packages({ b }: { b: BillingInfo }) {
         <h2>{t("billing.buy")}</h2>
         {b.testMode && <span className="pill warn">{t("billing.testMode")}</span>}
       </div>
+      {needsAgreement && (
+        <label className={`check billing-agree ${agreed ? "" : "is-open"}`}>
+          <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+          <span>
+            {t("billing.agreeBefore")}
+            <a href={b.termsUrl!} target="_blank" rel="noopener noreferrer">
+              {t("billing.terms")}
+              {!b.termsUrl!.startsWith("/") && <ExternalLink className="inline-icon" />}
+            </a>
+            {t("billing.agreeAfter")}
+          </span>
+        </label>
+      )}
       <div className="billing-packages">
         {b.packages.map((p) => {
           const unit = p.price / p.points;
@@ -143,24 +159,14 @@ function Packages({ b }: { b: BillingInfo }) {
                 {t("billing.perPoint", { price: unit.toLocaleString("en", { maximumFractionDigits: 2 }) })}
                 {b.packages.length > 1 && unit === cheapest && <span className="pill ok">{t("billing.bestValue")}</span>}
               </div>
-              <button type="button" className="btn btn-primary btn-block" onClick={() => buy(p)} disabled={busy != null}>
+              <button type="button" className="btn btn-primary btn-block" onClick={() => buy(p)} disabled={busy != null || (needsAgreement && !agreed)}>
                 {busy === p.id ? <span className="spinner" /> : <CreditCard />} {t("billing.buyThis")}
               </button>
             </div>
           );
         })}
       </div>
-      <p className="billing-pay-note faint">
-        {t("billing.payNote", { methods: b.methods.map((m) => t(METHOD_LABEL[m])).join(t("billing.listSep")) })}
-        {b.termsUrl && (
-          <>
-            {" "}
-            <a href={b.termsUrl} target="_blank" rel="noopener noreferrer">
-              {t("billing.terms")} <ExternalLink className="inline-icon" />
-            </a>
-          </>
-        )}
-      </p>
+      <p className="billing-pay-note faint">{t("billing.payNote", { methods: b.methods.map((m) => t(METHOD_LABEL[m])).join(t("billing.listSep")) })}</p>
     </section>
   );
 }

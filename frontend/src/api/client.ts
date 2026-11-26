@@ -127,7 +127,12 @@ export const api = {
       registration?: boolean;
       /** "Forgot password" can email a link. */
       passwordReset?: boolean;
+      /** The terms of sale: "/terms" on this site, an outside address, or null. */
+      termsUrl?: string | null;
     }>("/auth/state"),
+  terms: () => get<{ markdown: string; updatedAt: number | null }>("/auth/terms"),
+  adminTerms: () => get<{ markdown: string; updatedAt: number | null }>("/admin/terms"),
+  adminSaveTerms: (markdown: string) => put<{ markdown: string; updatedAt: number | null }>("/admin/terms", { markdown }),
   register: (b: { username: string; displayName: string; email: string; password: string; locale: string }) =>
     post<{ ok: true; email: string }>("/auth/register", b),
   verifyEmail: (token: string) => post<{ ok: true; username: string; email: string }>("/auth/verify-email", { token }),
@@ -137,8 +142,8 @@ export const api = {
 
   // billing
   billing: () => get<BillingInfo>("/billing"),
-  createOrder: (packageId: string, locale: string) =>
-    post<{ order: Order; checkout: { action: string; fields: Record<string, string> } }>("/billing/orders", { packageId, locale }),
+  createOrder: (packageId: string, locale: string, acceptTerms = false) =>
+    post<{ order: Order; checkout: { action: string; fields: Record<string, string> } }>("/billing/orders", { packageId, locale, acceptTerms }),
   order: (id: string) => get<{ order: Order }>(`/billing/orders/${encodeURIComponent(id)}`),
   refreshOrder: (id: string) => post<{ order: Order }>(`/billing/orders/${encodeURIComponent(id)}/refresh`),
   adminBilling: () => get<BillingAdminState>("/admin/billing"),

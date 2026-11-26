@@ -21,6 +21,7 @@ const pages = {
   settings: () => import("./pages/Settings"),
   admin: () => import("./pages/Admin"),
   billing: () => import("./pages/Billing"),
+  terms: () => import("./pages/Terms"),
 };
 
 /**
@@ -116,5 +117,7 @@ export const router = createBrowserRouter([
   { path: "/invite/:token", element: <InvitePage /> },
   // Opened from an email, signed in or not (it may confirm a changed address).
   { path: "/verify-email/:token", element: <VerifyEmailPage /> },
+  // The terms of sale: for anyone, signed in or not (buyers, and payment providers reviewing the site).
+  { path: "/terms", lazy: async () => ({ Component: (await pages.terms()).TermsPage }) },
   { path: "*", element: <NotFoundPage /> },
 ]);

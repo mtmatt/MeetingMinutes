@@ -443,7 +443,7 @@ export function InvitePage() {
 /** Creating an account with an email address (when the administrator opened sign-up). */
 export function RegisterPage() {
   const { t, locale } = useI18n();
-  const { registration, loading } = useAuth();
+  const { registration, loading, termsUrl } = useAuth();
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -531,6 +531,14 @@ export function RegisterPage() {
             {busy && <span className="spinner" />}
             {t("auth.createAccount")}
           </button>
+          {termsUrl && (
+            <p className="faint auth-foot">
+              {t("auth.termsNote")}{" "}
+              <a href={termsUrl} target="_blank" rel="noopener noreferrer">
+                {t("billing.terms")}
+              </a>
+            </p>
+          )}
           <p className="faint auth-foot">
             {t("auth.haveAccount")} <Link to="/login">{t("auth.signIn")}</Link>
           </p>

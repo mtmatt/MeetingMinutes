@@ -387,6 +387,36 @@ describe("paying for summaries", () => {
   });
 });
 
+describe("terms of sale", () => {
+  test("written on the admin page, shown to anyone, and agreed to with each order", async () => {
+    const admin = await adminClient();
+    expect((await new Client().get("/api/auth/terms")).status).toBe(404);
+    const saved = await admin.req("PUT", "/api/admin/terms", { json: { markdown: "# 購買條款\n\n點數付款後立即提供。" } });
+    expect(saved.status).toBe(200);
+    // Public: no session needed.
+    const pub = (await (await new Client().get("/api/auth/terms")).json()) as any;
+    expect(pub.markdown).toContain("點數付款後立即提供");
+    expect(((await (await new Client().get("/api/auth/state")).json()) as any).termsUrl).toBe("/terms");
+
+    const c = await signedUp("terms-buyer");
+    expect(((await (await c.get("/api/billing")).json()) as any).termsUrl).toBe("/terms");
+    const refused = await c.post("/api/billing/orders", { packageId: "m60" });
+    expect(refused.status).toBe(422);
+    expect(((await refused.json()) as any).code).toBe("terms_required");
+    const ok = await c.post("/api/billing/orders", { packageId: "m60", acceptTerms: true });
+    expect(ok.status).toBe(201);
+    const { order } = (await ok.json()) as any;
+    const row = db.query<{ terms_accepted_at: number; terms_version: number }, { id: string }>("SELECT terms_accepted_at, terms_version FROM payment_orders WHERE id = $id").get({ id: order.id })!;
+    expect(row.terms_accepted_at).toBeGreaterThan(0);
+    expect(row.terms_version).toBe(pub.updatedAt);
+
+    // Emptied: no terms page, and orders need no agreement again.
+    await admin.req("PUT", "/api/admin/terms", { json: { markdown: "" } });
+    expect((await new Client().get("/api/auth/terms")).status).toBe(404);
+    expect((await c.post("/api/billing/orders", { packageId: "m60" })).status).toBe(201);
+  });
+});
+
 describe("admin", () => {
   test("sees email and ECPay status, and refuses settings that cannot work", async () => {
     const admin = await openSignUp();
