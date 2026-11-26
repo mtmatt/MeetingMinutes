@@ -81,12 +81,13 @@ def decode_pcm(
     progress: Optional[Callable[[float], None]] = None,
     duration: Optional[float] = None,
     max_seconds: Optional[float] = None,
+    too_long: Optional[str] = None,
 ) -> np.ndarray:
     """Decode the first audio stream to 16 kHz mono float32.
 
     ``max_seconds`` bounds the decoded length regardless of what the file's
     header claims, so a small crafted file cannot expand into more audio than
-    fits in memory.
+    fits in memory. ``too_long`` is the error message when it is exceeded.
     """
     cmd = [
         ffmpeg_bin(),
@@ -125,7 +126,7 @@ def decode_pcm(
         if limit is not None and total > limit:
             proc.kill()
             proc.wait()
-            raise MediaError(f"The recording is longer than the {max_seconds / 3600:g}-hour limit (MAX_AUDIO_HOURS).")
+            raise MediaError(too_long or f"The recording is longer than the {max_seconds / 3600:g}-hour limit (MAX_AUDIO_HOURS).")
         if progress and expected:
             progress(min(1.0, total / expected))
     stderr = proc.stderr.read().decode(errors="replace") if proc.stderr else ""

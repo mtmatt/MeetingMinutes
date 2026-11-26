@@ -54,6 +54,10 @@ import {
   workerApiKeys,
 } from "../services/transcriberSettings";
 import type { AppEnv, MeetingRow, UserRow } from "../types";
+import { addCredits, ledger, publicLedgerEntry } from "../services/credits";
+import { billingSettings, billingSettingsMeta, billingSettingsSchema, saveBillingSettings } from "../services/billingSettings";
+import { getOrder, publicEcpayInfo, publicOrder, queryOrder, type OrderRow } from "../services/ecpay";
+import { MailError, mailLocale, publicMailInfo, sendMail, testMail } from "../services/mail";
 import { SMALL_JSON_LIMIT_BYTES, body } from "./validate";
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -86,6 +90,8 @@ adminRoutes.patch("/users/:id", async (c) => {
       role: z.enum(["admin", "member"]).optional(),
       disabled: z.boolean().optional(),
       displayName: z.string().trim().min(1).max(80).optional(),
+      /** "prepaid": pays for transcription with minutes; "exempt": free. */
+      billing: z.enum(["exempt", "prepaid"]).optional(),
     }),
   );
   const demoting = target.role === "admin" && ((input.role && input.role !== "admin") || input.disabled === true);
@@ -95,9 +101,10 @@ adminRoutes.patch("/users/:id", async (c) => {
   if (target.id === me.id && input.disabled) httpError(409, "You cannot disable your own account.", "self");
   db.query(
     `UPDATE users SET role = COALESCE($role, role), disabled = COALESCE($disabled, disabled),
-       display_name = COALESCE($dn, display_name), updated_at = $t WHERE id = $id`,
+       display_name = COALESCE($dn, display_name), billing = COALESCE($billing, billing), updated_at = $t WHERE id = $id`,
   ).run({
     id: target.id,
+    billing: input.billing ?? null,
     role: input.role ?? null,
     disabled: input.disabled === undefined ? null : input.disabled ? 1 : 0,
     dn: input.displayName ?? null,
@@ -416,4 +423,85 @@ adminRoutes.put("/worker-profiles/:id", async (c) => {
   if (id !== LOCAL_PROFILE && !getWorkerKey(id)) httpError(404, "No such worker.", "not_found");
   const input = await body(c, workerProfileSchema);
   return c.json({ profile: saveWorkerProfile(id, input, c.get("user").id) });
+});
+
+// ---------------------------------------------------------------- billing
+
+/** Sign-up, minutes on sale, packages; and whether email and ECPay are ready for them. */
+adminRoutes.get("/billing", (c) => {
+  const paid = db
+    .query<{ mode: string; n: number; amount: number | null; minutes: number | null }, []>(
+      "SELECT mode, COUNT(*) AS n, SUM(amount) AS amount, SUM(minutes) AS minutes FROM payment_orders WHERE status = 'paid' GROUP BY mode",
+    )
+    .all();
+  const prepaid = db.query<{ n: number; sec: number | null }, []>("SELECT COUNT(*) AS n, SUM(credit_sec) AS sec FROM users WHERE billing = 'prepaid'").get()!;
+  return c.json({
+    settings: billingSettings(),
+    meta: billingSettingsMeta(),
+    mail: publicMailInfo(),
+    ecpay: publicEcpayInfo(),
+    stats: {
+      paid: paid.map((p) => ({ mode: p.mode, orders: p.n, amount: p.amount ?? 0, minutes: p.minutes ?? 0 })),
+      prepaidAccounts: prepaid.n,
+      outstandingSec: prepaid.sec ?? 0,
+    },
+  });
+});
+
+adminRoutes.put("/billing", async (c) => {
+  const input = await body(c, billingSettingsSchema);
+  saveBillingSettings(input, c.get("user").id);
+  return c.json({ settings: billingSettings(), meta: billingSettingsMeta() });
+});
+
+adminRoutes.post("/mail/test", async (c) => {
+  const input = await body(c, z.object({ to: z.email().max(254) }), SMALL_JSON_LIMIT_BYTES);
+  try {
+    await sendMail(testMail(input.to, mailLocale(c.get("user").locale)));
+  } catch (e) {
+    if (e instanceof MailError) httpError(503, `Could not send: ${e.message}`, "mail_failed");
+    throw e;
+  }
+  return c.json({ ok: true });
+});
+
+adminRoutes.get("/orders", (c) => {
+  const status = c.req.query("status");
+  const rows = db
+    .query<OrderRow & { username: string | null; display_name: string | null }, { s: string }>(
+      `SELECT o.*, u.username, u.display_name FROM payment_orders o LEFT JOIN users u ON u.id = o.user_id
+       WHERE $s = '' OR o.status = $s ORDER BY o.created_at DESC LIMIT 200`,
+    )
+    .all({ s: status && ["pending", "paid", "failed"].includes(status) ? status : "" });
+  return c.json({ orders: rows.map((o) => ({ ...publicOrder(o), user: o.user_id ? { id: o.user_id, username: o.username, displayName: o.display_name } : null })) });
+});
+
+adminRoutes.post("/orders/:id/refresh", async (c) => {
+  const order = getOrder(c.req.param("id"));
+  if (!order) httpError(404, "Order not found.", "not_found");
+  try {
+    await queryOrder(order);
+  } catch (e) {
+    httpError(503, `ECPay could not be asked: ${e instanceof Error ? e.message : e}`, "payment_unreachable");
+  }
+  return c.json({ order: publicOrder(getOrder(order.id)!) });
+});
+
+adminRoutes.get("/users/:id/credits", (c) => {
+  const target = findUserById(c.req.param("id"));
+  if (!target) httpError(404, "User not found.", "not_found");
+  return c.json({ balanceSec: target.credit_sec, ledger: ledger(target.id, 200).map(publicLedgerEntry) });
+});
+
+/** Add or take away minutes by hand (a refund made in ECPay's back office, a gift, a correction). */
+adminRoutes.post("/users/:id/credits", async (c) => {
+  const target = findUserById(c.req.param("id"));
+  if (!target) httpError(404, "User not found.", "not_found");
+  const input = await body(
+    c,
+    z.object({ minutes: z.number().int().min(-1_000_000).max(1_000_000).refine((n) => n !== 0), note: z.string().trim().min(1).max(200) }),
+    SMALL_JSON_LIMIT_BYTES,
+  );
+  const balanceSec = db.transaction(() => addCredits(target.id, input.minutes * 60, { kind: "adjust", note: input.note, createdBy: c.get("user").id }))();
+  return c.json({ balanceSec, user: publicUser(findUserById(target.id)!) });
 });

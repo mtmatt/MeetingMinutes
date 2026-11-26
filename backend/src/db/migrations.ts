@@ -329,4 +329,73 @@ export const migrations: string[] = [
   `,
   // The colour theme, with the account (like the language), instead of only in one browser.
   `ALTER TABLE users ADD COLUMN theme TEXT CHECK (theme IN ('system', 'light', 'dark'));`,
+  // Signing up with an email address, and paying for transcription with prepaid minutes.
+  // Accounts from before (and invited ones) stay 'exempt': they are never charged.
+  `
+  ALTER TABLE users ADD COLUMN email TEXT;
+  ALTER TABLE users ADD COLUMN email_verified_at INTEGER;
+  ALTER TABLE users ADD COLUMN billing TEXT NOT NULL DEFAULT 'exempt' CHECK (billing IN ('exempt', 'prepaid'));
+  -- Seconds of recording this person may still have transcribed (prepaid accounts).
+  ALTER TABLE users ADD COLUMN credit_sec INTEGER NOT NULL DEFAULT 0;
+  CREATE UNIQUE INDEX users_email ON users(email COLLATE NOCASE) WHERE email IS NOT NULL;
+
+  -- A link sent to confirm an address: at sign-up, or when someone changes theirs.
+  CREATE TABLE email_verifications (
+    id         TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email      TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    used_at    INTEGER
+  );
+  CREATE INDEX email_verifications_user ON email_verifications(user_id);
+
+  -- Every change of a balance, with the balance after it.
+  CREATE TABLE credit_ledger (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    delta_sec   INTEGER NOT NULL,
+    balance_sec INTEGER NOT NULL,
+    kind        TEXT NOT NULL CHECK (kind IN ('purchase', 'usage', 'adjust')),
+    -- Usage: the meeting (it may since have been deleted, so its title is kept too).
+    meeting_id  TEXT,
+    title       TEXT,
+    order_id    TEXT,
+    note        TEXT,
+    created_by  TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX credit_ledger_user ON credit_ledger(user_id, id DESC);
+
+  -- An order sent to ECPay; its id is the MerchantTradeNo.
+  CREATE TABLE payment_orders (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT REFERENCES users(id) ON DELETE SET NULL,
+    package_id   TEXT NOT NULL,
+    minutes      INTEGER NOT NULL,
+    amount       INTEGER NOT NULL,
+    item_name    TEXT NOT NULL,
+    status       TEXT NOT NULL CHECK (status IN ('pending', 'paid', 'failed')),
+    mode         TEXT NOT NULL CHECK (mode IN ('stage', 'production')),
+    merchant_id  TEXT NOT NULL,
+    -- From ECPay: its trade number, how it was paid, and for ATM / convenience-store
+    -- payments the account or code to pay to (JSON).
+    trade_no     TEXT,
+    payment_type TEXT,
+    payment_info TEXT,
+    error        TEXT,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    paid_at      INTEGER
+  );
+  CREATE INDEX payment_orders_user ON payment_orders(user_id, created_at DESC);
+  CREATE INDEX payment_orders_status ON payment_orders(status, created_at DESC);
+
+  -- The length the browser read from the file, to check a balance before anything is uploaded.
+  ALTER TABLE meetings ADD COLUMN declared_sec REAL;
+  -- Prepaid transcriptions: the seconds set aside while queued or running, and what was charged.
+  ALTER TABLE jobs ADD COLUMN hold_sec INTEGER;
+  ALTER TABLE jobs ADD COLUMN charged_sec INTEGER;
+  `,
 ];

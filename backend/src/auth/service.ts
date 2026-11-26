@@ -96,6 +96,11 @@ export function publicUser(u: UserRow) {
     disabled: !!u.disabled,
     locale: u.locale,
     theme: u.theme,
+    email: u.email,
+    emailVerified: !!u.email_verified_at,
+    /** "prepaid": transcription is paid for with minutes (creditSec); "exempt": free. */
+    billing: u.billing,
+    creditSec: u.credit_sec,
     createdAt: u.created_at,
     lastLoginAt: u.last_login_at,
   };

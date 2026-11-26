@@ -1,0 +1,330 @@
+import { describe, expect, test } from "bun:test";
+import { db } from "../src/db";
+import { checkMacValue, taipeiTime } from "../src/services/ecpay";
+import { outbox } from "../src/services/mail";
+import { mailIpLimiter, registerLimiter } from "../src/auth/ratelimit";
+import { Client, adminClient, memberClient, worker } from "./helpers";
+
+const PASSWORD = "a long enough password";
+
+async function openSignUp(extra: Record<string, unknown> = {}) {
+  const admin = await adminClient();
+  const res = await admin.req("PUT", "/api/admin/billing", {
+    json: {
+      registrationOpen: true,
+      enabled: true,
+      packages: [
+        { id: "m60", minutes: 60, price: 150 },
+        { id: "m300", minutes: 300, price: 600 },
+      ],
+      methods: ["Credit", "ATM", "CVS"],
+      termsUrl: "",
+      ...extra,
+    },
+  });
+  expect(res.status).toBe(200);
+  return admin;
+}
+
+function lastMailTo(to: string) {
+  const m = [...outbox].reverse().find((x) => x.to === to);
+  if (!m) throw new Error(`no mail to ${to}`);
+  return m;
+}
+
+/** A confirmed, signed-in prepaid account. */
+async function signedUp(username: string): Promise<Client> {
+  await openSignUp();
+  // Every test request comes from one address; the per-address limits are tested on their own.
+  registerLimiter.reset("unknown");
+  mailIpLimiter.reset("unknown");
+  const email = `${username}@example.com`;
+  const c = new Client();
+  const reg = await c.post("/api/auth/register", { username, displayName: username, email, password: PASSWORD, locale: "en" });
+  expect(reg.status).toBe(200);
+  const token = lastMailTo(email).text.match(/\/verify-email\/([\w-]+)/)![1];
+  expect((await c.post("/api/auth/verify-email", { token })).status).toBe(200);
+  expect((await c.post("/api/auth/login", { username, password: PASSWORD })).status).toBe(200);
+  return c;
+}
+
+/** What ECPay posts back, signed with the shop's keys. */
+function ecpayForm(fields: Record<string, string>): string {
+  const all = { MerchantID: "3002607", ...fields };
+  return new URLSearchParams({ ...all, CheckMacValue: checkMacValue(all) }).toString();
+}
+
+async function postEcpay(path: string, form: string) {
+  const c = new Client();
+  // No session and no client header: as ECPay's servers send it.
+  return c.req("POST", `/api/billing/ecpay/${path}`, { body: form, headers: { "content-type": "application/x-www-form-urlencoded" }, csrf: false });
+}
+
+async function buy(c: Client, packageId = "m60") {
+  const res = await c.post("/api/billing/orders", { packageId });
+  expect(res.status).toBe(201);
+  return (await res.json()) as { order: { id: string; amount: number; minutes: number }; checkout: { action: string; fields: Record<string, string> } };
+}
+
+const paid = (id: string, amount: number, extra: Record<string, string> = {}) =>
+  ecpayForm({ MerchantTradeNo: id, RtnCode: "1", RtnMsg: "交易成功", TradeAmt: String(amount), TradeNo: "2611261405091234", PaymentType: "Credit_CreditCard", SimulatePaid: "0", ...extra });
+
+describe("CheckMacValue", () => {
+  test("matches ECPay's published example", () => {
+    const fields = {
+      ChoosePayment: "ALL",
+      EncryptType: "1",
+      ItemName: "Apple iphone 15",
+      MerchantID: "3002607",
+      MerchantTradeDate: "2023/03/12 15:30:23",
+      MerchantTradeNo: "ecpay20230312153023",
+      PaymentType: "aio",
+      ReturnURL: "https://www.ecpay.com.tw/receive.php",
+      TotalAmount: "30000",
+      TradeDesc: "促銷方案",
+    };
+    expect(checkMacValue(fields, "pwFHCqoQZGmho4w6", "EkRm7iFT261dpevs")).toBe("6C51C9E6888DE861FD62FB1DD17029FC742634498FD813DC43D4243B5685B840");
+    expect(taipeiTime(Date.UTC(2026, 10, 25, 18, 5, 9))).toBe("2026/11/26 02:05:09");
+  });
+});
+
+describe("signing up", () => {
+  test("is closed until the admin opens it", async () => {
+    const admin = await adminClient();
+    await admin.req("PUT", "/api/admin/billing", { json: { registrationOpen: false, enabled: false, packages: [], methods: ["Credit"], termsUrl: "" } });
+    const state = (await (await new Client().get("/api/auth/state")).json()) as any;
+    expect(state.registration).toBe(false);
+    expect(state.passwordReset).toBe(true);
+    const res = await new Client().post("/api/auth/register", { username: "nobody", displayName: "N", email: "n@example.com", password: PASSWORD });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as any).code).toBe("registration_closed");
+  });
+
+  test("needs the email address confirmed before signing in, and the account pays with minutes", async () => {
+    await openSignUp();
+    expect(((await (await new Client().get("/api/auth/state")).json()) as any).registration).toBe(true);
+    const c = new Client();
+    const bad = await c.post("/api/auth/register", { username: "rita", displayName: "Rita", email: "not-an-address", password: PASSWORD });
+    expect(bad.status).toBe(422);
+    expect((await c.post("/api/auth/register", { username: "rita", displayName: "Rita", email: "Rita@Example.com", password: PASSWORD, locale: "zh-TW" })).status).toBe(200);
+    const mail = lastMailTo("rita@example.com");
+    expect(mail.subject).toContain("請確認你的 Email");
+    // Not before the address is confirmed.
+    const early = await c.post("/api/auth/login", { username: "rita", password: PASSWORD });
+    expect(early.status).toBe(403);
+    expect(((await early.json()) as any).code).toBe("email_unverified");
+    const token = mail.text.match(/\/verify-email\/([\w-]+)/)![1]!;
+    const verified = await c.post("/api/auth/verify-email", { token });
+    expect(verified.status).toBe(200);
+    // The link works once, and does not sign anyone in by itself.
+    expect(c.cookie).toBe("");
+    expect((await c.post("/api/auth/verify-email", { token })).status).toBe(404);
+    expect((await c.post("/api/auth/login", { username: "rita", password: PASSWORD })).status).toBe(200);
+    const me = (await (await c.get("/api/me")).json()) as any;
+    expect(me.user).toMatchObject({ email: "rita@example.com", emailVerified: true, billing: "prepaid", creditSec: 0, role: "member" });
+  });
+
+  test("with an address that has an account looks the same, and tells its owner", async () => {
+    await signedUp("owner1");
+    const before = db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM users").get()!.n;
+    const res = await new Client().post("/api/auth/register", { username: "someone-else", displayName: "X", email: "OWNER1@example.com", password: PASSWORD, locale: "en" });
+    expect(res.status).toBe(200);
+    expect(db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM users").get()!.n).toBe(before);
+    expect(lastMailTo("owner1@example.com").subject).toContain("you already have an account");
+  });
+
+  test("a forgotten password is reset through a link sent to the confirmed address", async () => {
+    await signedUp("forgetful");
+    expect((await new Client().post("/api/auth/forgot-password", { email: "nobody-here@example.com" })).status).toBe(200);
+    expect((await new Client().post("/api/auth/forgot-password", { email: "forgetful@example.com", locale: "en" })).status).toBe(200);
+    const token = lastMailTo("forgetful@example.com").text.match(/\/invite\/([\w-]+)/)![1]!;
+    const c = new Client();
+    expect((await c.post(`/api/auth/invites/${token}/accept`, { password: "a brand new password" })).status).toBe(200);
+    expect((await new Client().post("/api/auth/login", { username: "forgetful", password: "a brand new password" })).status).toBe(200);
+  });
+
+  test("mail to one address is rate limited", async () => {
+    let last = 0;
+    for (let i = 0; i < 4; i++) last = (await new Client().post("/api/auth/verify-email/resend", { email: "flood@example.com" })).status;
+    expect(last).toBe(429);
+  });
+});
+
+describe("buying minutes", () => {
+  test("an order is a signed form for ECPay's test shop, and a paid notification adds its minutes once", async () => {
+    const c = await signedUp("buyer");
+    const info = (await (await c.get("/api/billing")).json()) as any;
+    expect(info).toMatchObject({ billing: "prepaid", balanceSec: 0, onSale: true });
+    expect(info.packages.map((p: any) => p.id)).toEqual(["m60", "m300"]);
+
+    const { order, checkout } = await buy(c);
+    expect(checkout.action).toBe("https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5");
+    expect(checkout.fields).toMatchObject({ MerchantID: "3002607", MerchantTradeNo: order.id, TotalAmount: "150", ChoosePayment: "ALL", EncryptType: "1", PaymentType: "aio" });
+    expect(checkout.fields.IgnorePayment!.split("#")).not.toContain("Credit");
+    expect(checkout.fields.ReturnURL).toBe("http://mm.test/api/billing/ecpay/notify");
+    expect(order.id).toMatch(/^MM\w{18}$/);
+    const { CheckMacValue, ...signed } = checkout.fields;
+    expect(CheckMacValue).toBe(checkMacValue(signed));
+
+    // A forged notification is refused.
+    const forged = new URLSearchParams({ MerchantID: "3002607", MerchantTradeNo: order.id, RtnCode: "1", TradeAmt: "150", CheckMacValue: "0".repeat(64) }).toString();
+    const refused = await postEcpay("notify", forged);
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).toBe("0|CheckMacValue Error");
+    // The amount must be the order's.
+    expect(await (await postEcpay("notify", paid(order.id, 1))).text()).toBe("1|OK");
+    expect(((await (await c.get("/api/me")).json()) as any).user.creditSec).toBe(0);
+
+    const res = await postEcpay("notify", paid(order.id, 150));
+    expect(await res.text()).toBe("1|OK");
+    // ECPay retries, and the browser comes back with the same result: still once.
+    await postEcpay("notify", paid(order.id, 150));
+    const back = await postEcpay("result", paid(order.id, 150));
+    expect(back.status).toBe(303);
+    expect(back.headers.get("location")).toBe(`/billing?order=${order.id}`);
+    const after = (await (await c.get("/api/billing")).json()) as any;
+    expect(after.balanceSec).toBe(3600);
+    expect(after.orders[0]).toMatchObject({ id: order.id, status: "paid", paymentType: "Credit_CreditCard" });
+    expect(after.ledger.filter((e: any) => e.kind === "purchase")).toHaveLength(1);
+    expect(lastMailTo("buyer@example.com").subject).toContain("payment received (60 minutes)");
+  });
+
+  test("ATM transfers show the account to pay to until the money arrives", async () => {
+    const c = await signedUp("atm-buyer");
+    const { order } = await buy(c, "m300");
+    const info = ecpayForm({ MerchantTradeNo: order.id, RtnCode: "2", RtnMsg: "Get VirtualAccount Succeeded", PaymentType: "ATM_TAISHIN", TradeAmt: "600", BankCode: "812", vAccount: "9103522175887271", ExpireDate: "2026/11/29" });
+    expect(await (await postEcpay("info", info)).text()).toBe("1|OK");
+    const pending = (await (await c.get(`/api/billing/orders/${order.id}`)).json()) as any;
+    expect(pending.order).toMatchObject({ status: "pending", paymentInfo: { bankCode: "812", account: "9103522175887271", expireDate: "2026/11/29" } });
+    await postEcpay("notify", paid(order.id, 600, { PaymentType: "ATM_TAISHIN" }));
+    expect(((await (await c.get("/api/billing")).json()) as any).balanceSec).toBe(300 * 60);
+  });
+
+  test("an account that is not charged cannot buy, and orders are each person's own", async () => {
+    await openSignUp();
+    const member = await memberClient("free-member");
+    expect((await member.post("/api/billing/orders", { packageId: "m60" })).status).toBe(409);
+    const a = await signedUp("orders-a");
+    const { order } = await buy(a);
+    const b = await signedUp("orders-b");
+    expect((await b.get(`/api/billing/orders/${order.id}`)).status).toBe(404);
+  });
+});
+
+/** Upload a tiny file (the length is what the browser says) and return the meeting id. */
+async function upload(c: Client, durationSec: number | null) {
+  const res = await c.post("/api/meetings", { title: "Paid sync", file: { name: "sync.m4a", size: 1024, type: "audio/mp4" }, durationSec });
+  if (res.status !== 201) return { status: res.status, body: (await res.json()) as any };
+  const { meeting } = (await res.json()) as any;
+  await c.req("PUT", `/api/meetings/${meeting.id}/upload?offset=0`, { body: new Uint8Array(1024), headers: { "content-type": "application/octet-stream" } });
+  const done = await c.post(`/api/meetings/${meeting.id}/upload/complete`);
+  return { status: done.status, id: meeting.id as string, body: (await done.json()) as any };
+}
+
+async function claimFor(meetingId: string) {
+  for (let i = 0; i < 30; i++) {
+    const res = await worker.call("/jobs/claim", { workerId: "gpu-billing", info: {} });
+    if (res.status === 204) return null;
+    const { job } = (await res.json()) as any;
+    if (job.meetingId === meetingId) return job;
+    await worker.call(`/jobs/${job.jobId}/fail`, { workerId: "gpu-billing", error: "not this test", retryable: false });
+  }
+  return null;
+}
+
+const RESULT = (durationSec: number) => ({
+  durationSec,
+  language: "Chinese",
+  hasVideo: false,
+  hasPlayback: false,
+  hasPeaks: false,
+  speakers: [],
+  segments: [{ start: 0, end: 2, speaker: null, text: "好" }],
+});
+
+describe("paying for transcription", () => {
+  test("without minutes nothing is uploaded; with them, a finished transcription is charged by its length", async () => {
+    const c = await signedUp("payer");
+    const none = await upload(c, 30);
+    expect(none.status).toBe(402);
+    expect(none.body).toMatchObject({ code: "insufficient_credits", availableSec: 0, neededSec: 30 });
+
+    const admin = await adminClient();
+    const me = ((await (await c.get("/api/me")).json()) as any).user;
+    const gift = await admin.post(`/api/admin/users/${me.id}/credits`, { minutes: 2, note: "Welcome" });
+    expect(gift.status).toBe(200);
+
+    // Longer than the balance: refused before uploading.
+    expect((await upload(c, 200)).status).toBe(402);
+    const first = await upload(c, 90);
+    expect(first.status).toBe(200);
+    // The 90 s are set aside: a second recording cannot spend them too.
+    const second = await upload(c, 60);
+    expect(second.status).toBe(402);
+    expect(second.body).toMatchObject({ availableSec: 30 });
+    expect(((await (await c.get("/api/billing")).json()) as any).heldSec).toBe(90);
+
+    const job = await claimFor(first.id!);
+    // The worker is told how much audio the minutes pay for.
+    expect(job.credits).toEqual({ maxSec: 120 });
+    expect((await worker.call(`/jobs/${job.jobId}/complete`, { workerId: "gpu-billing", result: RESULT(91.2) })).status).toBe(200);
+    const after = (await (await c.get("/api/billing")).json()) as any;
+    expect(after.balanceSec).toBe(120 - 92);
+    expect(after.heldSec).toBe(0);
+    expect(after.ledger[0]).toMatchObject({ kind: "usage", deltaSec: -92, balanceSec: 28, meetingId: first.id, title: "Paid sync" });
+
+    // Transcribing again is paid again, by the length now known.
+    const again = await c.post(`/api/meetings/${first.id}/retranscribe`, {});
+    expect(again.status).toBe(402);
+  });
+
+  test("a failed transcription costs nothing", async () => {
+    const c = await signedUp("unlucky");
+    const admin = await adminClient();
+    const me = ((await (await c.get("/api/me")).json()) as any).user;
+    await admin.post(`/api/admin/users/${me.id}/credits`, { minutes: 5, note: "Test" });
+    const { id } = await upload(c, 60);
+    const job = await claimFor(id!);
+    await worker.call(`/jobs/${job.jobId}/fail`, { workerId: "gpu-billing", error: "Not enough minutes: the recording is 6.0 minutes long, the balance pays for 5.", retryable: false });
+    const after = (await (await c.get("/api/billing")).json()) as any;
+    expect(after).toMatchObject({ balanceSec: 300, heldSec: 0 });
+  });
+
+  test("invited accounts are never limited or charged", async () => {
+    const member = await memberClient("free-uploader");
+    const { status, id } = await upload(member, 5000);
+    expect(status).toBe(200);
+    const job = await claimFor(id!);
+    expect(job.credits).toBeUndefined();
+    await worker.call(`/jobs/${job.jobId}/complete`, { workerId: "gpu-billing", result: RESULT(5000) });
+    const me = ((await (await member.get("/api/me")).json()) as any).user;
+    expect(me).toMatchObject({ billing: "exempt", creditSec: 0 });
+  });
+
+  test("an admin can switch an account to free and back", async () => {
+    const c = await signedUp("switched");
+    const admin = await adminClient();
+    const me = ((await (await c.get("/api/me")).json()) as any).user;
+    expect((await admin.patch(`/api/admin/users/${me.id}`, { billing: "exempt" })).status).toBe(200);
+    expect((await upload(c, 600)).status).toBe(200);
+    await admin.patch(`/api/admin/users/${me.id}`, { billing: "prepaid" });
+    expect((await upload(c, 600)).status).toBe(402);
+    const ledger = (await (await admin.get(`/api/admin/users/${me.id}/credits`)).json()) as any;
+    expect(ledger.balanceSec).toBe(0);
+  });
+});
+
+describe("admin", () => {
+  test("sees email and ECPay status, and refuses settings that cannot work", async () => {
+    const admin = await openSignUp();
+    const info = (await (await admin.get("/api/admin/billing")).json()) as any;
+    expect(info.mail).toMatchObject({ configured: true, transport: "log" });
+    expect(info.ecpay).toMatchObject({ mode: "stage", merchantId: "3002607", testShop: true });
+    const bad = await admin.req("PUT", "/api/admin/billing", { json: { ...info.settings, packages: [] } });
+    expect(bad.status).toBe(422);
+    expect((await admin.post("/api/admin/mail/test", { to: "admin@example.com" })).status).toBe(200);
+    expect(lastMailTo("admin@example.com").subject).toContain("測試信");
+    const orders = (await (await admin.get("/api/admin/orders?status=paid")).json()) as any;
+    expect(orders.orders.every((o: any) => o.status === "paid")).toBe(true);
+  });
+});

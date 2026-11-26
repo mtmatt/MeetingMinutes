@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
+import { addCredits, costOf, jobCreditLimit } from "./credits";
 import { open } from "node:fs/promises";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -316,17 +317,22 @@ export async function deleteMeeting(m: MeetingRow) {
 
 // -------------------------------------------------------------- job queue
 
-export function enqueueTranscription(m: MeetingRow) {
+/**
+ * Queue (again) the transcription of a meeting. `holdSec`: for a prepaid owner,
+ * the seconds set aside for it (see credits.ts); null for an exempt one.
+ */
+export function enqueueTranscription(m: MeetingRow, holdSec: number | null = null) {
   removeIncoming(m.id);
   db.transaction(() => {
     db.query("UPDATE jobs SET status = 'canceled', finished_at = $t WHERE meeting_id = $m AND status IN ('queued','running')").run({
       m: m.id,
       t: now(),
     });
-    db.query("INSERT INTO jobs (id, meeting_id, status, created_at) VALUES ($id, $m, 'queued', $t)").run({
+    db.query("INSERT INTO jobs (id, meeting_id, status, created_at, hold_sec) VALUES ($id, $m, 'queued', $t, $h)").run({
       id: newId(12),
       m: m.id,
       t: now(),
+      h: holdSec,
     });
     db.query(
       "UPDATE meetings SET status = 'queued', stage = NULL, progress = 0, error = NULL, updated_at = $t WHERE id = $id",
@@ -352,6 +358,8 @@ export interface ClaimedJob {
   asr?: JobAsrSettings;
   /** Transcriptions and voiceprints: who separates speakers (and so which model makes voice fingerprints). */
   diarization?: { engine: "local" | "cpu" | "pyannoteai" };
+  /** Prepaid owners: the most audio (seconds) their minutes pay for; a longer recording is refused before speech is recognised. */
+  credits?: { maxSec: number };
 }
 
 /**
@@ -408,11 +416,13 @@ export function claimJob(
       t,
     });
     touchMeeting(m);
+    const maxSec = jobCreditLimit(m.owner_id, m.id, job.hold_sec);
     return {
       ...base,
       options: { ...DEFAULT_OPTIONS, ...parseJson<Partial<TranscribeOptions>>(m.options, {}) },
       asr: jobAsrSettings(settings),
       diarization: jobDiarizationSettings(settings),
+      ...(maxSec != null ? { credits: { maxSec } } : {}),
     };
   })();
 }
@@ -526,6 +536,7 @@ export function completeJob(jobId: string, workerId: string, result: TranscriptR
       });
     });
     storeTranscriptVoices(getMeeting(m)!, previous, result.voiceModel, result.voices);
+    chargeTranscription(job, result.durationSec);
     db.query(
       `UPDATE meetings SET status = 'ready', stage = NULL, progress = 1, error = NULL, duration_sec = $d, language = $lang,
          has_video = $hv, has_playback = $hp, has_peaks = $hk, diarization = $dz, transcribed_at = $t, updated_at = $t WHERE id = $id`,
@@ -552,6 +563,17 @@ export function completeJob(jobId: string, workerId: string, result: TranscriptR
     if (auto && auto.prompt.trim() && !hasSummary) enqueueSummary(m, m.owner_id, auto);
   }
   return true;
+}
+
+/** A prepaid owner pays for a finished transcription by its real length (in the completing transaction). */
+function chargeTranscription(job: JobRow, durationSec: number) {
+  if (job.hold_sec == null) return;
+  const m = getMeeting(job.meeting_id);
+  const owner = m ? db.query<{ billing: string }, { id: string }>("SELECT billing FROM users WHERE id = $id").get({ id: m.owner_id }) : null;
+  if (!m || owner?.billing !== "prepaid") return;
+  const cost = costOf(durationSec);
+  addCredits(m.owner_id, -cost, { kind: "usage", meetingId: m.id, title: m.title });
+  db.query("UPDATE jobs SET charged_sec = $c WHERE id = $id").run({ id: job.id, c: cost });
 }
 
 export function failJob(jobId: string, workerId: string, error: string, retryable: boolean): boolean {

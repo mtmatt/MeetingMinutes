@@ -26,8 +26,14 @@ export function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ab, bb);
 }
 
-export function httpError(status: 400 | 401 | 403 | 404 | 409 | 410 | 413 | 415 | 422 | 429 | 500 | 503, message: string, code?: string): never {
-  throw new HTTPException(status, { message, cause: code ? { code } : undefined });
+/** An error answer: `{ error: message, code, ...extra }` with this status. */
+export function httpError(
+  status: 400 | 401 | 402 | 403 | 404 | 409 | 410 | 413 | 415 | 422 | 429 | 500 | 503,
+  message: string,
+  code?: string,
+  extra?: Record<string, unknown>,
+): never {
+  throw new HTTPException(status, { message, cause: code ? { code, extra } : undefined });
 }
 
 export function parseJson<T>(text: string | null | undefined, fallback: T): T {

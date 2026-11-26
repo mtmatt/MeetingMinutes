@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { requireCredits } from "../services/credits";
 import { existsSync, statSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
@@ -121,6 +122,8 @@ meetingRoutes.post("/", async (c) => {
       }),
       options: optionsSchema.default(DEFAULT_OPTIONS),
       summary: summaryRequestSchema.nullable().default(null),
+      // The length the browser read from the file, if it could: a prepaid account's minutes are checked before uploading.
+      durationSec: z.number().positive().max(7 * 24 * 3600).nullable().default(null),
     }),
   );
   if (input.file.size > config.maxUploadBytes) {
@@ -145,13 +148,16 @@ meetingRoutes.post("/", async (c) => {
     httpError(422, "Minimum speakers cannot exceed maximum speakers.", "invalid_input");
   }
 
+  requireCredits(user, input.durationSec);
+
   const id = shortId();
   const t = now();
   db.query(
     `INSERT INTO meetings (id, owner_id, title, occurred_at, status, media_name, media_mime, media_size, media_ext, has_video,
-       options, auto_summary, created_at, updated_at)
-     VALUES ($id, $u, $title, $occ, 'uploading', $name, $mime, $size, $ext, $video, $options, $auto, $t, $t)`,
+       options, auto_summary, declared_sec, created_at, updated_at)
+     VALUES ($id, $u, $title, $occ, 'uploading', $name, $mime, $size, $ext, $video, $options, $auto, $declared, $t, $t)`,
   ).run({
+    declared: input.durationSec,
     id,
     u: user.id,
     title: input.title,
@@ -220,7 +226,7 @@ meetingRoutes.post("/:id/upload/complete", (c) => {
   if (size !== m.media_size || m.media_received !== m.media_size) {
     return c.json({ error: "Upload incomplete.", code: "incomplete", received: size }, 409);
   }
-  enqueueTranscription(m);
+  enqueueTranscription(m, requireCredits(c.get("user"), m.declared_sec, m.id));
   return c.json({ meeting: meetingSummary(getOwnedMeeting(m.id, c.get("user").id)!) });
 });
 
@@ -266,6 +272,8 @@ meetingRoutes.post("/:id/retranscribe", async (c) => {
   const m = owned(c, c.req.param("id"));
   if (m.status === "uploading") httpError(409, "The upload has not finished.", "not_ready");
   const input = await body(c, z.object({ options: optionsSchema.optional(), resetSpeakerNames: z.boolean().default(false) }));
+  // Transcribing again runs again, so it is paid for again; the length is known from the first time.
+  const hold = requireCredits(c.get("user"), m.duration_sec ?? m.declared_sec, m.id);
   if (input.options) {
     db.query("UPDATE meetings SET options = $o WHERE id = $id").run({ id: m.id, o: JSON.stringify(input.options) });
   }
@@ -278,7 +286,7 @@ meetingRoutes.post("/:id/retranscribe", async (c) => {
       db.query("UPDATE voice_samples SET speaker_key = NULL WHERE meeting_id = $m").run({ m: m.id });
     })();
   }
-  enqueueTranscription(m);
+  enqueueTranscription(m, hold);
   return c.json({ meeting: meetingSummary(getOwnedMeeting(m.id, c.get("user").id)!) });
 });
 

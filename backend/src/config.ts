@@ -174,6 +174,43 @@ function ports(name: string): number[] {
   });
 }
 
+/**
+ * Sending email (address verification for people who sign up, password resets,
+ * payment receipts, security alerts). SMTP_URL is the mail server with its
+ * login, e.g. smtps://user:app-password@smtp.gmail.com:465 or
+ * smtp://user:pass@email-smtp.ap-northeast-1.amazonaws.com:587; MAIL_FROM the
+ * sender, e.g. "Meeting Minutes <minutes@example.com>". MAIL_TRANSPORT=log
+ * writes messages to the server log instead (trying it out without a server).
+ */
+function mailSettings() {
+  const smtpUrl = str("SMTP_URL", "").trim();
+  if (smtpUrl && !/^smtps?:\/\//.test(smtpUrl)) throw new Error("SMTP_URL must start with smtp:// or smtps://");
+  const transport = oneOf("MAIL_TRANSPORT", ["smtp", "log"] as const, "smtp");
+  const from = str("MAIL_FROM", "").trim();
+  if (transport === "smtp" && smtpUrl && !from) throw new Error("Set MAIL_FROM (the sender address) together with SMTP_URL.");
+  return { transport, smtpUrl, from: from || "Meeting Minutes <minutes@localhost>" };
+}
+
+/**
+ * ECPay (綠界) for buying minutes. ECPAY_MODE "stage" uses ECPay's test system
+ * (no real money; its public test shop unless ECPAY_MERCHANT_ID and keys are
+ * set); "production" takes real payments and needs all three of the shop's
+ * values from the ECPay merchant back office (系統開發管理 → 系統介接設定).
+ */
+function ecpaySettings() {
+  const mode = oneOf("ECPAY_MODE", ["stage", "production"] as const, "stage");
+  const merchantId = str("ECPAY_MERCHANT_ID", "").trim();
+  const hashKey = str("ECPAY_HASH_KEY", "").trim();
+  const hashIv = str("ECPAY_HASH_IV", "").trim();
+  const given = [merchantId, hashKey, hashIv].filter(Boolean).length;
+  if (given && given < 3) throw new Error("Set ECPAY_MERCHANT_ID, ECPAY_HASH_KEY and ECPAY_HASH_IV together.");
+  if (merchantId && !/^\d{7,10}$/.test(merchantId)) throw new Error(`ECPAY_MERCHANT_ID must be the shop's 7-10 digit number, got "${merchantId}"`);
+  if (mode === "production" && !given) throw new Error("ECPAY_MODE=production needs ECPAY_MERCHANT_ID, ECPAY_HASH_KEY and ECPAY_HASH_IV.");
+  // ECPay's published test shop: payments there are simulated.
+  const test = { merchantId: "3002607", hashKey: "pwFHCqoQZGmho4w6", hashIv: "EkRm7iFT261dpevs" };
+  return { mode, ...(given ? { merchantId, hashKey, hashIv } : test), testShop: !given };
+}
+
 export const config = {
   host: str("HOST", "127.0.0.1"),
   port: int("PORT", 8787),
@@ -304,6 +341,8 @@ export const config = {
     /** Longest a whole summary may take, including every part of a long transcript. */
     timeoutSeconds: int("LLM_TIMEOUT_SEC", 3600),
   },
+  mail: mailSettings(),
+  ecpay: ecpaySettings(),
   isTest: process.env.NODE_ENV === "test",
 } as const;
 

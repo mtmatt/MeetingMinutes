@@ -15,6 +15,11 @@ export interface UserRow {
   last_login_at: number | null;
   /** Recognise speakers by voice and remember the voices this user names. */
   voice_recognition: number;
+  email: string | null;
+  email_verified_at: number | null;
+  /** "exempt": never charged (invited accounts, and all from before billing); "prepaid": pays with minutes. */
+  billing: "exempt" | "prepaid";
+  credit_sec: number;
 }
 
 export interface SessionRow {
@@ -53,6 +58,8 @@ export interface SummaryRequest {
 
 export interface MeetingRow {
   id: string;
+  /** The length the browser read from the file when it was added (seconds), if it could. */
+  declared_sec: number | null;
   owner_id: string;
   title: string;
   occurred_at: number | null;
@@ -185,6 +192,9 @@ export interface JobRow {
   claimed_at: number | null;
   heartbeat_at: number | null;
   finished_at: number | null;
+  /** Prepaid transcriptions: seconds set aside while the job is queued or running. */
+  hold_sec: number | null;
+  charged_sec: number | null;
 }
 
 export type AppEnv = {

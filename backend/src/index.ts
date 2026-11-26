@@ -2,6 +2,7 @@ import { config } from "./config";
 import { createApp } from "./app";
 import { ensureSetupToken } from "./auth/setup";
 import { purgeExpiredSessions } from "./auth/service";
+import { purgeUnverifiedAccounts } from "./auth/accounts";
 import { enqueueCompactions } from "./services/mediaCompaction";
 import { sweepTransfers } from "./services/mediaTransfer";
 import { reapStaleJobs } from "./services/meetings";
@@ -83,6 +84,11 @@ const internal = config.tls
 
 setInterval(reapStaleJobs, 30_000);
 setInterval(purgeExpiredSessions, 60 * 60 * 1000);
+// Sign-ups whose address was never confirmed.
+setInterval(() => {
+  const n = purgeUnverifiedAccounts();
+  if (n) console.log(`[auth] removed ${n} sign-up(s) never confirmed`);
+}, 60 * 60 * 1000);
 // Compactions become due as days pass; the admin page also starts them when saved.
 const sweepCompactions = () => {
   try {

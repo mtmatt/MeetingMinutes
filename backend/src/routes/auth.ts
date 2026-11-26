@@ -4,7 +4,18 @@ import { z } from "zod";
 import { config } from "../config";
 import { db, now } from "../db";
 import { requireUser } from "../auth/middleware";
-import { loginIpLimiter, loginUserLimiter, tokenLimiter } from "../auth/ratelimit";
+import { loginIpLimiter, loginUserLimiter, mailIpLimiter, mailToLimiter, registerLimiter, tokenLimiter } from "../auth/ratelimit";
+import {
+  awaitingVerification,
+  consumeVerification,
+  createVerification,
+  findUserByEmail,
+  linkBase,
+  normalizeEmail,
+  validateEmail,
+} from "../auth/accounts";
+import { alreadyRegisteredMail, mailConfigured, mailLocale, MailError, resetMail, sendMail, verifyMail } from "../services/mail";
+import { billingSettings } from "../services/billingSettings";
 import {
   SESSION_COOKIE,
   countUsers,
@@ -24,7 +35,7 @@ import {
   verifyPassword,
 } from "../auth/service";
 import { checkSetupToken, clearSetupToken } from "../auth/setup";
-import { consumeInvite, findInvite } from "../auth/invites";
+import { consumeInvite, createInvite, findInvite } from "../auth/invites";
 import { httpError } from "../lib/util";
 import { publicSummarizerInfo } from "../services/summarySettings";
 import { publicMediaPolicy } from "../services/mediaCompaction";
@@ -85,7 +96,117 @@ authRoutes.get("/state", (c) => {
     mediaPolicy: resolved ? publicMediaPolicy() : null,
     // Recordings may be processed on other machines an administrator connected.
     externalWorkers: resolved ? hasExternalWorkers() : null,
+    // Whether the sign-in page offers "Create an account" and "Forgot password".
+    registration: registrationOpen(),
+    passwordReset: mailConfigured(),
   });
+});
+
+/** People may create their own accounts: the admin opened sign-up and email can be sent to confirm addresses. */
+function registrationOpen(): boolean {
+  return billingSettings().registrationOpen && mailConfigured();
+}
+
+/** Rate limits for anything that sends mail: per client and per address. Throws 429. */
+function checkMailLimits(c: any, email: string) {
+  const ip = c.get("clientIp");
+  const retry = Math.max(mailIpLimiter.check(ip), mailToLimiter.check(email));
+  if (retry) {
+    c.header("Retry-After", String(retry));
+    httpError(429, `Too many requests. Try again in ${Math.ceil(retry / 60)} min.`, "rate_limited");
+  }
+  mailIpLimiter.hit(ip);
+  mailToLimiter.hit(email);
+}
+
+const localeField = z.enum(["en", "zh-TW"]).nullable().default(null);
+
+// ------------------------------------------------------- self sign-up
+
+authRoutes.post("/register", async (c) => {
+  if (!registrationOpen()) httpError(403, "Creating an account is not open on this site; ask its administrator for an invitation.", "registration_closed");
+  const ip = c.get("clientIp");
+  const retry = registerLimiter.check(ip);
+  if (retry) {
+    c.header("Retry-After", String(retry));
+    httpError(429, `Too many sign-ups. Try again in ${Math.ceil(retry / 60)} min.`, "rate_limited");
+  }
+  const input = await body(c, newAccount.extend({ email: z.string().trim().max(254), locale: localeField }), SMALL_JSON_LIMIT_BYTES);
+  const email = normalizeEmail(input.email);
+  const bad = validateEmail(email);
+  if (bad) httpError(422, bad, "invalid_email");
+  assertNewAccount(input);
+  registerLimiter.hit(ip);
+  checkMailLimits(c, email);
+  const base = linkBase(c.req.url);
+  const locale = mailLocale(input.locale);
+  const existing = findUserByEmail(email);
+  if (existing) {
+    // Said the same way as a new sign-up, so the form does not reveal who has an account; the owner is told instead.
+    await sendMail(alreadyRegisteredMail(email, `${base}/login`, locale)).catch(() => {});
+    return c.json({ ok: true, email });
+  }
+  const passwordHash = await hashPassword(input.password);
+  const user = db.transaction(() => {
+    const u = insertUser({ username: input.username, displayName: input.displayName, passwordHash, role: "member" });
+    // Accounts people make themselves pay for transcription; invited ones never do.
+    db.query("UPDATE users SET email = $e, billing = 'prepaid', locale = $l WHERE id = $id").run({ id: u.id, e: email, l: input.locale });
+    return u;
+  })();
+  const token = createVerification(user.id, email);
+  try {
+    await sendMail(verifyMail(email, `${base}/verify-email/${token}`, locale, input.displayName));
+  } catch (e) {
+    // Nobody could confirm it: take the account back, so the name and address are free to try again.
+    db.query("DELETE FROM users WHERE id = $id").run({ id: user.id });
+    if (e instanceof MailError) httpError(503, "The confirmation email could not be sent. Try again later.", "mail_failed");
+    throw e;
+  }
+  return c.json({ ok: true, email });
+});
+
+authRoutes.post("/verify-email", async (c) => {
+  const ip = c.get("clientIp");
+  const retry = tokenLimiter.check(ip);
+  if (retry) httpError(429, `Too many attempts. Try again in ${retry}s.`, "rate_limited");
+  const input = await body(c, z.object({ token: z.string().trim().min(1).max(200) }), SMALL_JSON_LIMIT_BYTES);
+  const outcome = consumeVerification(input.token);
+  if (!outcome.ok) {
+    tokenLimiter.hit(ip);
+    if (outcome.reason === "taken") httpError(409, "Another account already uses this email address.", "email_taken");
+    httpError(404, "This link is invalid, has expired, or was already used.", "invalid_link");
+  }
+  // Not signed in here: a mail scanner opening the link must not get a session. The person signs in next.
+  return c.json({ ok: true, username: outcome.user.username, email: outcome.user.email });
+});
+
+/** A new confirmation link for an account that signed up and has not confirmed yet. Always "ok". */
+authRoutes.post("/verify-email/resend", async (c) => {
+  const input = await body(c, z.object({ email: z.string().trim().max(254), locale: localeField }), SMALL_JSON_LIMIT_BYTES);
+  const email = normalizeEmail(input.email);
+  if (validateEmail(email)) httpError(422, "Enter a valid email address.", "invalid_email");
+  checkMailLimits(c, email);
+  const user = findUserByEmail(email);
+  if (user && awaitingVerification(user) && !user.disabled) {
+    const token = createVerification(user.id, email);
+    await sendMail(verifyMail(email, `${linkBase(c.req.url)}/verify-email/${token}`, mailLocale(input.locale ?? user.locale), user.display_name)).catch(() => {});
+  }
+  return c.json({ ok: true });
+});
+
+/** Email a link to choose a new password, to an account with this confirmed address. Always "ok". */
+authRoutes.post("/forgot-password", async (c) => {
+  if (!mailConfigured()) httpError(503, "Email is not set up on this site; ask its administrator for a reset link.", "mail_unavailable");
+  const input = await body(c, z.object({ email: z.string().trim().max(254), locale: localeField }), SMALL_JSON_LIMIT_BYTES);
+  const email = normalizeEmail(input.email);
+  if (validateEmail(email)) httpError(422, "Enter a valid email address.", "invalid_email");
+  checkMailLimits(c, email);
+  const user = findUserByEmail(email);
+  if (user && user.email_verified_at && !user.disabled) {
+    const { token } = createInvite({ kind: "reset", role: user.role, targetUserId: user.id, createdBy: user.id, ttlHours: 1, note: "Forgot password" });
+    await sendMail(resetMail(email, `${linkBase(c.req.url)}/invite/${token}`, mailLocale(input.locale ?? user.locale), user.username)).catch(() => {});
+  }
+  return c.json({ ok: true });
 });
 
 authRoutes.post("/setup", async (c) => {
@@ -123,6 +244,9 @@ authRoutes.post("/login", async (c) => {
     httpError(401, "Incorrect username or password.", "bad_credentials");
   }
   loginUserLimiter.reset(userKey);
+  if (awaitingVerification(user)) {
+    httpError(403, "Confirm your email address first: open the link in the message we sent.", "email_unverified", { email: user.email });
+  }
   const { token } = createSession(user.id, ip, c.req.header("user-agent") ?? null);
   setSessionCookie(c, token);
   return c.json({ user: publicUser(user) });
@@ -217,6 +341,29 @@ meRoutes.patch("/", async (c) => {
     t: now(),
   });
   return c.json({ user: publicUser(findUserById(user.id)!) });
+});
+
+/** Change (or add) the account's email address: a link goes to the new one, which takes effect when it is opened. */
+meRoutes.post("/email", async (c) => {
+  if (!mailConfigured()) httpError(503, "Email is not set up on this site.", "mail_unavailable");
+  const input = await body(c, z.object({ email: z.string().trim().max(254), password: z.string().max(1024) }), SMALL_JSON_LIMIT_BYTES);
+  const user = c.get("user");
+  if (!(await verifyPassword(input.password, user.password_hash))) httpError(403, "Current password is incorrect.", "bad_credentials");
+  const email = normalizeEmail(input.email);
+  const bad = validateEmail(email);
+  if (bad) httpError(422, bad, "invalid_email");
+  const other = findUserByEmail(email);
+  if (other && other.id !== user.id) httpError(409, "Another account already uses this email address.", "email_taken");
+  if (other?.id === user.id && user.email_verified_at) return c.json({ ok: true, sent: false });
+  checkMailLimits(c, email);
+  const token = createVerification(user.id, email);
+  try {
+    await sendMail(verifyMail(email, `${linkBase(c.req.url)}/verify-email/${token}`, mailLocale(user.locale), user.display_name));
+  } catch (e) {
+    if (e instanceof MailError) httpError(503, "The confirmation email could not be sent. Try again later.", "mail_failed");
+    throw e;
+  }
+  return c.json({ ok: true, sent: true });
 });
 
 meRoutes.post("/password", async (c) => {

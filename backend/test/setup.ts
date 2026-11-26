@@ -9,6 +9,8 @@ process.env.MM_SKIP_DOTENV = "1";
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), "mm-test-"));
 process.env.WORKER_TOKEN = "test-worker-token";
 process.env.UPLOAD_CHUNK_MB = "1";
+// Mail is kept in memory (services/mail.ts outbox) instead of sent.
+process.env.MAIL_TRANSPORT = "log";
 process.env.MAX_UPLOAD_MB = "10";
 process.env.FAKE_ANTHROPIC_PROMPT_FILE = join(process.env.DATA_DIR, "anthropic-prompt.txt");
 const anthropic = startFakeAnthropic({ promptFile: process.env.FAKE_ANTHROPIC_PROMPT_FILE });
