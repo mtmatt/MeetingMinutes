@@ -6,6 +6,8 @@ import { existsSync, statSync } from "node:fs";
 import { join, normalize, resolve } from "node:path";
 import { config } from "./config";
 import { csrfGuard, hostGuard, withClientIp } from "./auth/middleware";
+import { securityWatch } from "./auth/securityWatch";
+import { isProbe } from "./services/security";
 import { adminRoutes } from "./routes/admin";
 import { billingRoutes, ecpayRoutes } from "./routes/billing";
 import { authRoutes, meRoutes } from "./routes/auth";
@@ -69,7 +71,9 @@ export function securityHeaders({ google }: { google: boolean }) {
 export function createApp() {
   const app = new Hono<AppEnv>();
 
-  // First, so a request for another host learns nothing about the site.
+  // Before anything: blocked addresses are refused, and every answer is watched for signs of an attack.
+  app.use(securityWatch);
+  // Then, so a request for another host learns nothing about the site.
   app.use(hostGuard);
   app.use(securityHeaders({ google: !!config.googleClientId }));
   app.use(withClientIp);
@@ -77,6 +81,7 @@ export function createApp() {
   app.onError((err, c) => {
     if (err instanceof HTTPException) {
       const cause = err.cause as { code?: string; extra?: Record<string, unknown> } | undefined;
+      c.set("errorCode", cause?.code);
       return c.json({ ...(cause?.extra ?? {}), error: err.message, code: cause?.code ?? "error" }, err.status);
     }
     console.error("[http] unhandled error:", err);
@@ -123,6 +128,8 @@ export function createApp() {
       // A malformed escape ("/%E0%A4%A"): a bad request, not a server error with a stack trace in the log.
       return c.text("Bad request.", 400);
     }
+    // Scanners asking for WordPress, .env files and the like: a plain 404 (and the security monitor counts them).
+    if (isProbe(urlPath)) return c.text("Not found.", 404);
     if (!existsSync(indexHtml)) {
       return c.text("Frontend not built. Run `bun run build` in the repository root, or use the Vite dev server.", 503);
     }

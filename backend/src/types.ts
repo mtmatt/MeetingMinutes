@@ -202,6 +202,10 @@ export type AppEnv = {
     user: UserRow;
     session: SessionRow;
     clientIp: string;
+    /** The error code an answer carried (set by app.onError), for the security monitor. */
+    errorCode: string | undefined;
+    /** The username a sign-in tried, for the security monitor. */
+    attemptedUser: string | undefined;
     /** On the worker API: a worker on this machine (shared token) or a remote one (its key). */
     worker: { local: boolean; keyId: string | null };
   };

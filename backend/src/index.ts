@@ -3,6 +3,7 @@ import { createApp } from "./app";
 import { ensureSetupToken } from "./auth/setup";
 import { purgeExpiredSessions } from "./auth/service";
 import { purgeUnverifiedAccounts } from "./auth/accounts";
+import { purgeSecurityEvents } from "./services/security";
 import { enqueueCompactions } from "./services/mediaCompaction";
 import { sweepTransfers } from "./services/mediaTransfer";
 import { reapStaleJobs } from "./services/meetings";
@@ -84,6 +85,14 @@ const internal = config.tls
 
 setInterval(reapStaleJobs, 30_000);
 setInterval(purgeExpiredSessions, 60 * 60 * 1000);
+// Security events older than 90 days, and blocks that ended.
+setInterval(() => {
+  try {
+    purgeSecurityEvents();
+  } catch (e) {
+    console.error("[security] could not purge old events:", e);
+  }
+}, 60 * 60 * 1000);
 // Sign-ups whose address was never confirmed.
 setInterval(() => {
   const n = purgeUnverifiedAccounts();

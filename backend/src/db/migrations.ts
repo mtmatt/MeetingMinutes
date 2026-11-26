@@ -398,4 +398,35 @@ export const migrations: string[] = [
   ALTER TABLE jobs ADD COLUMN hold_sec INTEGER;
   ALTER TABLE jobs ADD COLUMN charged_sec INTEGER;
   `,
+  // Security monitor: suspicious requests counted per kind, address, account tried and
+  // minute (a flood is a few rows), and addresses blocked automatically or by hand.
+  `
+  CREATE TABLE security_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind       TEXT NOT NULL,
+    severity   TEXT NOT NULL CHECK (severity IN ('info', 'warn', 'high')),
+    ip         TEXT NOT NULL,
+    username   TEXT NOT NULL DEFAULT '',
+    user_id    TEXT,
+    detail     TEXT,
+    count      INTEGER NOT NULL DEFAULT 1,
+    first_at   INTEGER NOT NULL,
+    last_at    INTEGER NOT NULL,
+    bucket     INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX security_events_bucket ON security_events(kind, ip, username, bucket);
+  CREATE INDEX security_events_time ON security_events(last_at DESC);
+  CREATE INDEX security_events_ip ON security_events(ip, last_at);
+  CREATE INDEX security_events_user ON security_events(username, kind, last_at);
+
+  CREATE TABLE ip_blocks (
+    ip         TEXT PRIMARY KEY,
+    reason     TEXT NOT NULL,
+    auto       INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    -- NULL: until an administrator removes it.
+    expires_at INTEGER,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL
+  );
+  `,
 ];

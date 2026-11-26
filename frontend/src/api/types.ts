@@ -553,3 +553,61 @@ export interface BillingAdminState {
 export interface AdminOrder extends Order {
   user: { id: string; username: string | null; displayName: string | null } | null;
 }
+
+// ----------------------------------------------------------------- security
+
+export type SecurityEventKind =
+  | "login_failed"
+  | "rate_limited"
+  | "bad_token"
+  | "csrf"
+  | "probe"
+  | "worker_auth"
+  | "payment_signature"
+  | "wrong_host"
+  | "blocked"
+  | "account"
+  | "admin_new_ip";
+
+export interface SecuritySettings {
+  autoBlock: boolean;
+  blockMinutes: number;
+  allowlist: string[];
+  alerts: boolean;
+  alertEmails: string[];
+}
+
+export interface IpBlock {
+  ip: string;
+  reason: string;
+  auto: boolean;
+  createdAt: number;
+  /** null: until removed. */
+  expiresAt: number | null;
+  createdBy: string | null;
+}
+
+export interface SecurityState {
+  last24h: Partial<Record<SecurityEventKind, { count: number; addresses: number }>>;
+  daily: { date: number; total: number; kinds: Partial<Record<SecurityEventKind, number>> }[];
+  topIps: { ip: string; count: number; kinds: SecurityEventKind[]; lastAt: number; usernames: string[]; blocked: boolean }[];
+  blocks: IpBlock[];
+  settings: SecuritySettings;
+  defaults: SecuritySettings;
+  meta: { saved: boolean; updatedAt: number | null; updatedBy: string | null };
+  alerts: { mail: boolean; recipients: string[] };
+  yourIp: string;
+  trustProxy: boolean;
+}
+
+export interface SecurityEvent {
+  id: number;
+  kind: SecurityEventKind;
+  severity: "info" | "warn" | "high";
+  ip: string;
+  username: string | null;
+  detail: string | null;
+  count: number;
+  firstAt: number;
+  lastAt: number;
+}

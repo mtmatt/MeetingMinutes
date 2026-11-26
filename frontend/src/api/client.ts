@@ -1,4 +1,7 @@
 import type {
+  SecurityEvent,
+  SecuritySettings,
+  SecurityState,
   AdminOrder,
   BillingAdminState,
   BillingInfo,
@@ -144,6 +147,12 @@ export const api = {
   adminOrders: (status = "") => get<{ orders: AdminOrder[] }>(`/admin/orders${status ? `?status=${status}` : ""}`),
   adminRefreshOrder: (id: string) => post<{ order: Order }>(`/admin/orders/${encodeURIComponent(id)}/refresh`),
   adminCredits: (userId: string) => get<{ balanceSec: number; ledger: LedgerEntry[] }>(`/admin/users/${encodeURIComponent(userId)}/credits`),
+  adminSecurity: () => get<SecurityState>("/admin/security"),
+  adminSecurityEvents: (kind = "", ip = "", limit = 100) =>
+    get<{ events: SecurityEvent[] }>(`/admin/security/events?kind=${encodeURIComponent(kind)}&ip=${encodeURIComponent(ip)}&limit=${limit}`),
+  adminSaveSecurity: (b: SecuritySettings) => put<{ settings: SecuritySettings }>("/admin/security", b),
+  adminBlockIp: (ip: string, minutes: number | null, reason = "") => post<{ ok: true }>("/admin/security/blocks", { ip, minutes, reason }),
+  adminUnblockIp: (ip: string) => del<{ ok: true }>(`/admin/security/blocks/${encodeURIComponent(ip)}`),
   adminAdjustCredits: (userId: string, minutes: number, note: string) =>
     post<{ balanceSec: number; user: User }>(`/admin/users/${encodeURIComponent(userId)}/credits`, { minutes, note }),
   login: (username: string, password: string) => post<{ user: User }>("/auth/login", { username, password }),

@@ -17,6 +17,7 @@ import { WorkerKeys } from "./AdminWorkerKeys";
 import { SummaryModel } from "./AdminSummaryModel";
 import { Transcription } from "./AdminTranscription";
 import { AdminBilling } from "./AdminBilling";
+import { AdminSecurity } from "./AdminSecurity";
 
 function CopyLink({ url }: { url: string }) {
   const { t } = useI18n();
@@ -559,9 +560,16 @@ function AdjustMinutes({ user, onClose, onDone }: { user: AdminUser; onClose: ()
   );
 }
 
+const TABS = ["users", "invites", "asr", "model", "sales", "security", "system"] as const;
+type Tab = (typeof TABS)[number];
+
 export function AdminPage() {
   const { t } = useI18n();
-  const [tab, setTab] = useState<"users" | "invites" | "asr" | "model" | "sales" | "system">("users");
+  // ?tab=security: the link in a security alert email.
+  const [tab, setTab] = useState<Tab>(() => {
+    const asked = new URLSearchParams(window.location.search).get("tab");
+    return TABS.includes(asked as Tab) ? (asked as Tab) : "users";
+  });
   return (
     <div className="admin">
       <div className="page-head">
@@ -575,7 +583,7 @@ export function AdminPage() {
         )}
       </div>
       <div className="tabs admin-tabs" role="tablist">
-        {(["users", "invites", "asr", "model", "sales", "system"] as const).map((k) => (
+        {TABS.map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
             {t(`admin.${k}`)}
           </button>
@@ -587,6 +595,7 @@ export function AdminPage() {
         {tab === "asr" && <Transcription />}
         {tab === "model" && <SummaryModel />}
         {tab === "sales" && <AdminBilling />}
+        {tab === "security" && <AdminSecurity />}
         {tab === "system" && <System />}
       </div>
     </div>

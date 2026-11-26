@@ -501,3 +501,252 @@
     display: none;
   }
 }
+
+/* -------------------------------------------------------- Admin → Security */
+
+.admin-security {
+  display: grid;
+  gap: 18px;
+}
+.security-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+.security-tile {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-1);
+}
+.security-tile-label {
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.security-tile-value {
+  font-family: var(--font-display);
+  font-size: var(--step-4);
+  font-weight: 540;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.security-tile-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+.security-tile-sub svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.security-tile.is-serious {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--rule));
+}
+.security-tile.is-serious .security-tile-sub {
+  color: var(--danger);
+}
+.security-caption {
+  margin: -4px 0 0;
+  font-size: var(--step--1);
+  max-width: 90ch;
+}
+
+/* One series: suspicious requests per day. Bars are the ink at low weight; hover shows the breakdown. */
+.security-chart {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 160px auto;
+  column-gap: 10px;
+  row-gap: 6px;
+}
+.security-chart-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-size: var(--step--2);
+  font-variant-numeric: tabular-nums;
+  margin: -6px 0;
+}
+.security-chart-plot {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+.security-chart-grid {
+  position: absolute;
+  inset: 0;
+  border-top: 1px dashed var(--rule);
+  pointer-events: none;
+}
+.security-bar {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+.security-bar-fill {
+  display: block;
+  width: min(100%, 28px);
+  min-height: 0;
+  border-radius: 4px 4px 0 0;
+  background: var(--ink-3);
+  opacity: 0.55;
+  transition: opacity var(--dur-fast);
+}
+.security-bar.is-hover .security-bar-fill,
+.security-bar:focus-visible .security-bar-fill {
+  opacity: 1;
+}
+.security-bar:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.security-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  min-width: 170px;
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-2, var(--shadow-1));
+  font-size: var(--step--1);
+  pointer-events: none;
+  z-index: 5;
+  white-space: nowrap;
+}
+.security-tip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--ink-2);
+}
+.security-chart-x {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--step--2);
+}
+
+.security-table td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  vertical-align: top;
+}
+.security-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.security-tried {
+  font-size: var(--step--2);
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.security-you {
+  margin-left: 6px;
+}
+.security-detail {
+  max-width: 360px;
+  overflow-wrap: anywhere;
+  font-size: var(--step--1);
+}
+.security-empty {
+  margin: 0;
+  font-size: var(--step--1);
+}
+.security-blocks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.security-blocks li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.security-block-ip {
+  font-weight: 600;
+  margin-right: 8px;
+}
+.security-block-why {
+  font-size: var(--step--2);
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+.security-block-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto minmax(140px, 1.4fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+.security-events-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.security-events-head .system-h {
+  margin: 0;
+}
+.security-hint {
+  margin: 0;
+  font-size: var(--step--1);
+  max-width: 80ch;
+}
+.security-minutes .input {
+  width: 120px;
+}
+
+@media (max-width: 860px) {
+  .security-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .security-block-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 480px) {
+  .security-tiles {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .security-tile {
+    padding: 12px 14px;
+  }
+  .security-block-form {
+    grid-template-columns: 1fr;
+  }
+}
+/* Near the chart's edges the tooltip opens inwards, so it is never cut off. */
+.security-tip.tip-left {
+  transform: translateX(calc(-100% + 14px));
+}
+.security-tip.tip-right {
+  transform: translateX(-14px);
+}

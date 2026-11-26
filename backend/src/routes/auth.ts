@@ -37,6 +37,7 @@ import {
 import { checkSetupToken, clearSetupToken } from "../auth/setup";
 import { consumeInvite, createInvite, findInvite } from "../auth/invites";
 import { httpError } from "../lib/util";
+import { knownAddress, recordEvent } from "../services/security";
 import { publicSummarizerInfo } from "../services/summarySettings";
 import { publicMediaPolicy } from "../services/mediaCompaction";
 import { hasExternalWorkers } from "../services/workerKeys";
@@ -231,6 +232,7 @@ authRoutes.post("/login", async (c) => {
   const ip = c.get("clientIp");
   const input = await body(c, credentials, SMALL_JSON_LIMIT_BYTES);
   const userKey = input.username.toLowerCase();
+  c.set("attemptedUser", userKey);
   const retry = Math.max(loginIpLimiter.check(ip), loginUserLimiter.check(userKey));
   if (retry) {
     c.header("Retry-After", String(retry));
@@ -246,6 +248,12 @@ authRoutes.post("/login", async (c) => {
   loginUserLimiter.reset(userKey);
   if (awaitingVerification(user)) {
     httpError(403, "Confirm your email address first: open the link in the message we sent.", "email_unverified", { email: user.email });
+  }
+  // An administrator from an address never seen for the account: worth an alert (not on the very first sign-in).
+  if (user.role === "admin" && user.last_login_at && !knownAddress(user.id, ip)) {
+    recordEvent("admin_new_ip", { ip, username: user.username, userId: user.id, detail: c.req.header("user-agent")?.slice(0, 200) ?? null });
+  } else if (user.role === "admin") {
+    recordEvent("account", { ip, username: user.username, userId: user.id, detail: "administrator signed in" });
   }
   const { token } = createSession(user.id, ip, c.req.header("user-agent") ?? null);
   setSessionCookie(c, token);
@@ -294,6 +302,7 @@ authRoutes.post("/invites/:token/accept", async (c) => {
       db.query("UPDATE users SET password_hash = $h, updated_at = $t WHERE id = $id").run({ id: target.id, h: passwordHash, t: now() });
       deleteUserSessions(target.id);
     })();
+    recordEvent("account", { ip, username: target.username, userId: target.id, detail: "password reset with a link" });
     userId = target.id;
   } else {
     const input = await body(c, newAccount, SMALL_JSON_LIMIT_BYTES);
@@ -374,6 +383,7 @@ meRoutes.post("/password", async (c) => {
   if (p) httpError(422, p, "weak_password");
   await setPassword(user.id, input.next);
   deleteUserSessions(user.id, c.get("session").id);
+  recordEvent("account", { ip: c.get("clientIp"), username: user.username, userId: user.id, detail: "password changed" });
   return c.json({ ok: true });
 });
 

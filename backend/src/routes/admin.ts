@@ -58,6 +58,22 @@ import { addCredits, ledger, publicLedgerEntry } from "../services/credits";
 import { billingSettings, billingSettingsMeta, billingSettingsSchema, saveBillingSettings } from "../services/billingSettings";
 import { getOrder, publicEcpayInfo, publicOrder, queryOrder, type OrderRow } from "../services/ecpay";
 import { MailError, mailLocale, publicMailInfo, sendMail, testMail } from "../services/mail";
+import {
+  EVENT_KINDS,
+  blockIp,
+  defaultSecuritySettings,
+  normalizeIp,
+  publicAlertInfo,
+  recentEvents,
+  recordEvent,
+  saveSecuritySettings,
+  securityOverview,
+  securitySettings,
+  securitySettingsMeta,
+  securitySettingsSchema,
+  unblockIp,
+} from "../services/security";
+import { isIP } from "node:net";
 import { SMALL_JSON_LIMIT_BYTES, body } from "./validate";
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -111,6 +127,13 @@ adminRoutes.patch("/users/:id", async (c) => {
     t: now(),
   });
   if (input.disabled) deleteUserSessions(target.id);
+  const by = `by ${me.username}`;
+  if (input.role === "admin" && target.role !== "admin") {
+    recordEvent("account", { ip: c.get("clientIp"), username: target.username, userId: target.id, detail: `admin granted to ${target.username} ${by}` });
+  }
+  if (input.disabled && !target.disabled) {
+    recordEvent("account", { ip: c.get("clientIp"), username: target.username, userId: target.id, detail: `account disabled ${by}` });
+  }
   return c.json({ user: publicUser(findUserById(target.id)!) });
 });
 
@@ -504,4 +527,53 @@ adminRoutes.post("/users/:id/credits", async (c) => {
   );
   const balanceSec = db.transaction(() => addCredits(target.id, input.minutes * 60, { kind: "adjust", note: input.note, createdBy: c.get("user").id }))();
   return c.json({ balanceSec, user: publicUser(findUserById(target.id)!) });
+});
+
+// --------------------------------------------------------------- security
+
+adminRoutes.get("/security", (c) => {
+  return c.json({
+    ...securityOverview(),
+    settings: securitySettings(),
+    defaults: defaultSecuritySettings(),
+    meta: securitySettingsMeta(),
+    alerts: publicAlertInfo(),
+    // The address this administrator is using, so they do not block themselves.
+    yourIp: normalizeIp(c.get("clientIp")),
+    trustProxy: config.trustProxy,
+  });
+});
+
+adminRoutes.get("/security/events", (c) => {
+  const kind = c.req.query("kind") ?? "";
+  if (kind && !(kind in EVENT_KINDS)) httpError(422, "Unknown event kind.", "invalid_input");
+  return c.json({ events: recentEvents({ kind, ip: c.req.query("ip") ?? "", limit: Number(c.req.query("limit") ?? 100) || 100 }) });
+});
+
+adminRoutes.put("/security", async (c) => {
+  const input = await body(c, securitySettingsSchema, SMALL_JSON_LIMIT_BYTES);
+  try {
+    saveSecuritySettings(input, c.get("user").id);
+  } catch (e) {
+    httpError(422, e instanceof Error ? e.message : String(e), "invalid_input");
+  }
+  return c.json({ settings: securitySettings(), meta: securitySettingsMeta() });
+});
+
+adminRoutes.post("/security/blocks", async (c) => {
+  const input = await body(
+    c,
+    z.object({ ip: z.string().trim().max(64), minutes: z.number().int().min(5).max(525_600).nullable(), reason: z.string().trim().max(200).default("") }),
+    SMALL_JSON_LIMIT_BYTES,
+  );
+  const ip = normalizeIp(input.ip);
+  if (!isIP(ip)) httpError(422, "Enter an IP address.", "invalid_input");
+  if (ip === normalizeIp(c.get("clientIp"))) httpError(409, "That is the address you are using now.", "self");
+  blockIp(ip, { reason: input.reason || `Blocked by ${c.get("user").username}`, minutes: input.minutes, auto: false, by: c.get("user").id });
+  return c.json({ ok: true });
+});
+
+adminRoutes.delete("/security/blocks/:ip", (c) => {
+  if (!unblockIp(decodeURIComponent(c.req.param("ip")))) httpError(404, "That address is not blocked.", "not_found");
+  return c.json({ ok: true });
 });
