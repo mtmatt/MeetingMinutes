@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUp, CheckCircle2, Coins, Plus, Receipt, RefreshCw, Store, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowUp, CheckCircle2, Coins, ExternalLink, FileText, Plus, Receipt, RefreshCw, Store, Trash2, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { AdminOrder, BillingSettings, CreditPackage, PaymentMethod } from "../api/types";
@@ -8,6 +8,7 @@ import { useToast } from "../components/Toast";
 import { useI18n, type TKey } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { dateTime, pointsText, relative, twd } from "../lib/format";
+import { termsTemplate } from "../lib/termsTemplate";
 
 const METHODS: PaymentMethod[] = ["Credit", "ATM", "CVS"];
 const METHOD_LABEL = { Credit: "billing.methodCredit", ATM: "billing.methodATM", CVS: "billing.methodCVS" } as const;
@@ -198,6 +199,8 @@ export function AdminBilling() {
           <span className="field-hint">{t("sales.methodsHint")}</span>
         </fieldset>
 
+        <TermsEditor rates={form.rates} />
+
         <div className="field">
           <label htmlFor="terms-url">{t("sales.termsUrl")}</label>
           <input
@@ -209,7 +212,7 @@ export function AdminBilling() {
             aria-invalid={!termsOk}
             onChange={(e) => setForm({ ...form, termsUrl: e.target.value.trim() })}
           />
-          <span className="field-hint">{t("sales.termsHint")}</span>
+          <span className="field-hint">{t("sales.termsUrlHint")}</span>
         </div>
 
         <div className="model-actions">
@@ -282,6 +285,74 @@ function RatesEditor({ rates, onChange }: { rates: BillingSettings["rates"]; onC
       {Number.isFinite(hour) && Number.isFinite(summary) && (
         <p className="faint sales-hint">{t("sales.rateExample", { transcription: pointsText(hour, locale), summary: pointsText(summary, locale) })}</p>
       )}
+    </div>
+  );
+}
+
+/** The terms of sale shown at /terms: written here in Markdown, saved on their own. */
+function TermsEditor({ rates }: { rates: BillingSettings["rates"] }) {
+  const { t, locale } = useI18n();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["admin", "terms"], queryFn: api.adminTerms });
+  const [text, setText] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (data && text == null) setText(data.markdown);
+  }, [data, text]);
+  if (!data || text == null) return <div className="skeleton" style={{ height: 120 }} />;
+  const dirty = text !== data.markdown;
+
+  const insertTemplate = async () => {
+    if (text.trim()) {
+      const ok = await confirm({ title: t("sales.templateReplaceTitle"), body: t("sales.templateReplaceBody"), confirmLabel: t("sales.templateReplace") });
+      if (!ok) return;
+    }
+    setText(termsTemplate(locale, rates));
+  };
+  const save = async () => {
+    setBusy(true);
+    try {
+      const saved = await api.adminSaveTerms(text);
+      qc.setQueryData(["admin", "terms"], saved);
+      await Promise.all([qc.invalidateQueries({ queryKey: ["auth"] }), qc.invalidateQueries({ queryKey: ["terms"] })]);
+      toast.show(t("common.saved"));
+    } catch (e) {
+      toast.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="field sales-terms">
+      <div className="sales-terms-head">
+        <label htmlFor="terms-text">{t("sales.terms")}</label>
+        <span className="sales-terms-actions">
+          <button type="button" className="btn btn-sm btn-ghost" onClick={insertTemplate}>
+            <FileText /> {t("sales.insertTemplate")}
+          </button>
+          {data.markdown.trim() && (
+            <a className="btn btn-sm btn-ghost" href="/terms" target="_blank" rel="noopener">
+              <ExternalLink /> {t("sales.viewTerms")}
+            </a>
+          )}
+        </span>
+      </div>
+      <textarea id="terms-text" className="textarea sales-terms-text" rows={14} value={text} placeholder={t("sales.termsPlaceholder")} onChange={(e) => setText(e.target.value)} />
+      <span className="field-hint">{t("sales.termsHint")}</span>
+      <div className="model-actions">
+        <button type="button" className="btn btn-primary" onClick={save} disabled={busy || !dirty}>
+          {busy && <span className="spinner" />} {t("sales.saveTerms")}
+        </button>
+        {dirty && (
+          <button type="button" className="btn btn-ghost" onClick={() => setText(data.markdown)}>
+            {t("model.discard")}
+          </button>
+        )}
+        <span className="faint model-saved">{data.updatedAt ? t("sales.termsSaved", { when: relative(data.updatedAt, t, locale) }) : ""}</span>
+      </div>
     </div>
   );
 }

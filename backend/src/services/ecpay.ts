@@ -45,6 +45,9 @@ export interface OrderRow {
   created_at: number;
   updated_at: number;
   paid_at: number | null;
+  /** When the buyer agreed to the terms (and to delivery at once), and which version (the terms' save time). */
+  terms_accepted_at: number | null;
+  terms_version: number | null;
 }
 
 /** ECPay's URL encoding: .NET's HttpUtility.UrlEncode, lower-cased. */
@@ -95,15 +98,27 @@ export function siteBase(requestUrl: string): string {
   return config.publicUrl || new URL(requestUrl).origin;
 }
 
-export function createOrder(userId: string, pkg: CreditPackage, locale: "en" | "zh-TW"): OrderRow {
+export function createOrder(userId: string, pkg: CreditPackage, locale: "en" | "zh-TW", terms: { version: number | null } | null = null): OrderRow {
   const id = orderId();
   const t = now();
   // Shown on ECPay's page and on card statements (at most 200 characters, no # which ECPay uses to separate items).
   const itemName = locale === "en" ? `Meeting Minutes ${pkg.points} points` : `會議紀錄點數 ${pkg.points} 點`;
   db.query(
-    `INSERT INTO payment_orders (id, user_id, package_id, points, amount, item_name, status, mode, merchant_id, created_at, updated_at)
-     VALUES ($id, $u, $p, $m, $a, $name, 'pending', $mode, $mid, $t, $t)`,
-  ).run({ id, u: userId, p: pkg.id, m: pkg.points, a: pkg.price, name: itemName, mode: config.ecpay.mode, mid: config.ecpay.merchantId, t });
+    `INSERT INTO payment_orders (id, user_id, package_id, points, amount, item_name, status, mode, merchant_id, created_at, updated_at, terms_accepted_at, terms_version)
+     VALUES ($id, $u, $p, $m, $a, $name, 'pending', $mode, $mid, $t, $t, $ta, $tv)`,
+  ).run({
+    id,
+    u: userId,
+    p: pkg.id,
+    m: pkg.points,
+    a: pkg.price,
+    name: itemName,
+    mode: config.ecpay.mode,
+    mid: config.ecpay.merchantId,
+    t,
+    ta: terms ? t : null,
+    tv: terms?.version ?? null,
+  });
   return getOrder(id)!;
 }
 
@@ -258,6 +273,7 @@ export function publicOrder(o: OrderRow) {
     error: o.error,
     createdAt: o.created_at,
     paidAt: o.paid_at,
+    termsAcceptedAt: o.terms_accepted_at,
   };
 }
 

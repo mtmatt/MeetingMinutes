@@ -56,6 +56,7 @@ import {
 import type { AppEnv, MeetingRow, UserRow } from "../types";
 import { MILLI, addCredits, ledger, publicLedgerEntry } from "../services/credits";
 import { billingSettings, billingSettingsMeta, billingSettingsSchema, saveBillingSettings } from "../services/billingSettings";
+import { TERMS_MAX, saveTerms, termsText, termsUpdatedAt } from "../services/terms";
 import { getOrder, publicEcpayInfo, publicOrder, queryOrder, type OrderRow } from "../services/ecpay";
 import { MailError, mailLocale, publicMailInfo, sendMail, testMail } from "../services/mail";
 import {
@@ -476,6 +477,14 @@ adminRoutes.put("/billing", async (c) => {
   const input = await body(c, billingSettingsSchema);
   saveBillingSettings(input, c.get("user").id);
   return c.json({ settings: billingSettings(), meta: billingSettingsMeta() });
+});
+
+adminRoutes.get("/terms", (c) => c.json({ markdown: termsText(), updatedAt: termsUpdatedAt() }));
+
+adminRoutes.put("/terms", async (c) => {
+  const input = await body(c, z.object({ markdown: z.string().max(TERMS_MAX) }));
+  saveTerms(input.markdown, c.get("user").id);
+  return c.json({ markdown: termsText(), updatedAt: termsUpdatedAt() });
 });
 
 adminRoutes.post("/mail/test", async (c) => {

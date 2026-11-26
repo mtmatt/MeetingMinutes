@@ -20,6 +20,7 @@ import {
   type OrderRow,
 } from "../services/ecpay";
 import { mailLocale } from "../services/mail";
+import { termsLink, termsUpdatedAt } from "../services/terms";
 import type { AppEnv } from "../types";
 import { SMALL_JSON_LIMIT_BYTES, body } from "./validate";
 
@@ -56,7 +57,8 @@ billingRoutes.get("/", (c) => {
     testMode: config.ecpay.mode === "stage",
     packages: s.packages,
     methods: s.methods,
-    termsUrl: s.termsUrl || null,
+    // Where the terms of sale are read ("/terms" on this site, or an outside address); buying needs them agreed to.
+    termsUrl: termsLink(),
     orders: orders.map(publicOrder),
     ledger: ledger(user.id, 100).map(publicLedgerEntry),
   });
@@ -67,13 +69,20 @@ billingRoutes.post("/orders", async (c) => {
   const user = c.get("user");
   if (!billingOpen()) httpError(409, "Minutes are not on sale on this site.", "billing_closed");
   if (user.billing !== "prepaid") httpError(409, "This account is not charged for transcription.", "not_prepaid");
-  const input = await body(c, z.object({ packageId: z.string().max(40), locale: z.enum(["en", "zh-TW"]).nullable().default(null) }), SMALL_JSON_LIMIT_BYTES);
+  const input = await body(
+    c,
+    z.object({ packageId: z.string().max(40), locale: z.enum(["en", "zh-TW"]).nullable().default(null), acceptTerms: z.boolean().default(false) }),
+    SMALL_JSON_LIMIT_BYTES,
+  );
+  // With terms of sale, the buyer agrees to them (and to the points being delivered at once) before paying.
+  const terms = termsLink();
+  if (terms && !input.acceptTerms) httpError(422, "Agree to the terms of sale first.", "terms_required");
   const pkg = billingSettings().packages.find((p) => p.id === input.packageId);
   if (!pkg) httpError(404, "That package is no longer offered.", "not_found");
   const retry = orderLimiter.check(user.id);
   if (retry) httpError(429, `Too many orders. Try again in ${Math.ceil(retry / 60)} min.`, "rate_limited");
   orderLimiter.hit(user.id);
-  const order = createOrder(user.id, pkg, mailLocale(input.locale ?? user.locale));
+  const order = createOrder(user.id, pkg, mailLocale(input.locale ?? user.locale), terms ? { version: termsUpdatedAt() } : null);
   return c.json({ order: publicOrder(order), checkout: checkoutForm(order, siteBase(c.req.url)) }, 201);
 });
 

@@ -434,4 +434,10 @@ export const migrations: string[] = [
     created_by TEXT REFERENCES users(id) ON DELETE SET NULL
   );
   `,
+  // A buyer's agreement to the terms of sale (and that points are delivered at once, so the
+  // seven-day withdrawal does not apply), with the version of the terms they agreed to.
+  `
+  ALTER TABLE payment_orders ADD COLUMN terms_accepted_at INTEGER;
+  ALTER TABLE payment_orders ADD COLUMN terms_version INTEGER;
+  `,
 ];

@@ -29,6 +29,8 @@ interface AuthValue {
   registration: boolean;
   /** "Forgot password" emails a link (else: ask the administrator). */
   passwordReset: boolean;
+  /** The terms of sale: "/terms" on this site, an outside address, or null. */
+  termsUrl: string | null;
   setUser: (u: User | null) => void;
 }
 
@@ -88,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     siteOrigin: q.data?.siteOrigin ?? null,
     registration: !!q.data?.registration,
     passwordReset: !!q.data?.passwordReset,
+    termsUrl: q.data?.termsUrl ?? null,
     setUser: (u) => {
       qc.setQueryData(["auth"], (old: AuthState | undefined) => ({ ...emptyState, ...old, needsSetup: false, user: u }));
       if (!u) qc.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });
