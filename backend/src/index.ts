@@ -7,7 +7,7 @@ import { sweepTransfers } from "./services/mediaTransfer";
 import { reapStaleJobs } from "./services/meetings";
 import { kick, recoverSummaries } from "./services/summarizer";
 import { seedBuiltinTemplates } from "./services/templates";
-import { bindHelp, redirectHandler } from "./redirect";
+import { bindHelp, handoffHandler, redirectHandler } from "./redirect";
 
 seedBuiltinTemplates();
 recoverSummaries();
@@ -55,7 +55,7 @@ const redirects = [
       // Handoff: the whole site, whose pages move to PUBLIC_URL themselves (after any
       // recordings left in this browser are uploaded). Redirect: pages get a 308, and
       // the worker API stays here for workers enrolled with this address.
-      fetch: config.redirectMode === "handoff" ? (req, srv) => app.fetch(req, { server: srv }) : redirectHandler({ serveWorkerApi: true, app }),
+      fetch: config.redirectMode === "handoff" ? handoffHandler({ app }) : redirectHandler({ serveWorkerApi: true, app }),
       maxRequestBodySize: Math.max(64 * 1024 * 1024, config.uploadChunkBytes + 1024 * 1024),
       idleTimeout: 0,
     }),
