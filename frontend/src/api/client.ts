@@ -4,6 +4,8 @@ import type {
   ApiModelProbe,
   ApiModelSettings,
   LocalModelSettings,
+  Preset,
+  PresetInput,
   LocalModelStatus,
   MeetingDetail,
   MeetingSummary,
@@ -95,6 +97,7 @@ export async function quietGet<T>(path: string): Promise<T> {
 const post = <T>(p: string, b: Json = {}) => request<T>("POST", p, b);
 const patch = <T>(p: string, b: Json) => request<T>("PATCH", p, b);
 const del = <T>(p: string) => request<T>("DELETE", p);
+const put = <T>(p: string, b: Json) => request<T>("PUT", p, b);
 
 export const api = {
   // auth
@@ -109,6 +112,8 @@ export const api = {
       transcriber?: TranscriberInfo | null;
       mediaPolicy?: MediaPolicy | null;
       externalWorkers?: boolean | null;
+      /** The site's address (PUBLIC_URL's origin); null when not configured. */
+      siteOrigin?: string | null;
     }>("/auth/state"),
   login: (username: string, password: string) => post<{ user: User }>("/auth/login", { username, password }),
   logout: () => post<{ ok: true }>("/auth/logout"),
@@ -120,7 +125,7 @@ export const api = {
     post<{ user: User }>(`/auth/invites/${encodeURIComponent(token)}/accept`, b),
 
   // me
-  updateMe: (b: { displayName?: string; locale?: string | null }) => patch<{ user: User }>("/me", b),
+  updateMe: (b: { displayName?: string; locale?: string | null; theme?: "system" | "light" | "dark" | null }) => patch<{ user: User }>("/me", b),
   changePassword: (current: string, next: string) => post<{ ok: true }>("/me/password", { current, next }),
   sessions: () => get<{ sessions: SessionInfo[] }>("/me/sessions"),
   revokeSession: (id: string) => del<{ ok: true }>(`/me/sessions/${id}`),
@@ -170,6 +175,10 @@ export const api = {
 
   // templates
   templates: () => get<{ templates: Template[] }>("/templates"),
+  presets: () => get<{ presets: Preset[] }>("/presets"),
+  createPreset: (b: PresetInput) => post<{ preset: Preset; presets: Preset[] }>("/presets", b),
+  updatePreset: (id: string, b: PresetInput) => put<{ preset: Preset; presets: Preset[] }>(`/presets/${id}`, b),
+  deletePreset: (id: string) => del<{ presets: Preset[] }>(`/presets/${id}`),
   createTemplate: (b: { name: string; description: string; body: string }) => post<{ template: Template }>("/templates", b),
   updateTemplate: (id: string, b: { name?: string; description?: string; body?: string }) =>
     patch<{ template: Template }>(`/templates/${id}`, b),

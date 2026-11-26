@@ -95,6 +95,7 @@ export function publicUser(u: UserRow) {
     role: u.role,
     disabled: !!u.disabled,
     locale: u.locale,
+    theme: u.theme,
     createdAt: u.created_at,
     lastLoginAt: u.last_login_at,
   };

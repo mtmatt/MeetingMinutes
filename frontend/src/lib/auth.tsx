@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, type ReactNode } from "react";
 import { api, setUnauthorizedHandler } from "../api/client";
 import type { MediaPolicy, SummarizerInfo, TranscriberInfo, User } from "../api/types";
 import { useI18n } from "../i18n";
+import { currentTheme, isThemePref, setTheme, setThemePersister } from "./theme";
 
 interface AuthValue {
   user: User | null;
@@ -22,6 +23,8 @@ interface AuthValue {
   mediaPolicy: MediaPolicy | null;
   /** Recordings may be processed on other machines an administrator connected. */
   externalWorkers: boolean;
+  /** The site's address; a page opened at an earlier one moves there. */
+  siteOrigin: string | null;
   setUser: (u: User | null) => void;
 }
 
@@ -46,6 +49,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user?.locale) setLocale(user.locale);
   }, [user?.locale, setLocale]);
 
+  // The theme follows the account: its saved choice applies here, and a choice made here is saved to it.
+  const signedIn = !!user;
+  useEffect(() => {
+    if (isThemePref(user?.theme)) setTheme(user.theme, false);
+  }, [user?.theme]);
+  useEffect(() => {
+    if (!signedIn) return setThemePersister(null);
+    setThemePersister((theme) => {
+      void api.updateMe({ theme }).then(
+        ({ user: u }) => qc.setQueryData(["auth"], (old: AuthState | undefined) => (old ? { ...old, user: u } : old)),
+        () => undefined,
+      );
+    });
+    return () => setThemePersister(null);
+  }, [signedIn, qc]);
+  // An account from before themes were kept with it: this browser's choice becomes the account's.
+  const themeUnset = signedIn && user?.theme == null;
+  useEffect(() => {
+    if (themeUnset && currentTheme() !== "system") setTheme(currentTheme());
+  }, [themeUnset]);
+
   const value: AuthValue = {
     user,
     needsSetup: q.data?.needsSetup ?? false,
@@ -57,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     transcriber: q.data?.transcriber ?? null,
     mediaPolicy: q.data?.mediaPolicy ?? null,
     externalWorkers: !!q.data?.externalWorkers,
+    siteOrigin: q.data?.siteOrigin ?? null,
     setUser: (u) => {
       qc.setQueryData(["auth"], (old: AuthState | undefined) => ({ ...emptyState, ...old, needsSetup: false, user: u }));
       if (!u) qc.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });

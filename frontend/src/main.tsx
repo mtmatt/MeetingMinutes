@@ -17,6 +17,7 @@ import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router";
 import { preloadPages, router } from "./App";
 import { ConfirmProvider } from "./components/Modal";
+import { OriginHandoff } from "./components/OriginHandoff";
 import { ToastProvider } from "./components/Toast";
 import { I18nProvider } from "./i18n";
 import { AuthProvider } from "./lib/auth";
@@ -42,6 +43,7 @@ createRoot(document.getElementById("root")!).render(
         <ToastProvider>
           <ConfirmProvider>
             <AuthProvider>
+              <OriginHandoff />
               <RouterProvider router={router} />
             </AuthProvider>
           </ConfirmProvider>

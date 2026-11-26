@@ -8,6 +8,8 @@ export interface User {
   role: Role;
   disabled: boolean;
   locale: Locale | null;
+  /** Colour theme kept with the account; null until chosen. */
+  theme: "system" | "light" | "dark" | null;
   createdAt: number;
   lastLoginAt: number | null;
 }
@@ -32,6 +34,20 @@ export interface SummaryRequest {
   prompt: string;
   outputLanguage: OutputLanguage;
 }
+
+/** Named settings for adding a recording, applied in one click; the default one by itself. */
+export interface Preset {
+  id: string;
+  name: string;
+  options: TranscribeOptions;
+  /** The automatic summary; null for none. */
+  summary: SummaryRequest | null;
+  isDefault: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type PresetInput = Pick<Preset, "name" | "options" | "summary" | "isDefault">;
 
 export interface MeetingSummary {
   id: string;
