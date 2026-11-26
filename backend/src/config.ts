@@ -174,21 +174,62 @@ function ports(name: string): number[] {
   });
 }
 
+export interface SmtpServer {
+  host: string;
+  port: number;
+  /** TLS from the start (port 465); otherwise STARTTLS, which is required. */
+  secure: boolean;
+  user: string;
+  pass: string;
+}
+
 /**
  * Sending email (address verification for people who sign up, password resets,
- * payment receipts, security alerts). SMTP_URL is the mail server with its
- * login, e.g. smtps://user:app-password@smtp.gmail.com:465 or
- * smtp://user:pass@email-smtp.ap-northeast-1.amazonaws.com:587; MAIL_FROM the
- * sender, e.g. "Meeting Minutes <minutes@example.com>". MAIL_TRANSPORT=log
- * writes messages to the server log instead (trying it out without a server).
+ * payment receipts, security alerts), through a mail server given either
+ * - piece by piece: SMTP_HOST, SMTP_PORT (587, or 465 for TLS from the start),
+ *   SMTP_USER, SMTP_PASS (with Gmail, an app password); or
+ * - as one address: SMTP_URL, e.g. smtps://user:app-password@smtp.gmail.com:465.
+ * The sender is MAIL_FROM (or SMTP_FROM), e.g. "Meeting Minutes <minutes@example.com>".
+ * MAIL_TRANSPORT=log writes messages to the server log instead (trying it out).
  */
 function mailSettings() {
-  const smtpUrl = str("SMTP_URL", "").trim();
-  if (smtpUrl && !/^smtps?:\/\//.test(smtpUrl)) throw new Error("SMTP_URL must start with smtp:// or smtps://");
   const transport = oneOf("MAIL_TRANSPORT", ["smtp", "log"] as const, "smtp");
-  const from = str("MAIL_FROM", "").trim();
-  if (transport === "smtp" && smtpUrl && !from) throw new Error("Set MAIL_FROM (the sender address) together with SMTP_URL.");
-  return { transport, smtpUrl, from: from || "Meeting Minutes <minutes@localhost>" };
+  const from = (str("MAIL_FROM", "") || str("SMTP_FROM", "")).trim();
+  let server: SmtpServer | null = null;
+  const smtpUrl = str("SMTP_URL", "").trim();
+  const host = str("SMTP_HOST", "").trim();
+  if (smtpUrl && host) throw new Error("Set either SMTP_URL or SMTP_HOST (with SMTP_PORT, SMTP_USER, SMTP_PASS), not both.");
+  if (smtpUrl) {
+    if (!/^smtps?:\/\//.test(smtpUrl)) throw new Error("SMTP_URL must start with smtp:// or smtps://");
+    let u: URL;
+    try {
+      u = new URL(smtpUrl);
+    } catch {
+      throw new Error("SMTP_URL is not a valid address (write @ in the user name or password as %40).");
+    }
+    const secure = u.protocol === "smtps:";
+    server = {
+      host: u.hostname,
+      port: u.port ? Number(u.port) : secure ? 465 : 587,
+      secure,
+      user: decodeURIComponent(u.username),
+      pass: decodeURIComponent(u.password),
+    };
+  } else if (host) {
+    const port = int("SMTP_PORT", 587);
+    if (port < 1 || port > 65535) throw new Error(`SMTP_PORT must be a port number, got ${port}`);
+    server = {
+      host,
+      port,
+      secure: bool("SMTP_SECURE", port === 465),
+      user: str("SMTP_USER", "").trim(),
+      // App passwords are often copied with their spaces ("abcd efgh ijkl mnop"); Gmail accepts them either way.
+      pass: str("SMTP_PASS", ""),
+    };
+    if (!!server.user !== !!server.pass) throw new Error("Set SMTP_USER and SMTP_PASS together (or neither, for a server that needs no login).");
+  }
+  if (transport === "smtp" && server && !from) throw new Error("Set MAIL_FROM (or SMTP_FROM), the sender address, together with the mail server.");
+  return { transport, server, from: from || "Meeting Minutes <minutes@localhost>" };
 }
 
 /**
