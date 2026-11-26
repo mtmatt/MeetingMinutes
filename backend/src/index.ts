@@ -7,13 +7,33 @@ import { sweepTransfers } from "./services/mediaTransfer";
 import { reapStaleJobs } from "./services/meetings";
 import { kick, recoverSummaries } from "./services/summarizer";
 import { seedBuiltinTemplates } from "./services/templates";
+import { bindHelp, redirectHandler } from "./redirect";
 
 seedBuiltinTemplates();
 recoverSummaries();
 
 const app = createApp();
 
-const server = Bun.serve({
+if ((config.redirectPorts.length || config.httpRedirectPort) && !config.publicUrl) {
+  console.error("REDIRECT_PORTS and HTTP_REDIRECT_PORT send people to PUBLIC_URL: set PUBLIC_URL (e.g. https://minutes.example.com).");
+  process.exit(1);
+}
+if (config.redirectPorts.length && !config.tls) {
+  console.error("REDIRECT_PORTS are HTTPS ports with the site's certificate: set TLS_CERT_FILE and TLS_KEY_FILE (or use HTTP_REDIRECT_PORT for plain HTTP).");
+  process.exit(1);
+}
+
+/** Bun.serve, or a clear message and exit when the port cannot be opened. */
+function listen<T extends Parameters<typeof Bun.serve>[0]>(port: number, options: T) {
+  try {
+    return Bun.serve(options);
+  } catch (e) {
+    console.error(bindHelp(port, e));
+    process.exit(1);
+  }
+}
+
+const server = listen(config.port, {
   hostname: config.host,
   port: config.port,
   fetch: (req, srv) => app.fetch(req, { server: srv }),
@@ -23,6 +43,25 @@ const server = Bun.serve({
   idleTimeout: 0,
   tls: config.tls ? { cert: Bun.file(config.tls.cert), key: Bun.file(config.tls.key) } : undefined,
 });
+
+// The site's earlier HTTPS address(es) and plain HTTP: they send people to PUBLIC_URL.
+const tlsFiles = config.tls ? { cert: Bun.file(config.tls.cert), key: Bun.file(config.tls.key) } : undefined;
+const redirects = [
+  ...config.redirectPorts.map((port) =>
+    listen(port, {
+      hostname: config.host,
+      port,
+      tls: tlsFiles,
+      // The worker API stays here for workers enrolled with this address.
+      fetch: redirectHandler({ serveWorkerApi: true, app }),
+      maxRequestBodySize: 64 * 1024 * 1024,
+      idleTimeout: 0,
+    }),
+  ),
+  ...(config.httpRedirectPort
+    ? [listen(config.httpRedirectPort, { hostname: config.host, port: config.httpRedirectPort, fetch: redirectHandler({ serveWorkerApi: false, app }) })]
+    : []),
+];
 
 // With built-in HTTPS, local GPU workers use a loopback HTTP port that serves
 // only the worker API (bearer-token authenticated), so they need no certificate.
@@ -70,6 +109,7 @@ if (config.allowedHosts.length) {
   console.log(`Answering only to: ${config.allowedHosts.join(", ")} (and localhost from this machine); other hosts get 421`);
 }
 if (internal) console.log(`Worker API on http://127.0.0.1:${internal.port} (loopback only)`);
+for (const r of redirects) console.log(`Port ${r.port}: sends people to ${config.publicUrl}`);
 const loopback = ["127.0.0.1", "localhost", "::1"].includes(config.host);
 if (config.tls && config.trustProxy) {
   console.warn("");

@@ -205,6 +205,8 @@ $HEAD
      daily renewal); then as root:  ~/.acme.sh/acme.sh --remove -d <domain>
    Whichever account runs acme.sh must be able to write $DATA_DIR/tls.
 
-No port below 1024 is used (the site is on 8443, the worker API on 8788 on
-loopback), so $NAME needs no extra privileges.
+With the site on a port above 1024 (8443, and the worker API on 8788 on
+loopback), $NAME needs no extra privileges. For the standard port 443 (and 80
+for plain http), allow unprivileged users to open them, once:
+  echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/60-meetingminutes-ports.conf && sudo sysctl --system
 EOF

@@ -45,5 +45,13 @@ Certificate installed in $dir. Make sure .env has:
   TLS_KEY_FILE=data/tls/server.key
   PUBLIC_URL=https://$domain:8443
 
+Or on the standard port, with the old address sending people over (see README,
+"On the standard port 443"):
+
+  PORT=443
+  PUBLIC_URL=https://$domain
+  REDIRECT_PORTS=8443
+  HTTP_REDIRECT_PORT=80
+
 acme.sh restarts the web server (scripts/restart.sh web) after each renewal.
 EON

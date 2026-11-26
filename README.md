@@ -307,6 +307,25 @@ The web server can serve HTTPS itself on any unprivileged port, so this needs no
 
 3. Restart `scripts/start.sh` and `scripts/worker.sh`. People open `https://203.0.113.10:8443`. Plain `http://` on that port does not work.
 
+**On the standard port 443 instead.** With a domain name, people can open `https://minutes.example.com` without a port number:
+
+```
+PORT=443
+PUBLIC_URL=https://minutes.example.com
+REDIRECT_PORTS=8443          # the earlier port: links to it keep working
+HTTP_REDIRECT_PORT=80        # optional: http://minutes.example.com goes to https
+```
+
+Each port in `REDIRECT_PORTS` serves HTTPS with the same certificate and answers every page with a permanent redirect (308, cached for a day) to the same path on `PUBLIC_URL`, so bookmarks and shared links to `:8443` still work. The worker API (`/internal/`) is still answered there rather than redirected, so workers on other machines enrolled with the old address keep working; move them to the new one when convenient (`scripts/worker.sh enroll` again, or edit `serverUrl` in their `data/worker-credential.json`). `HTTP_REDIRECT_PORT` redirects everything, the worker API included, since nothing should travel unencrypted. Requests for another host name (the bare IP address) get 421 on these ports too.
+
+Ports below 1024 need a privilege an ordinary user lacks. Rather than running the site as root, allow unprivileged users to open them, once, as root:
+
+```bash
+echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/60-meetingminutes-ports.conf && sudo sysctl --system
+```
+
+(`=443` if you do not use port 80.) If a port cannot be opened, the server says so and prints this command. Open the new ports in the firewall (`sudo ufw allow 443/tcp`, and `80/tcp`), and keep the old one open while it redirects. A browser keeps unuploaded recordings per address, so upload or download any waiting recording at the old address before switching.
+
 GPU workers on the same machine connect to a separate plain-HTTP port, `INTERNAL_PORT` (default 8788). It listens on 127.0.0.1 only, serves nothing but the token-protected worker API, and workers pick it up automatically when `TLS_CERT_FILE` is set. A worker on another machine needs `MM_SERVER_URL` pointed at a reachable address, for example through an SSH tunnel.
 
 **Certificate warning.** Browsers do not know your team CA, so they show a warning. There are two ways to handle it:
@@ -356,7 +375,7 @@ Two more steps keep the IP address from revealing the site:
 
 ### Running as a normal user
 
-Nothing here needs root: the site listens on a port above 1024 (8443 in the examples, and 8788 on loopback for the workers on the same machine), so no capabilities, `setcap` or `authbind` are involved. Run it as a user of its own. The web server parses requests from the internet and the worker decodes uploaded files with ffmpeg; as root, a flaw in either is a flaw in the whole machine, while a dedicated user reaches only this project and its data. `scripts/start.sh`, `scripts/worker.sh` and `scripts/restart.sh` print a warning when they are run as root (and still run).
+Nothing here needs root: the site listens on a port above 1024 (8443 in the examples, and 8788 on loopback for the workers on the same machine), so no capabilities, `setcap` or `authbind` are involved. For the standard port 443 (and 80), lower `net.ipv4.ip_unprivileged_port_start` once (see "On the standard port 443" above) instead of running as root. Run it as a user of its own. The web server parses requests from the internet and the worker decodes uploaded files with ffmpeg; as root, a flaw in either is a flaw in the whole machine, while a dedicated user reaches only this project and its data. `scripts/start.sh`, `scripts/worker.sh` and `scripts/restart.sh` print a warning when they are run as root (and still run).
 
 On a server that was set up as root, `scripts/setup-user.sh` makes the change. Run it once, as root:
 
