@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Coins, Mail, Plus, Receipt, RefreshCw, Store, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, ArrowUp, CheckCircle2, Coins, Plus, Receipt, RefreshCw, Store, Trash2, UserPlus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { AdminOrder, BillingSettings, CreditPackage, PaymentMethod } from "../api/types";
@@ -314,12 +314,19 @@ function MailStatus({ mail }: { mail: { configured: boolean; transport: "smtp" |
         </strong>
         <p className="faint">{mail.configured ? t("sales.mailHint") : t("sales.mailMissingHint")}</p>
         {mail.configured && (
-          <div className="sales-test-mail">
+          <form
+            className="sales-test-mail"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!busy && to.trim()) void send();
+            }}
+          >
             <input className="input" type="email" value={to} placeholder={t("sales.testTo")} aria-label={t("sales.testTo")} onChange={(e) => setTo(e.target.value)} />
-            <button type="button" className="btn btn-sm" onClick={send} disabled={busy || !to.trim()}>
-              {busy ? <span className="spinner" /> : <Mail />} {t("sales.sendTest")}
+            {/* Round, like a chat's send button, as tall as the field. */}
+            <button type="submit" className="send-round" disabled={busy || !to.trim()} aria-label={t("sales.sendTest")} title={t("sales.sendTest")}>
+              {busy ? <span className="spinner" /> : <ArrowUp />}
             </button>
-          </div>
+          </form>
         )}
       </div>
     </div>
