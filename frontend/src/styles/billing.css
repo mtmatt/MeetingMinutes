@@ -931,3 +931,12 @@
   min-height: 260px;
   resize: vertical;
 }
+.security-noise {
+  align-items: flex-start;
+  font-size: var(--step--1);
+  line-height: 1.55;
+}
+.security-noise input {
+  margin-top: 2px;
+  flex: none;
+}

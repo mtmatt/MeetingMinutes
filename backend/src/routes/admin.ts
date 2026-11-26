@@ -61,6 +61,7 @@ import { getOrder, publicEcpayInfo, publicOrder, queryOrder, type OrderRow } fro
 import { MailError, mailLocale, publicMailInfo, sendMail, testMail } from "../services/mail";
 import {
   EVENT_KINDS,
+  noiseCount24h,
   blockIp,
   defaultSecuritySettings,
   normalizeIp,
@@ -558,7 +559,11 @@ adminRoutes.get("/security", (c) => {
 adminRoutes.get("/security/events", (c) => {
   const kind = c.req.query("kind") ?? "";
   if (kind && !(kind in EVENT_KINDS)) httpError(422, "Unknown event kind.", "invalid_input");
-  return c.json({ events: recentEvents({ kind, ip: c.req.query("ip") ?? "", limit: Number(c.req.query("limit") ?? 100) || 100 }) });
+  return c.json({
+    events: recentEvents({ kind, ip: c.req.query("ip") ?? "", limit: Number(c.req.query("limit") ?? 100) || 100, noise: c.req.query("noise") === "1" }),
+    // How many noise rows the list leaves out (the last 24 hours), so the page can say so.
+    hiddenNoise: kind ? 0 : noiseCount24h(),
+  });
 });
 
 adminRoutes.put("/security", async (c) => {

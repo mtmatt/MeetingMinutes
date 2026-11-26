@@ -313,7 +313,13 @@ function Blocks({ data }: { data: SecurityState }) {
 function RecentEvents() {
   const { t, locale } = useI18n();
   const [kind, setKind] = useState<"" | SecurityEventKind>("");
-  const { data } = useQuery({ queryKey: ["admin", "security", "events", kind], queryFn: () => api.adminSecurityEvents(kind, "", 100), refetchInterval: 30_000 });
+  // Scanners trying the bare IP address, and blocked addresses knocking again: hidden unless asked for.
+  const [noise, setNoise] = useState(false);
+  const { data } = useQuery({
+    queryKey: ["admin", "security", "events", kind, noise],
+    queryFn: () => api.adminSecurityEvents(kind, "", 100, noise),
+    refetchInterval: 30_000,
+  });
   return (
     <section className="card system-card">
       <div className="security-events-head">
@@ -329,6 +335,15 @@ function RecentEvents() {
           ))}
         </select>
       </div>
+      {!kind && (data?.hiddenNoise || noise) ? (
+        <label className="check security-noise">
+          <input type="checkbox" checked={noise} onChange={(e) => setNoise(e.target.checked)} />
+          <span>
+            {t("security.showNoise", { n: (data?.hiddenNoise ?? 0).toLocaleString() })}
+            <span className="faint"> {t("security.noiseHint")}</span>
+          </span>
+        </label>
+      ) : null}
       {data && data.events.length === 0 ? (
         <p className="faint security-empty">{t("security.noEvents")}</p>
       ) : (

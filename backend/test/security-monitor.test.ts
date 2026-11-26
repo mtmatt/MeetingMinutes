@@ -132,6 +132,19 @@ describe("security monitor", () => {
     unblockIp("203.0.113.77");
   });
 
+  test("requests naming another host are background noise: counted, but out of the event list unless asked for", async () => {
+    const admin = await adminClient();
+    const { recordEvent } = await import("../src/services/security");
+    recordEvent("wrong_host", { ip: "203.0.113.150", detail: "Host: 192.0.2.1" });
+    const hidden = (await (await admin.get("/api/admin/security/events?limit=500")).json()) as any;
+    expect(hidden.events.some((e: any) => e.kind === "wrong_host")).toBe(false);
+    expect(hidden.hiddenNoise).toBeGreaterThanOrEqual(1);
+    const shown = (await (await admin.get("/api/admin/security/events?limit=500&noise=1")).json()) as any;
+    expect(shown.events.some((e: any) => e.kind === "wrong_host" && e.ip === "203.0.113.150")).toBe(true);
+    const asked = (await (await admin.get("/api/admin/security/events?kind=wrong_host")).json()) as any;
+    expect(asked.events[0]).toMatchObject({ kind: "wrong_host" });
+  });
+
   test("forged payment notifications are recorded as serious", async () => {
     const ip = "203.0.113.99";
     const form = new URLSearchParams({ MerchantID: "3002607", MerchantTradeNo: "MMFAKE", RtnCode: "1", TradeAmt: "1", CheckMacValue: "A".repeat(64) }).toString();

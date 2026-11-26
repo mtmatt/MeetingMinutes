@@ -412,15 +412,27 @@ export function securityOverview(days = 14) {
   };
 }
 
-export function recentEvents(input: { kind?: string; ip?: string; limit?: number }) {
+/**
+ * Kinds that are background noise on any public server: requests naming another host
+ * (internet-wide scanners trying the bare IP address) and requests from addresses
+ * already blocked. Recorded and counted, but left out of the event list unless asked for.
+ */
+export const NOISE_KINDS: EventKind[] = ["wrong_host", "blocked"];
+
+/** `noise`: include NOISE_KINDS (always, when one of them is asked for by `kind`). */
+export function recentEvents(input: { kind?: string; ip?: string; limit?: number; noise?: boolean }) {
+  const kind = input.kind ?? "";
+  const hideNoise = !kind && !input.noise ? 1 : 0;
   return db
     .query<
       { id: number; kind: EventKind; severity: string; ip: string; username: string; detail: string | null; count: number; first_at: number; last_at: number },
-      { k: string; ip: string; n: number }
+      { k: string; ip: string; n: number; hide: number }
     >(
-      `SELECT * FROM security_events WHERE ($k = '' OR kind = $k) AND ($ip = '' OR ip = $ip) ORDER BY last_at DESC LIMIT $n`,
+      `SELECT * FROM security_events WHERE ($k = '' OR kind = $k) AND ($ip = '' OR ip = $ip)
+         AND NOT ($hide AND kind IN (${NOISE_KINDS.map((k) => `'${k}'`).join(",")}))
+       ORDER BY last_at DESC LIMIT $n`,
     )
-    .all({ k: input.kind ?? "", ip: input.ip ? normalizeIp(input.ip) : "", n: Math.min(500, input.limit ?? 100) })
+    .all({ k: kind, ip: input.ip ? normalizeIp(input.ip) : "", n: Math.min(500, input.limit ?? 100), hide: hideNoise })
     .map((e) => ({
       id: e.id,
       kind: e.kind,
@@ -432,6 +444,17 @@ export function recentEvents(input: { kind?: string; ip?: string; limit?: number
       firstAt: e.first_at,
       lastAt: e.last_at,
     }));
+}
+
+/** Noise requests in the last 24 hours (see NOISE_KINDS). */
+export function noiseCount24h(): number {
+  return (
+    db
+      .query<{ n: number | null }, { s: number }>(
+        `SELECT SUM(count) AS n FROM security_events WHERE last_at >= $s AND kind IN (${NOISE_KINDS.map((k) => `'${k}'`).join(",")})`,
+      )
+      .get({ s: now() - 24 * 3600_000 })?.n ?? 0
+  );
 }
 
 export function purgeSecurityEvents() {
