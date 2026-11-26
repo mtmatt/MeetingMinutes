@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowRight, CheckCircle2, Clock, Coins, CreditCard, ExternalLink, FileText, Landmark, RefreshCw, Store } from "lucide-react";
+import { AlertCircle, ArrowRight, CheckCircle2, Clock, Coins, CreditCard, ExternalLink, Eye, FileText, Landmark, RefreshCw, Store } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api } from "../api/client";
@@ -26,31 +26,55 @@ export function BillingPage() {
   if (!billing.data) return <p className="field-error">{t("common.error")}</p>;
   const b = billing.data;
   const prepaid = user?.billing === "prepaid";
+  // An administrator whose own account is free can look at the page as a buyer sees it
+  // (a new account with no points; buying turned off).
+  const canPreview = !prepaid && user?.role === "admin";
+  const preview = canPreview && params.get("preview") === "1";
 
   return (
     <div className="billing">
       <div className="page-head">
         <div>
           <h1>{t("billing.title")}</h1>
-          <p className="muted">{prepaid ? t("billing.lede") : t("billing.ledeExempt")}</p>
+          <p className="muted">{prepaid || preview ? t("billing.lede") : t("billing.ledeExempt")}</p>
         </div>
       </div>
       <hr className="rule-double" />
 
       {orderId && <OrderBanner id={orderId} />}
-      {prepaid ? (
+      {preview ? (
+        <>
+          <div className="billing-banner info billing-preview" role="status">
+            <Eye />
+            <div>
+              <strong>{t("billing.previewTitle")}</strong>
+              <p>{t("billing.previewBody")}</p>
+            </div>
+            <Link className="btn btn-sm" to="/billing">
+              {t("billing.previewEnd")}
+            </Link>
+          </div>
+          <Balance b={{ ...b, balance: 0, held: 0, available: 0 }} />
+          <Packages b={b} preview />
+        </>
+      ) : prepaid ? (
         <>
           <Balance b={b} />
           <PendingOrders orders={b.orders.filter((o) => o.status === "pending" && o.paymentInfo && o.id !== orderId)} />
           <Packages b={b} />
         </>
       ) : (
-        <div className="callout">
+        <div className="callout billing-exempt">
           <CheckCircle2 />
           <span>{t("billing.exemptBody")}</span>
+          {canPreview && (
+            <Link className="btn btn-sm" to="/billing?preview=1">
+              <Eye /> {t("billing.previewAsBuyer")}
+            </Link>
+          )}
         </div>
       )}
-      {b.ledger.length > 0 && <History ledger={b.ledger} />}
+      {!preview && b.ledger.length > 0 && <History ledger={b.ledger} />}
     </div>
   );
 }
@@ -99,7 +123,8 @@ function Rates({ rates }: { rates: BillingInfo["rates"] }) {
   );
 }
 
-function Packages({ b }: { b: BillingInfo }) {
+/** `preview`: an administrator looking as a buyer would; packages show even before the sale opens, and nothing can be bought. */
+function Packages({ b, preview = false }: { b: BillingInfo; preview?: boolean }) {
   const { t, locale } = useI18n();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
@@ -107,11 +132,11 @@ function Packages({ b }: { b: BillingInfo }) {
   const [agreed, setAgreed] = useState(false);
   const needsAgreement = !!b.termsUrl;
 
-  if (!b.onSale || b.packages.length === 0) {
+  if (b.packages.length === 0 || (!b.onSale && !preview)) {
     return (
       <section className="billing-section">
         <h2>{t("billing.buy")}</h2>
-        <p className="muted">{t("billing.notOnSale")}</p>
+        <p className="muted">{preview ? t("billing.previewNoPackages") : t("billing.notOnSale")}</p>
       </section>
     );
   }
@@ -121,6 +146,7 @@ function Packages({ b }: { b: BillingInfo }) {
   const summariesPriced = b.rates.perKInput > 0 || b.rates.perKOutput > 0;
 
   const buy = async (p: CreditPackage) => {
+    if (preview) return;
     setBusy(p.id);
     try {
       const { checkout } = await api.createOrder(p.id, locale, agreed);
@@ -137,6 +163,7 @@ function Packages({ b }: { b: BillingInfo }) {
       <div className="billing-section-head">
         <h2>{t("billing.buy")}</h2>
         {b.testMode && <span className="pill warn">{t("billing.testMode")}</span>}
+        {preview && !b.onSale && <span className="pill">{t("billing.previewNotOnSale")}</span>}
       </div>
       <Pitch b={b} lowest={hourPoints > 0 ? hourPoints * cheapest : null} />
       {needsAgreement && (
@@ -178,7 +205,9 @@ function Packages({ b }: { b: BillingInfo }) {
                 {b.packages.length > 1 && unit === cheapest && <span className="pill ok">{t("billing.bestValue")}</span>}
               </div>
               <div className="billing-package-point faint">{t("billing.perPoint", { price: unit.toLocaleString("en", { maximumFractionDigits: 2 }) })}</div>
-              <button type="button" className="btn btn-primary btn-block" onClick={() => buy(p)} disabled={busy != null || (needsAgreement && !agreed)}>
+              <button type="button" className="btn btn-primary btn-block" onClick={() => buy(p)} disabled={preview || busy != null || (needsAgreement && !agreed)}
+                title={preview ? t("billing.previewBuyOff") : undefined}
+              >
                 {busy === p.id ? <span className="spinner" /> : <CreditCard />} {t("billing.buyThis")}
               </button>
             </div>

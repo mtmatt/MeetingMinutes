@@ -225,6 +225,27 @@
 .billing-banner.danger > svg {
   color: var(--danger);
 }
+/* On a phone the button drops below the text rather than squeezing it. */
+.billing-preview {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.billing-preview > div {
+  flex: 1 1 220px;
+}
+.billing-preview > .btn {
+  margin-left: auto;
+}
+.billing-preview p {
+  margin: 2px 0 0;
+}
+.billing-exempt {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.billing-exempt > span {
+  flex: 1;
+}
 .billing-banner.info {
   background: var(--info-soft);
   border-color: transparent;
