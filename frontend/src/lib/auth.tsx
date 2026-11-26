@@ -25,6 +25,10 @@ interface AuthValue {
   externalWorkers: boolean;
   /** The site's address; a page opened at an earlier one moves there. */
   siteOrigin: string | null;
+  /** People may create their own accounts. */
+  registration: boolean;
+  /** "Forgot password" emails a link (else: ask the administrator). */
+  passwordReset: boolean;
   setUser: (u: User | null) => void;
 }
 
@@ -82,6 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     mediaPolicy: q.data?.mediaPolicy ?? null,
     externalWorkers: !!q.data?.externalWorkers,
     siteOrigin: q.data?.siteOrigin ?? null,
+    registration: !!q.data?.registration,
+    passwordReset: !!q.data?.passwordReset,
     setUser: (u) => {
       qc.setQueryData(["auth"], (old: AuthState | undefined) => ({ ...emptyState, ...old, needsSetup: false, user: u }));
       if (!u) qc.removeQueries({ predicate: (query) => query.queryKey[0] !== "auth" });

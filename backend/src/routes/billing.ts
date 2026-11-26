@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { config } from "../config";
 import { requireUser } from "../auth/middleware";
 import { RateLimiter } from "../auth/ratelimit";
 import { db } from "../db";
@@ -48,6 +49,8 @@ billingRoutes.get("/", (c) => {
     heldSec: heldSec(user.id),
     availableSec: user.billing === "prepaid" ? availableSec(user.id) : null,
     onSale: billingOpen(),
+    // ECPay's test system: nothing is really charged.
+    testMode: config.ecpay.mode === "stage",
     packages: s.packages,
     methods: s.methods,
     termsUrl: s.termsUrl || null,

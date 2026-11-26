@@ -10,6 +10,12 @@ export interface User {
   locale: Locale | null;
   /** Colour theme kept with the account; null until chosen. */
   theme: "system" | "light" | "dark" | null;
+  email: string | null;
+  emailVerified: boolean;
+  /** "prepaid": transcription is paid for with minutes (creditSec); "exempt": free. */
+  billing: "exempt" | "prepaid";
+  /** Seconds of recording the prepaid balance pays for. */
+  creditSec: number;
   createdAt: number;
   lastLoginAt: number | null;
 }
@@ -471,4 +477,79 @@ export interface ModelPull {
   done: boolean;
   error: string | null;
   startedAt: number;
+}
+
+// ------------------------------------------------------------------ billing
+
+export type PaymentMethod = "Credit" | "ATM" | "CVS";
+
+export interface CreditPackage {
+  id: string;
+  minutes: number;
+  /** NT$, tax included. */
+  price: number;
+}
+
+export interface Order {
+  id: string;
+  packageId: string;
+  minutes: number;
+  amount: number;
+  itemName: string;
+  status: "pending" | "paid" | "failed";
+  mode: "stage" | "production";
+  /** ECPay's name for how it was paid, e.g. Credit_CreditCard, ATM_TAISHIN, CVS_CVS. */
+  paymentType: string | null;
+  /** ATM transfers and convenience-store codes: where to pay, until when. */
+  paymentInfo: { paymentType: string | null; bankCode: string | null; account: string | null; paymentNo: string | null; expireDate: string | null } | null;
+  error: string | null;
+  createdAt: number;
+  paidAt: number | null;
+}
+
+export interface LedgerEntry {
+  id: number;
+  deltaSec: number;
+  balanceSec: number;
+  kind: "purchase" | "usage" | "adjust";
+  meetingId: string | null;
+  title: string | null;
+  orderId: string | null;
+  note: string | null;
+  createdAt: number;
+}
+
+export interface BillingInfo {
+  billing: "exempt" | "prepaid";
+  balanceSec: number;
+  heldSec: number;
+  availableSec: number | null;
+  onSale: boolean;
+  /** ECPay's test system: nothing is really charged. */
+  testMode: boolean;
+  packages: CreditPackage[];
+  methods: PaymentMethod[];
+  termsUrl: string | null;
+  orders: Order[];
+  ledger: LedgerEntry[];
+}
+
+export interface BillingSettings {
+  registrationOpen: boolean;
+  enabled: boolean;
+  packages: CreditPackage[];
+  methods: PaymentMethod[];
+  termsUrl: string;
+}
+
+export interface BillingAdminState {
+  settings: BillingSettings;
+  meta: { saved: boolean; updatedAt: number | null; updatedBy: string | null };
+  mail: { configured: boolean; transport: "smtp" | "log"; server: string | null; from: string };
+  ecpay: { mode: "stage" | "production"; merchantId: string; testShop: boolean; publicUrl: string | null };
+  stats: { paid: { mode: string; orders: number; amount: number; minutes: number }[]; prepaidAccounts: number; outstandingSec: number };
+}
+
+export interface AdminOrder extends Order {
+  user: { id: string; username: string | null; displayName: string | null } | null;
 }

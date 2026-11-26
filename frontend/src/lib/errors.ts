@@ -12,6 +12,7 @@ export function describeFailure(error: string | null | undefined): { key: TKey; 
   }
   if (/out of memory|cuda|could not load models/.test(e)) return { key: "failure.gpu", canRetry: true, reupload: false };
   if (/stopped responding|exited unexpectedly|shut down/.test(e)) return { key: "failure.interrupted", canRetry: true, reupload: false };
+  if (/not enough minutes/.test(e)) return { key: "failure.credits", canRetry: true, reupload: false };
   return { key: "failure.generic", canRetry: true, reupload: true };
 }
 
@@ -28,6 +29,16 @@ const API_ERRORS: Record<string, TKey> = {
   too_large: "apiError.tooLarge",
   unsupported_type: "apiError.unsupportedType",
   too_many_summaries: "apiError.tooManySummaries",
+  insufficient_credits: "apiError.insufficientCredits",
+  registration_closed: "apiError.registrationClosed",
+  email_unverified: "apiError.emailUnverified",
+  invalid_email: "apiError.invalidEmail",
+  email_taken: "apiError.emailTaken",
+  mail_failed: "apiError.mailFailed",
+  mail_unavailable: "apiError.mailUnavailable",
+  invalid_link: "apiError.invalidLink",
+  billing_closed: "apiError.billingClosed",
+  payment_unreachable: "apiError.paymentUnreachable",
 };
 
 /** A localised message for an API error, falling back to the server's text. */
@@ -54,7 +65,9 @@ export type UploadFailure =
   /** The server will not take this file (format, validation). */
   | { kind: "rejected"; message: string }
   /** Signed out while uploading. */
-  | { kind: "session" };
+  | { kind: "session" }
+  /** A prepaid account without enough minutes for this recording. */
+  | { kind: "credits"; availableSec: number; neededSec: number };
 
 export function classifyUploadError(err: unknown, fileSize: number, limit: number | null, t: TFn): UploadFailure {
   if (!(err instanceof ApiError)) return { kind: "retry", reason: "network" };
@@ -66,6 +79,10 @@ export function classifyUploadError(err: unknown, fileSize: number, limit: numbe
     return { kind: "too-large", size: fileSize, limit: max };
   }
   if (err.status === 413) return { kind: "server-limit" };
+  if (err.code === "insufficient_credits") {
+    const b = err.body as { availableSec?: unknown; neededSec?: unknown };
+    return { kind: "credits", availableSec: Number(b.availableSec) || 0, neededSec: Number(b.neededSec) || 0 };
+  }
   if (err.status === 401) return { kind: "session" };
   if (err.status === 0 || err.code === "network") return { kind: "retry", reason: "network" };
   if (err.status >= 500 || err.status === 408 || err.status === 429) return { kind: "retry", reason: "server" };

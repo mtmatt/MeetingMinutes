@@ -1,4 +1,10 @@
 import type {
+  AdminOrder,
+  BillingAdminState,
+  BillingInfo,
+  BillingSettings,
+  LedgerEntry,
+  Order,
   AdminUser,
   Invite,
   ApiModelProbe,
@@ -114,7 +120,32 @@ export const api = {
       externalWorkers?: boolean | null;
       /** The site's address (PUBLIC_URL's origin); null when not configured. */
       siteOrigin?: string | null;
+      /** People may create their own accounts. */
+      registration?: boolean;
+      /** "Forgot password" can email a link. */
+      passwordReset?: boolean;
     }>("/auth/state"),
+  register: (b: { username: string; displayName: string; email: string; password: string; locale: string }) =>
+    post<{ ok: true; email: string }>("/auth/register", b),
+  verifyEmail: (token: string) => post<{ ok: true; username: string; email: string }>("/auth/verify-email", { token }),
+  resendVerification: (email: string, locale: string) => post<{ ok: true }>("/auth/verify-email/resend", { email, locale }),
+  forgotPassword: (email: string, locale: string) => post<{ ok: true }>("/auth/forgot-password", { email, locale }),
+  changeEmail: (email: string, password: string) => post<{ ok: true; sent: boolean }>("/me/email", { email, password }),
+
+  // billing
+  billing: () => get<BillingInfo>("/billing"),
+  createOrder: (packageId: string, locale: string) =>
+    post<{ order: Order; checkout: { action: string; fields: Record<string, string> } }>("/billing/orders", { packageId, locale }),
+  order: (id: string) => get<{ order: Order }>(`/billing/orders/${encodeURIComponent(id)}`),
+  refreshOrder: (id: string) => post<{ order: Order }>(`/billing/orders/${encodeURIComponent(id)}/refresh`),
+  adminBilling: () => get<BillingAdminState>("/admin/billing"),
+  adminSaveBilling: (b: BillingSettings) => put<Pick<BillingAdminState, "settings" | "meta">>("/admin/billing", b),
+  adminTestMail: (to: string) => post<{ ok: true }>("/admin/mail/test", { to }),
+  adminOrders: (status = "") => get<{ orders: AdminOrder[] }>(`/admin/orders${status ? `?status=${status}` : ""}`),
+  adminRefreshOrder: (id: string) => post<{ order: Order }>(`/admin/orders/${encodeURIComponent(id)}/refresh`),
+  adminCredits: (userId: string) => get<{ balanceSec: number; ledger: LedgerEntry[] }>(`/admin/users/${encodeURIComponent(userId)}/credits`),
+  adminAdjustCredits: (userId: string, minutes: number, note: string) =>
+    post<{ balanceSec: number; user: User }>(`/admin/users/${encodeURIComponent(userId)}/credits`, { minutes, note }),
   login: (username: string, password: string) => post<{ user: User }>("/auth/login", { username, password }),
   logout: () => post<{ ok: true }>("/auth/logout"),
   setup: (b: { setupToken: string; username: string; displayName: string; password: string }) =>
@@ -140,6 +171,7 @@ export const api = {
     file: { name: string; size: number; type: string };
     options: TranscribeOptions;
     summary: SummaryRequest | null;
+    durationSec?: number | null;
   }) => post<{ meeting: MeetingSummary; chunkSize: number }>("/meetings", b),
   completeUpload: (id: string) => post<{ meeting: MeetingSummary }>(`/meetings/${id}/upload/complete`),
   updateMeeting: (id: string, b: { title?: string; occurredAt?: number | null }) =>
@@ -195,7 +227,7 @@ export const api = {
 
   // admin
   adminUsers: () => get<{ users: AdminUser[] }>("/admin/users"),
-  adminUpdateUser: (id: string, b: { role?: string; disabled?: boolean; displayName?: string }) =>
+  adminUpdateUser: (id: string, b: { role?: string; disabled?: boolean; displayName?: string; billing?: "exempt" | "prepaid" }) =>
     patch<{ user: User }>(`/admin/users/${id}`, b),
   adminDeleteUser: (id: string) => del<{ ok: true }>(`/admin/users/${id}`),
   adminResetLink: (id: string) => post<{ url: string; expiresAt: number }>(`/admin/users/${id}/reset-link`),

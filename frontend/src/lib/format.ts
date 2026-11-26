@@ -26,6 +26,25 @@ export function duration(sec: number | null | undefined, locale: Locale): string
   return `${s} s`;
 }
 
+/**
+ * Prepaid minutes: "42 分鐘" / "42 min"; under ten minutes with one decimal
+ * ("1.5 min"), so a short balance does not read as zero. Rounded down: a
+ * balance never looks larger than it is.
+ */
+export function minutesText(sec: number, locale: Locale): string {
+  const m = sec / 60;
+  const abs = Math.abs(m);
+  const n = abs < 10 ? Math.floor(abs * 10) / 10 : Math.floor(abs);
+  const sign = m < 0 && n > 0 ? "-" : "";
+  const shown = sign + n.toLocaleString(locale === "zh-TW" ? "zh-TW" : "en");
+  return locale === "zh-TW" ? `${shown} 分鐘` : `${shown} min`;
+}
+
+/** "NT$1,200" */
+export function twd(n: number): string {
+  return "NT$" + n.toLocaleString("en");
+}
+
 export function bytes(n: number): string {
   if (n < 1024) return `${n} B`;
   const units = ["KB", "MB", "GB", "TB"];

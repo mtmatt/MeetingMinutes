@@ -3,7 +3,7 @@ import { Masthead } from "./components/Masthead";
 import { Seal } from "./components/Seal";
 import { useAuth } from "./lib/auth";
 import { useLiveUpdates } from "./lib/useLiveUpdates";
-import { InvitePage, LoginPage, SetupPage } from "./pages/Auth";
+import { ForgotPasswordPage, InvitePage, LoginPage, RegisterPage, SetupPage, VerifyEmailPage } from "./pages/Auth";
 import { LibraryPage } from "./pages/Library";
 import { NotFoundPage } from "./pages/NotFound";
 
@@ -20,6 +20,7 @@ const pages = {
   voices: () => import("./pages/Voices"),
   settings: () => import("./pages/Settings"),
   admin: () => import("./pages/Admin"),
+  billing: () => import("./pages/Billing"),
 };
 
 /**
@@ -32,7 +33,7 @@ export function preloadPages(pathname: string) {
     ? pages.meeting
     : pathname === "/new"
       ? pages.upload
-      : ({ "/templates": pages.templates, "/voices": pages.voices, "/settings": pages.settings, "/admin": pages.admin } as Record<string, () => Promise<unknown>>)[pathname];
+      : ({ "/templates": pages.templates, "/voices": pages.voices, "/settings": pages.settings, "/admin": pages.admin, "/billing": pages.billing } as Record<string, () => Promise<unknown>>)[pathname];
   first?.().catch(() => {});
   const later = () => void pages.meeting().catch(() => {});
   if ("requestIdleCallback" in window) window.requestIdleCallback(later, { timeout: 4000 });
@@ -99,6 +100,7 @@ export const router = createBrowserRouter([
       { path: "/templates", lazy: async () => ({ Component: (await pages.templates()).TemplatesPage }) },
       { path: "/voices", lazy: async () => ({ Component: (await pages.voices()).VoicesPage }) },
       { path: "/settings", lazy: async () => ({ Component: (await pages.settings()).SettingsPage }) },
+      { path: "/billing", lazy: async () => ({ Component: (await pages.billing()).BillingPage }) },
       { element: <AdminOnly />, children: [{ path: "/admin", lazy: async () => ({ Component: (await pages.admin()).AdminPage }) }] },
     ],
   },
@@ -107,8 +109,12 @@ export const router = createBrowserRouter([
     children: [
       { path: "/login", element: <LoginPage /> },
       { path: "/setup", element: <SetupPage /> },
+      { path: "/register", element: <RegisterPage /> },
+      { path: "/forgot", element: <ForgotPasswordPage /> },
     ],
   },
   { path: "/invite/:token", element: <InvitePage /> },
+  // Opened from an email, signed in or not (it may confirm a changed address).
+  { path: "/verify-email/:token", element: <VerifyEmailPage /> },
   { path: "*", element: <NotFoundPage /> },
 ]);

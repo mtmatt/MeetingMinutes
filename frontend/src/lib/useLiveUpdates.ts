@@ -28,6 +28,8 @@ export function useLiveUpdates(enabled: boolean) {
       invalidate(["meetings"]);
       // Speaker names and voice fingerprints feed the voice profiles.
       invalidate(["voices"]);
+      // A finished transcription is charged to a prepaid balance.
+      if (e.type === "meeting.updated") invalidate(["billing"]);
     };
     es.addEventListener("meeting.updated", onMeeting);
     es.addEventListener("summary.updated", onMeeting);

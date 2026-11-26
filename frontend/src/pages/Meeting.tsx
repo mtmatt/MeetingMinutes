@@ -86,6 +86,11 @@ function Pipeline({ meeting, onRetry }: { meeting: MeetingDetail; onRetry: () =>
               <Upload /> {t("library.reupload")}
             </button>
           )}
+          {failure.key === "failure.credits" && (
+            <button className="btn" onClick={() => navigate("/billing")}>
+              {t("upload.buyMinutes")}
+            </button>
+          )}
         </div>
         {meeting.error && (
           <details className="tech-details">
