@@ -7,7 +7,7 @@ import { useConfirm } from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { useI18n, type TKey } from "../i18n";
 import { useAuth } from "../lib/auth";
-import { dateTime, pointsText, relative, twd } from "../lib/format";
+import { TYPICAL_HOUR, dateTime, pointsPerMeetingHour, pointsText, relative, twd, twdApprox } from "../lib/format";
 import { termsTemplate } from "../lib/termsTemplate";
 
 const METHODS: PaymentMethod[] = ["Credit", "ATM", "CVS"];
@@ -47,6 +47,7 @@ export function AdminBilling() {
   const termsOk = !form.termsUrl || /^https?:\/\/\S+$/.test(form.termsUrl);
   const canSave = dirty && packagesOk && ratesOk && termsOk && form.methods.length > 0 && (!form.enabled || form.packages.length > 0);
   const live = data.ecpay.mode === "production";
+  const hourPoints = ratesOk ? pointsPerMeetingHour(form.rates) : 0;
 
   const setPackage = (i: number, patch: Partial<CreditPackage>) =>
     setForm({ ...form, packages: form.packages.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
@@ -157,7 +158,16 @@ export function AdminBilling() {
                 value={Number.isFinite(p.price) ? p.price : ""}
                 onChange={(e) => setPackage(i, { price: e.target.value === "" ? Number.NaN : Math.round(Number(e.target.value)) })}
               />
-              <span className="mono faint">{p.points > 0 && p.price > 0 ? `NT$${(p.price / p.points).toFixed(2)}` : "–"}</span>
+              <span className="mono faint sales-package-unit">
+                {p.points > 0 && p.price > 0 ? (
+                  <>
+                    {`NT$${(p.price / p.points).toFixed(2)}`}
+                    {hourPoints > 0 && <small>{t("sales.perHour", { price: twdApprox((hourPoints * p.price) / p.points) })}</small>}
+                  </>
+                ) : (
+                  "–"
+                )}
+              </span>
               <button
                 type="button"
                 className="icon-btn"
@@ -199,7 +209,15 @@ export function AdminBilling() {
           <span className="field-hint">{t("sales.methodsHint")}</span>
         </fieldset>
 
-        <TermsEditor rates={form.rates} />
+        <div className="field">
+          <label className="check">
+            <input type="checkbox" checked={form.noExpiry} onChange={(e) => setForm({ ...form, noExpiry: e.target.checked })} />
+            {t("sales.noExpiry")}
+          </label>
+          <span className="field-hint">{t("sales.noExpiryHint")}</span>
+        </div>
+
+        <TermsEditor rates={form.rates} noExpiry={form.noExpiry} />
 
         <div className="field">
           <label htmlFor="terms-url">{t("sales.termsUrl")}</label>
@@ -272,9 +290,9 @@ function RatesEditor({ rates, onChange }: { rates: BillingSettings["rates"]; onC
       <span className="field-hint">{t(hint)}</span>
     </div>
   );
-  // An hour's meeting: about 20,000 tokens read (transcript and instructions) and 2,000 written.
+  // An hour's meeting and one summary of it (TYPICAL_HOUR tokens read and written).
   const hour = rates.perMinute * 60 * 1000;
-  const summary = 20 * rates.perKInput * 1000 + 2 * rates.perKOutput * 1000;
+  const summary = (TYPICAL_HOUR.input / 1000) * rates.perKInput * 1000 + (TYPICAL_HOUR.output / 1000) * rates.perKOutput * 1000;
   return (
     <div className="sales-rates">
       <div className="sales-rates-fields">
@@ -283,14 +301,21 @@ function RatesEditor({ rates, onChange }: { rates: BillingSettings["rates"]; onC
         {field("perKOutput", "sales.ratePerKOutput", "sales.ratePerKOutputHint")}
       </div>
       {Number.isFinite(hour) && Number.isFinite(summary) && (
-        <p className="faint sales-hint">{t("sales.rateExample", { transcription: pointsText(hour, locale), summary: pointsText(summary, locale) })}</p>
+        <p className="faint sales-hint">
+          {t("sales.rateExample", {
+            transcription: pointsText(hour, locale),
+            summary: pointsText(summary, locale),
+            input: TYPICAL_HOUR.input.toLocaleString("en"),
+            output: TYPICAL_HOUR.output.toLocaleString("en"),
+          })}
+        </p>
       )}
     </div>
   );
 }
 
 /** The terms of sale shown at /terms: written here in Markdown, saved on their own. */
-function TermsEditor({ rates }: { rates: BillingSettings["rates"] }) {
+function TermsEditor({ rates, noExpiry }: { rates: BillingSettings["rates"]; noExpiry: boolean }) {
   const { t, locale } = useI18n();
   const toast = useToast();
   const confirm = useConfirm();
@@ -309,7 +334,7 @@ function TermsEditor({ rates }: { rates: BillingSettings["rates"] }) {
       const ok = await confirm({ title: t("sales.templateReplaceTitle"), body: t("sales.templateReplaceBody"), confirmLabel: t("sales.templateReplace") });
       if (!ok) return;
     }
-    setText(termsTemplate(locale, rates));
+    setText(termsTemplate(locale, rates, noExpiry));
   };
   const save = async () => {
     setBusy(true);

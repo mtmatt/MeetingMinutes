@@ -8,7 +8,7 @@ import { useToast } from "../components/Toast";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { paymentKind, submitCheckout, useBilling } from "../lib/billing";
-import { clock, dateTime, pointsNumber, pointsText, recordingFor, twd } from "../lib/format";
+import { TYPICAL_HOUR, clock, dateTime, meetingTimeFor, pointsNumber, pointsPerMeetingHour, pointsText, twd, twdApprox } from "../lib/format";
 
 /**
  * Prepaid points: the balance and what it pays for, the packages on sale (paid on ECPay's page),
@@ -58,13 +58,18 @@ export function BillingPage() {
 function Balance({ b }: { b: BillingInfo }) {
   const { t, locale } = useI18n();
   const available = b.available ?? b.balance;
-  const hours = recordingFor(available, b.rates.perMinute, locale);
+  const hours = meetingTimeFor(available, b.rates, locale);
   return (
     <section className="billing-balance" aria-label={t("billing.balance")}>
       <div className="billing-balance-main">
         <span className="smallcaps faint">{t("billing.available")}</span>
         <span className={`billing-balance-value ${available <= 0 ? "is-empty" : ""}`}>{pointsText(available, locale)}</span>
-        {hours && available > 0 && <span className="faint billing-balance-hours">{t("billing.transcribesAbout", { time: hours })}</span>}
+        {hours && available > 0 && (
+          <span className="faint billing-balance-hours">
+            {t("billing.meetingsAbout", { time: hours })}
+            {b.rates.perKInput > 0 || b.rates.perKOutput > 0 ? t("billing.summariesIncluded") : ""}
+          </span>
+        )}
       </div>
       <div className="billing-balance-side">
         {b.held > 0 && (
@@ -111,6 +116,9 @@ function Packages({ b }: { b: BillingInfo }) {
     );
   }
   const cheapest = Math.min(...b.packages.map((p) => p.price / p.points));
+  // A typical hour of meeting (recording and summary), in points and, at each package's price, in dollars.
+  const hourPoints = pointsPerMeetingHour(b.rates);
+  const summariesPriced = b.rates.perKInput > 0 || b.rates.perKOutput > 0;
 
   const buy = async (p: CreditPackage) => {
     setBusy(p.id);
@@ -130,6 +138,7 @@ function Packages({ b }: { b: BillingInfo }) {
         <h2>{t("billing.buy")}</h2>
         {b.testMode && <span className="pill warn">{t("billing.testMode")}</span>}
       </div>
+      <Pitch b={b} lowest={hourPoints > 0 ? hourPoints * cheapest : null} />
       {needsAgreement && (
         <label className={`check billing-agree ${agreed ? "" : "is-open"}`}>
           <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
@@ -146,19 +155,29 @@ function Packages({ b }: { b: BillingInfo }) {
       <div className="billing-packages">
         {b.packages.map((p) => {
           const unit = p.price / p.points;
-          const hours = recordingFor(p.points * 1000, b.rates.perMinute, locale);
+          const hours = meetingTimeFor(p.points * 1000, b.rates, locale);
           return (
             <div key={p.id} className="billing-package">
               <div className="billing-package-minutes">
                 <span className="billing-package-number">{p.points.toLocaleString()}</span>
                 <span className="billing-package-unit">{t("billing.pointsUnit")}</span>
               </div>
-              <div className="billing-package-hours faint">{hours ? t("billing.transcribesAbout", { time: hours }) : "\u00a0"}</div>
+              <div className="billing-package-hours">
+                {hours ? (
+                  <>
+                    <span>{t("billing.meetingsAbout", { time: hours })}</span>
+                    {summariesPriced && <span>{t("billing.summariesIncluded")}</span>}
+                  </>
+                ) : (
+                  "\u00a0"
+                )}
+              </div>
               <div className="billing-package-price">{twd(p.price)}</div>
-              <div className="billing-package-each faint">
-                {t("billing.perPoint", { price: unit.toLocaleString("en", { maximumFractionDigits: 2 }) })}
+              <div className="billing-package-each">
+                {hourPoints > 0 && <span className="billing-package-hourly">{t("billing.perHour", { price: twdApprox((hourPoints * p.price) / p.points) })}</span>}
                 {b.packages.length > 1 && unit === cheapest && <span className="pill ok">{t("billing.bestValue")}</span>}
               </div>
+              <div className="billing-package-point faint">{t("billing.perPoint", { price: unit.toLocaleString("en", { maximumFractionDigits: 2 }) })}</div>
               <button type="button" className="btn btn-primary btn-block" onClick={() => buy(p)} disabled={busy != null || (needsAgreement && !agreed)}>
                 {busy === p.id ? <span className="spinner" /> : <CreditCard />} {t("billing.buyThis")}
               </button>
@@ -166,8 +185,30 @@ function Packages({ b }: { b: BillingInfo }) {
           );
         })}
       </div>
+      {hourPoints > 0 && (
+        <p className="billing-pay-note faint">
+          {t("billing.hourBasis", { input: TYPICAL_HOUR.input.toLocaleString("en"), output: TYPICAL_HOUR.output.toLocaleString("en"), points: pointsText(hourPoints * 1000, locale) })}
+        </p>
+      )}
       <p className="billing-pay-note faint">{t("billing.payNote", { methods: b.methods.map((m) => t(METHOD_LABEL[m])).join(t("billing.listSep")) })}</p>
     </section>
+  );
+}
+
+/**
+ * Why prepaid points: no subscription, pay for what is used, by the second; points that never
+ * expire when the administrator says so; and the lowest price of an hour's meeting.
+ */
+function Pitch({ b, lowest }: { b: BillingInfo; lowest: number | null }) {
+  const { t } = useI18n();
+  const parts = [t("billing.pitchNoSubscription")];
+  if (b.rates.perMinute > 0) parts.push(t("billing.pitchBySecond"));
+  if (b.noExpiry) parts.push(t("billing.pitchNoExpiry"));
+  return (
+    <div className="billing-pitch">
+      <p className="billing-pitch-points">{parts.join(t("billing.pitchSep"))}</p>
+      {lowest != null && <p className="billing-pitch-price">{t("billing.pitchFrom", { price: twdApprox(lowest) })}</p>}
+    </div>
   );
 }
 

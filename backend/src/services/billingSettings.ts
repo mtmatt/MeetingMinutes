@@ -40,6 +40,8 @@ export const billingSettingsSchema = z
     rates: ratesSchema,
     packages: z.array(packageSchema).max(8),
     methods: z.array(z.enum(PAYMENT_METHODS)).min(1),
+    /** Points never expire: said on the purchase page (and filled in by the terms template). */
+    noExpiry: z.boolean().default(false),
     /** Terms of sale and refund policy, linked on the purchase page. */
     termsUrl: z.union([z.literal(""), z.url({ protocol: /^https?$/ }).max(500)]),
   })
@@ -49,13 +51,14 @@ export type BillingSettings = z.infer<typeof billingSettingsSchema>;
 
 export function defaultBillingSettings(): BillingSettings {
   // Defaults to adjust: about NT$1 a point sells an hour of recording for 60 points, and an
-  // hour's summary (some 20,000 tokens read, 2,000 written) for about 3.
+  // hour's summary (some 30,000 tokens read, 8,000 written) for about 7.
   return {
     registrationOpen: false,
     enabled: false,
     rates: { perMinute: 1, perKInput: 0.1, perKOutput: 0.5 },
     packages: [],
     methods: [...PAYMENT_METHODS],
+    noExpiry: false,
     termsUrl: "",
   };
 }
