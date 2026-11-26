@@ -8,6 +8,8 @@ export interface User {
   role: Role;
   disabled: boolean;
   locale: Locale | null;
+  /** Colour theme kept with the account; null until chosen. */
+  theme: "system" | "light" | "dark" | null;
   createdAt: number;
   lastLoginAt: number | null;
 }

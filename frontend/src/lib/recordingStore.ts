@@ -103,3 +103,16 @@ export async function deleteRecording(id: string): Promise<void> {
   };
   await done(tx);
 }
+
+/** Recordings kept in this browser at this address, whoever made them (0 when storage cannot be read). */
+export async function countRecordings(): Promise<number> {
+  try {
+    const db = await open();
+    const tx = db.transaction("meta", "readonly");
+    const req = tx.objectStore("meta").count();
+    await done(tx);
+    return req.result;
+  } catch {
+    return 0;
+  }
+}

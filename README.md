@@ -316,7 +316,12 @@ REDIRECT_PORTS=8443          # the earlier port: links to it keep working
 HTTP_REDIRECT_PORT=80        # optional: http://minutes.example.com goes to https
 ```
 
-Each port in `REDIRECT_PORTS` serves HTTPS with the same certificate and answers every page with a permanent redirect (308, cached for a day) to the same path on `PUBLIC_URL`, so bookmarks and shared links to `:8443` still work. The worker API (`/internal/`) is still answered there rather than redirected, so workers on other machines enrolled with the old address keep working; move them to the new one when convenient (`scripts/worker.sh enroll` again, or edit `serverUrl` in their `data/worker-credential.json`). `HTTP_REDIRECT_PORT` redirects everything, the worker API included, since nothing should travel unencrypted. Requests for another host name (the bare IP address) get 421 on these ports too.
+Each port in `REDIRECT_PORTS` serves HTTPS with the same certificate, so bookmarks and shared links to `:8443` keep working, in one of two ways (`REDIRECT_PORT_MODE`):
+
+- **`handoff`** (the default, for the move): the old port serves the site, and a page opened there moves to the same path on `PUBLIC_URL` at once. A browser keeps recordings that were not uploaded (an interrupted upload, a closed tab) per address, and the new address cannot read them; so if the browser still holds any at the old address, the page stays and says so, with a button to upload them (they go to the person's account like any upload), and moves by itself once none are left. Nobody has to be told to check first.
+- **`redirect`**: every page gets a permanent redirect (308, cached for a day) to the same path on `PUBLIC_URL`. Switch to it once the move is long done.
+
+In both, the worker API (`/internal/`) is answered there, so workers on other machines enrolled with the old address keep working; move them to the new one when convenient (`scripts/worker.sh enroll` again, or edit `serverUrl` in their `data/worker-credential.json`). `HTTP_REDIRECT_PORT` redirects everything, the worker API included, since nothing should travel unencrypted. Requests for another host name (the bare IP address) get 421 on these ports too.
 
 Ports below 1024 need a privilege an ordinary user lacks. Rather than running the site as root, allow unprivileged users to open them, once, as root:
 
@@ -324,7 +329,7 @@ Ports below 1024 need a privilege an ordinary user lacks. Rather than running th
 echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/60-meetingminutes-ports.conf && sudo sysctl --system
 ```
 
-(`=443` if you do not use port 80.) If a port cannot be opened, the server says so and prints this command. Open the new ports in the firewall (`sudo ufw allow 443/tcp`, and `80/tcp`), and keep the old one open while it redirects. A browser keeps unuploaded recordings per address, so upload or download any waiting recording at the old address before switching.
+(`=443` if you do not use port 80.) If a port cannot be opened, the server says so and prints this command. Open the new ports in the firewall (`sudo ufw allow 443/tcp`, and `80/tcp`), and keep the old one open while it redirects. Sign-in carries over (cookies belong to the host name, not the port), and so do the language and the colour theme, which are kept with the account.
 
 GPU workers on the same machine connect to a separate plain-HTTP port, `INTERNAL_PORT` (default 8788). It listens on 127.0.0.1 only, serves nothing but the token-protected worker API, and workers pick it up automatically when `TLS_CERT_FILE` is set. A worker on another machine needs `MM_SERVER_URL` pointed at a reachable address, for example through an SSH tunnel.
 

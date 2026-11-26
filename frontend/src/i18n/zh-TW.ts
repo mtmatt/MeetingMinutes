@@ -858,6 +858,13 @@ export const zhTW: Dict = {
     resetDone: "已改回 .env 的預設值。",
     switchNote: "儲存後，已在排隊的摘要也會改由新選擇的模型撰寫。",
   },
+  handoff: {
+    moved: "網站已搬到 {host}。",
+    pending: "這台瀏覽器在舊網址（{old}）還有 {n} 筆尚未上傳的錄音，只能在這裡開啟。請先上傳或下載；全部處理完後會自動前往新網址。",
+    handle: "前往上傳",
+    goAnyway: "仍要前往新網址",
+    done: "已全部上傳，正在前往 {host}…",
+  },
   presets: {
     label: "預設設定",
     none: "不使用預設設定",

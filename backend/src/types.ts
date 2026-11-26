@@ -8,6 +8,8 @@ export interface UserRow {
   role: Role;
   disabled: number;
   locale: string | null;
+  /** "system", "light" or "dark"; null until chosen. */
+  theme: string | null;
   created_at: number;
   updated_at: number;
   last_login_at: number | null;

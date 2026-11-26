@@ -112,6 +112,8 @@ export const api = {
       transcriber?: TranscriberInfo | null;
       mediaPolicy?: MediaPolicy | null;
       externalWorkers?: boolean | null;
+      /** The site's address (PUBLIC_URL's origin); null when not configured. */
+      siteOrigin?: string | null;
     }>("/auth/state"),
   login: (username: string, password: string) => post<{ user: User }>("/auth/login", { username, password }),
   logout: () => post<{ ok: true }>("/auth/logout"),
@@ -123,7 +125,7 @@ export const api = {
     post<{ user: User }>(`/auth/invites/${encodeURIComponent(token)}/accept`, b),
 
   // me
-  updateMe: (b: { displayName?: string; locale?: string | null }) => patch<{ user: User }>("/me", b),
+  updateMe: (b: { displayName?: string; locale?: string | null; theme?: "system" | "light" | "dark" | null }) => patch<{ user: User }>("/me", b),
   changePassword: (current: string, next: string) => post<{ ok: true }>("/me/password", { current, next }),
   sessions: () => get<{ sessions: SessionInfo[] }>("/me/sessions"),
   revokeSession: (id: string) => del<{ ok: true }>(`/me/sessions/${id}`),

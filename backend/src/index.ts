@@ -52,9 +52,11 @@ const redirects = [
       hostname: config.host,
       port,
       tls: tlsFiles,
-      // The worker API stays here for workers enrolled with this address.
-      fetch: redirectHandler({ serveWorkerApi: true, app }),
-      maxRequestBodySize: 64 * 1024 * 1024,
+      // Handoff: the whole site, whose pages move to PUBLIC_URL themselves (after any
+      // recordings left in this browser are uploaded). Redirect: pages get a 308, and
+      // the worker API stays here for workers enrolled with this address.
+      fetch: config.redirectMode === "handoff" ? (req, srv) => app.fetch(req, { server: srv }) : redirectHandler({ serveWorkerApi: true, app }),
+      maxRequestBodySize: Math.max(64 * 1024 * 1024, config.uploadChunkBytes + 1024 * 1024),
       idleTimeout: 0,
     }),
   ),
@@ -109,7 +111,10 @@ if (config.allowedHosts.length) {
   console.log(`Answering only to: ${config.allowedHosts.join(", ")} (and localhost from this machine); other hosts get 421`);
 }
 if (internal) console.log(`Worker API on http://127.0.0.1:${internal.port} (loopback only)`);
-for (const r of redirects) console.log(`Port ${r.port}: sends people to ${config.publicUrl}`);
+for (const r of redirects) {
+  const handoff = r.port !== config.httpRedirectPort && config.redirectMode === "handoff";
+  console.log(`Port ${r.port}: ${handoff ? "serves the site; its pages move to" : "sends people to"} ${config.publicUrl}`);
+}
 const loopback = ["127.0.0.1", "localhost", "::1"].includes(config.host);
 if (config.tls && config.trustProxy) {
   console.warn("");

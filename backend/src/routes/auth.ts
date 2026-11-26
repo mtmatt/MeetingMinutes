@@ -75,6 +75,8 @@ authRoutes.get("/state", (c) => {
     uploadLimitBytes: config.maxUploadBytes,
     // Public by design: Google shows it on its consent screen.
     googleClientId: config.googleClientId || null,
+    // The site's address: a page opened at an earlier one (another port) moves there.
+    siteOrigin: config.publicUrl ? new URL(config.publicUrl).origin : null,
     // Which model writes summaries, so people are told where a transcript goes.
     summarizer: resolved ? publicSummarizerInfo() : null,
     // Where recordings are transcribed, for the same reason.
@@ -197,16 +199,21 @@ meRoutes.patch("/", async (c) => {
     z.object({
       displayName: z.string().trim().min(1).max(80).optional(),
       locale: z.enum(["en", "zh-TW"]).nullable().optional(),
+      // Kept with the account, so it follows the person to another browser or address.
+      theme: z.enum(["system", "light", "dark"]).nullable().optional(),
     }),
   );
   const user = c.get("user");
   db.query(
-    "UPDATE users SET display_name = COALESCE($dn, display_name), locale = CASE WHEN $setLocale THEN $locale ELSE locale END, updated_at = $t WHERE id = $id",
+    `UPDATE users SET display_name = COALESCE($dn, display_name), locale = CASE WHEN $setLocale THEN $locale ELSE locale END,
+       theme = CASE WHEN $setTheme THEN $theme ELSE theme END, updated_at = $t WHERE id = $id`,
   ).run({
     id: user.id,
     dn: input.displayName ?? null,
     setLocale: input.locale !== undefined ? 1 : 0,
     locale: input.locale ?? null,
+    setTheme: input.theme !== undefined ? 1 : 0,
+    theme: input.theme ?? null,
     t: now(),
   });
   return c.json({ user: publicUser(findUserById(user.id)!) });

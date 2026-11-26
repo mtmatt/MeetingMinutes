@@ -856,6 +856,13 @@ export const en = {
     resetDone: "Back to the .env defaults.",
     switchNote: "Summaries that are already queued will be written by the newly chosen model once you save.",
   },
+  handoff: {
+    moved: "This site has moved to {host}.",
+    pending: "This browser still holds {n} recording(s) not yet uploaded at the old address ({old}), and they can only be opened here. Upload or download them first; you are taken to the new address once none are left.",
+    handle: "Upload them",
+    goAnyway: "Go to the new address anyway",
+    done: "All uploaded. Taking you to {host}…",
+  },
   presets: {
     label: "Preset",
     none: "No preset",

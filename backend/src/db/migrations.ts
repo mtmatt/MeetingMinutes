@@ -327,4 +327,6 @@ export const migrations: string[] = [
   CREATE UNIQUE INDEX transcribe_presets_name ON transcribe_presets(owner_id, name);
   CREATE UNIQUE INDEX transcribe_presets_default ON transcribe_presets(owner_id) WHERE is_default = 1;
   `,
+  // The colour theme, with the account (like the language), instead of only in one browser.
+  `ALTER TABLE users ADD COLUMN theme TEXT CHECK (theme IN ('system', 'light', 'dark'));`,
 ];

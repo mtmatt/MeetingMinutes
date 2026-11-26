@@ -183,6 +183,13 @@ export const config = {
    * The worker API is still answered there, so enrolled workers keep working.
    */
   redirectPorts: ports("REDIRECT_PORTS"),
+  /**
+   * What REDIRECT_PORTS do. "handoff" (while moving): they serve the site, and a
+   * page opened there moves to PUBLIC_URL by itself, unless the browser still
+   * holds recordings not uploaded, which are kept per address and readable only
+   * there; it asks for those first. "redirect": a plain 308 for every page.
+   */
+  redirectMode: oneOf("REDIRECT_PORT_MODE", ["handoff", "redirect"] as const, "handoff"),
   /** A plain-HTTP port (normally 80) that sends everything to PUBLIC_URL. */
   httpRedirectPort: str("HTTP_REDIRECT_PORT", "").trim() ? int("HTTP_REDIRECT_PORT", 80) : null,
   dataDir,
