@@ -20,35 +20,27 @@ export interface Mail {
 export const outbox: Mail[] = [];
 
 export function mailConfigured(): boolean {
-  return config.mail.transport === "log" || !!config.mail.smtpUrl;
+  return config.mail.transport === "log" || !!config.mail.server;
 }
 
-/** What the admin page shows: how mail goes out, never the password in SMTP_URL. */
+/** What the admin page shows: how mail goes out, never the password. */
 export function publicMailInfo() {
-  let server: string | null = null;
-  if (config.mail.smtpUrl) {
-    try {
-      const u = new URL(config.mail.smtpUrl);
-      server = `${u.protocol}//${u.hostname}${u.port ? `:${u.port}` : ""}`;
-    } catch {
-      server = null;
-    }
-  }
+  const s = config.mail.server;
+  const server = s ? `${s.host}:${s.port}${s.user ? ` (${s.user})` : ""}` : null;
   return { configured: mailConfigured(), transport: config.mail.transport, server, from: config.mail.from };
 }
 
 let transporter: Transporter | null = null;
 function smtp(): Transporter {
   if (!transporter) {
-    const u = new URL(config.mail.smtpUrl);
-    const secure = u.protocol === "smtps:";
+    const s = config.mail.server!;
     transporter = nodemailer.createTransport({
-      host: u.hostname,
-      port: u.port ? Number(u.port) : secure ? 465 : 587,
-      secure,
+      host: s.host,
+      port: s.port,
+      secure: s.secure,
       // Port 587 and 25: STARTTLS is required, so the password never goes out in the clear.
-      requireTLS: !secure,
-      auth: u.username ? { user: decodeURIComponent(u.username), pass: decodeURIComponent(u.password) } : undefined,
+      requireTLS: !s.secure,
+      auth: s.user ? { user: s.user, pass: s.pass } : undefined,
       // A mail server that does not answer must not hold a sign-up for minutes.
       connectionTimeout: 15_000,
       greetingTimeout: 15_000,
