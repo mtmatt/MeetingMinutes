@@ -319,6 +319,12 @@
   cursor: pointer;
   user-select: none;
 }
+/* Inside a .field, the generic label rule (baseline, space-between) must not move the track and its text apart. */
+.field > label.switch {
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+}
 .switch-sm .switch-track {
   width: 32px;
   height: 18px;

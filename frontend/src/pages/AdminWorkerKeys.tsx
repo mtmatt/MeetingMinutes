@@ -428,12 +428,12 @@ export function ProfileDialog({
               <button
                 type="button"
                 className="btn"
-                disabled={testing || !wake || wakeChanged}
-                title={wakeChanged ? t("profile.wakeSaveFirst") : undefined}
+                // The address as typed, saved or not: trying it before saving is the point.
+                disabled={testing || !wakeUrl.trim() || !wakeOk}
                 onClick={async () => {
                   setTesting(true);
                   try {
-                    const r = await api.adminTestWorkerWake(id);
+                    const r = await api.adminTestWorkerWake(id, wakeChanged ? wakeUrl.trim() : undefined);
                     if (r.ok) toast.show(t("profile.wakeOk", { status: r.status ?? "" }));
                     else toast.error(new Error(t("profile.wakeFailed", { error: r.error ?? "" })));
                   } catch (e) {
@@ -446,6 +446,7 @@ export function ProfileDialog({
                 {testing ? <span className="spinner" /> : <Zap />} {t("profile.wakeTest")}
               </button>
             </div>
+            {/-dev\.[a-z0-9-]*\.?modal\.run/i.test(wakeUrl) && <span className="field-error">{t("profile.wakeDevUrl")}</span>}
             <span className="field-hint">{t("profile.wakeHint")}</span>
             {wake?.at && (
               <span className={`field-hint ${wake.ok ? "" : "field-error"}`}>

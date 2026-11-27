@@ -152,6 +152,13 @@ describe("workers started on demand", () => {
     expect((await member.req("PUT", `/api/admin/worker-wake/${id}`, { json: { url: WAKE_URL } })).status).toBe(403);
     expect((await admin.req("PUT", `/api/admin/worker-wake/${id}`, { json: { url: "http://example.com/wake" } })).status).toBe(422);
     expect((await admin.req("PUT", `/api/admin/worker-wake/nope`, { json: { url: WAKE_URL } })).status).toBe(404);
+    // An address typed but not saved can be tried first; it is neither saved nor remembered as the last call.
+    const before = calls.length;
+    const tried = (await (await admin.post(`/api/admin/worker-wake/${id}/test`, { url: WAKE_URL })).json()) as any;
+    expect(tried).toMatchObject({ ok: true, status: 200 });
+    expect(calls.length).toBe(before + 1);
+    expect(((await (await admin.get("/api/admin/worker-profiles")).json()) as any).wake[id]).toBeUndefined();
+    expect((await admin.post(`/api/admin/worker-wake/${id}/test`, { url: "http://example.com/wake" })).status).toBe(422);
     await admin.req("PUT", `/api/admin/worker-wake/${id}`, { json: { url: WAKE_URL } });
     const res = (await (await admin.post(`/api/admin/worker-wake/${id}/test`)).json()) as any;
     expect(res).toMatchObject({ ok: true, status: 200 });

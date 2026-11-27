@@ -729,7 +729,7 @@ export const en = {
     wake: "Wake-up address for starting on demand (Modal or another cloud GPU)",
     wakeHint: "With this, the machine is not kept running: when a recording it can take is queued and it is not running, the site calls this address to start it, and it shuts down again when done. Calls are signed with this machine's credential, so nobody else can start it. Modal prints the address when you deploy.",
     wakeTest: "Wake it now",
-    wakeSaveFirst: "Save the address before testing it",
+    wakeDevUrl: "This is the temporary address of modal run (it ends in -dev and stops working when that command ends). Use the one modal deploy prints, without -dev.",
     wakeOk: "Wake-up sent (the platform answered {status}). With nothing to do, it shuts down again within a minute.",
     wakeFailed: "Could not wake it: {error}",
     wakeLast: "Last wake-up: {when}, {result}",

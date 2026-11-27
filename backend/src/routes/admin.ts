@@ -459,7 +459,9 @@ adminRoutes.put("/worker-wake/:id", async (c) => {
 adminRoutes.post("/worker-wake/:id/test", async (c) => {
   const id = c.req.param("id");
   if (!getWorkerKey(id)) httpError(404, "No such worker.", "not_found");
-  const result = await wakeWorker(id, "test");
+  // An address typed but not saved yet can be tried as it is; without one, the saved address.
+  const input = await body(c, z.object({ url: wakeUrlSchema.optional() }));
+  const result = await wakeWorker(id, "test", null, input.url);
   return c.json(result);
 });
 
