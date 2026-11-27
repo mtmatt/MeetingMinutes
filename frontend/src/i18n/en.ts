@@ -731,6 +731,7 @@ export const en = {
     wakeTest: "Wake it now",
     wakeDevUrl: "This is the temporary address of modal run (it ends in -dev and stops working when that command ends). Use the one modal deploy prints, without -dev.",
     wakeOk: "Wake-up sent (the platform answered {status}). With nothing to do, it shuts down again within a minute.",
+    wakeAlready: "It is already starting (called for the work waiting): no second one was started. A cold start takes a minute or two.",
     wakeFailed: "Could not wake it: {error}",
     wakeLast: "Last wake-up: {when}, {result}",
     wakeLastOk: "it answered",

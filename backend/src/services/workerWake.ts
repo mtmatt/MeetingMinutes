@@ -132,7 +132,7 @@ export async function wakeWorker(
   reason: "queued" | "test",
   jobId: string | null = null,
   tryUrl?: string,
-): Promise<{ ok: boolean; status: number | null; error: string | null }> {
+): Promise<{ ok: boolean; status: number | null; error: string | null; running?: boolean }> {
   const saved = wakeUrl(keyId);
   const url = tryUrl ?? saved;
   const remember = url === saved;
@@ -150,7 +150,7 @@ export async function wakeWorker(
   const t = now();
   state.at = t;
   if (remember) states.set(keyId, state);
-  let result: { ok: boolean; status: number | null; error: string | null };
+  let result: { ok: boolean; status: number | null; error: string | null; running?: boolean };
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -159,16 +159,40 @@ export async function wakeWorker(
       signal: AbortSignal.timeout(20_000),
       redirect: "error",
     });
-    // Only the status: what the other side answers is not read, so it cannot be echoed to the page or the log.
-    await res.body?.cancel().catch(() => {});
-    result = { ok: res.ok, status: res.status, error: res.ok ? null : `HTTP ${res.status}` };
+    // Only the status, and from a success whether a run was already starting: nothing the other
+    // side says is echoed to the page or the log.
+    const running = res.ok ? await alreadyRunning(res) : false;
+    if (!res.ok) await res.body?.cancel().catch(() => {});
+    result = { ok: res.ok, status: res.status, error: res.ok ? null : `HTTP ${res.status}`, ...(running ? { running: true } : {}) };
   } catch (e) {
     result = { ok: false, status: null, error: (e instanceof Error ? e.message : String(e)).replace(/[^\x20-\x7e]/g, "?").slice(0, 200) };
   }
-  Object.assign(state, result);
-  if (result.ok) console.log(`[workers] woke ${keyId} (${reason})`);
+  Object.assign(state, { ok: result.ok, status: result.status, error: result.error });
+  if (result.ok) console.log(`[workers] woke ${keyId} (${reason}${result.running ? ", already starting" : ""})`);
   else console.warn(`[workers] could not wake ${keyId}: ${result.error}`);
   return result;
+}
+
+/** Modal's endpoint answers {"running": true} when a run is already starting: read at most 1 KB, for that flag only. */
+async function alreadyRunning(res: Response): Promise<boolean> {
+  try {
+    const reader = res.body?.getReader();
+    if (!reader) return false;
+    let text = "";
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      if (text.length > 1024) {
+        await reader.cancel().catch(() => {});
+        return false;
+      }
+    }
+    return (JSON.parse(text) as { running?: unknown })?.running === true;
+  } catch {
+    return false;
+  }
 }
 
 function online(keyId: string, t: number): boolean {

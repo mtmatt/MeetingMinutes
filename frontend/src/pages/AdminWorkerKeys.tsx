@@ -462,7 +462,7 @@ export function ProfileDialog({
                   setTesting(true);
                   try {
                     const r = await api.adminTestWorkerWake(id, wakeChanged ? wakeUrl.trim() : undefined);
-                    if (r.ok) toast.show(t("profile.wakeOk", { status: r.status ?? "" }));
+                    if (r.ok) toast.show(r.running ? t("profile.wakeAlready") : t("profile.wakeOk", { status: r.status ?? "" }));
                     else toast.error(new Error(t("profile.wakeFailed", { error: r.error ?? "" })));
                   } catch (e) {
                     toast.error(e);

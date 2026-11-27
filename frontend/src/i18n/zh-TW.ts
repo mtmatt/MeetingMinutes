@@ -733,6 +733,7 @@ export const zhTW: Dict = {
     wakeTest: "現在喚醒一次",
     wakeDevUrl: "這是 modal run 的暫時網址（結尾有 -dev，指令結束就失效）。請改用 modal deploy 印出、沒有 -dev 的網址。",
     wakeOk: "已送出喚醒（平台回應 {status}）。沒有工作的話，它會在一分鐘內自己關掉。",
+    wakeAlready: "它已經在啟動中（網站先前已為排隊的錄音叫醒它），沒有再多開一台。冷啟動大約要一到兩分鐘。",
     wakeFailed: "喚醒失敗：{error}",
     wakeLast: "上次喚醒：{when}，{result}",
     wakeLastOk: "成功",
