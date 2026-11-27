@@ -10,6 +10,8 @@ export interface User {
   locale: Locale | null;
   /** Colour theme kept with the account; null until chosen. */
   theme: "system" | "light" | "dark" | null;
+  /** The person uses the new interface (a preview turned on in Settings). */
+  newUi?: boolean;
   email: string | null;
   emailVerified: boolean;
   /** "prepaid": transcription and summaries are paid for with points; "exempt": free. */

@@ -32,7 +32,7 @@ export function PricingPage() {
   return (
     <div className="terms-page">
       <header className="terms-head">
-        <Link to="/" className="terms-brand" aria-label="Minutes">
+        <Link to="/" reloadDocument={!user} className="terms-brand" aria-label="Minutes">
           <Wordmark />
         </Link>
         <Link to={user ? "/" : "/login"} className="btn btn-sm btn-ghost">

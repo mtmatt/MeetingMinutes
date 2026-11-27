@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FAKE_ANTHROPIC_KEY, startFakeAnthropic } from "./fixtures/fakeAnthropic";
@@ -8,6 +8,12 @@ process.env.NODE_ENV = "test";
 process.env.MM_SKIP_DOTENV = "1";
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), "mm-test-"));
 process.env.WORKER_TOKEN = "test-worker-token";
+// A stand-in for the built frontend: the app's page and the public landing page.
+const dist = mkdtempSync(join(tmpdir(), "mm-dist-"));
+writeFileSync(join(dist, "index.html"), "<!doctype html><title>app</title>");
+mkdirSync(join(dist, "welcome"));
+writeFileSync(join(dist, "welcome", "index.html"), "<!doctype html><title>welcome</title>");
+process.env.FRONTEND_DIST = dist;
 process.env.UPLOAD_CHUNK_MB = "1";
 // Mail is kept in memory (services/mail.ts outbox) instead of sent.
 process.env.MAIL_TRANSPORT = "log";

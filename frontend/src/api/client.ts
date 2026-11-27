@@ -183,7 +183,7 @@ export const api = {
     post<{ user: User }>(`/auth/invites/${encodeURIComponent(token)}/accept`, b),
 
   // me
-  updateMe: (b: { displayName?: string; locale?: string | null; theme?: "system" | "light" | "dark" | null }) => patch<{ user: User }>("/me", b),
+  updateMe: (b: { displayName?: string; locale?: string | null; theme?: "system" | "light" | "dark" | null; newUi?: boolean }) => patch<{ user: User }>("/me", b),
   changePassword: (current: string, next: string) => post<{ ok: true }>("/me/password", { current, next }),
   sessions: () => get<{ sessions: SessionInfo[] }>("/me/sessions"),
   revokeSession: (id: string) => del<{ ok: true }>(`/me/sessions/${id}`),

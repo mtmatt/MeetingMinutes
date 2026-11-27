@@ -506,6 +506,9 @@ export const zhTW: Dict = {
     "builtin-lecture": { name: "課程／講座筆記", description: "適用演講、訓練與課程：概念、定義、範例與複習題。" },
   },
   settings: {
+    newUi: "新版介面",
+    newUiSwitch: "使用新版介面（預覽）",
+    newUiHint: "搶先試用重新設計的介面。只會套用到你的帳號，隨時可以關掉換回原本的樣子。",
     email: "Email",
     emailLede: "用來重設忘記的密碼，也會收到付款收據。",
     noEmail: "還沒有設定 Email。設定後，忘記密碼時就能自己重設。",

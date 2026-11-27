@@ -504,6 +504,9 @@ export const en = {
     "builtin-lecture": { name: "Lecture / study notes", description: "For talks, trainings and lectures: concepts, definitions, examples and review questions." },
   },
   settings: {
+    newUi: "New interface",
+    newUiSwitch: "Use the new interface (preview)",
+    newUiHint: "Try the redesigned interface early. It applies to your account only, and you can switch back at any time.",
     email: "Email",
     emailLede: "Used to reset a forgotten password, and for payment receipts.",
     noEmail: "No email address yet. Add one so you can reset a forgotten password yourself.",

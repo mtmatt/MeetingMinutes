@@ -466,4 +466,6 @@ export const migrations: string[] = [
   // 16: a prepaid transcription's limit (seconds) as the worker was told when it claimed the job,
   // so that what it reports afterwards is never charged beyond it.
   `ALTER TABLE jobs ADD COLUMN max_sec REAL;`,
+  // 17: the person tries the new interface (a preview, off until they turn it on in Settings).
+  `ALTER TABLE users ADD COLUMN new_ui INTEGER NOT NULL DEFAULT 0;`,
 ];

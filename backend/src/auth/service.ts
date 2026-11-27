@@ -96,6 +96,8 @@ export function publicUser(u: UserRow) {
     disabled: !!u.disabled,
     locale: u.locale,
     theme: u.theme,
+    /** The person uses the new interface (a preview they turned on in Settings). */
+    newUi: !!u.new_ui,
     email: u.email,
     emailVerified: !!u.email_verified_at,
     /** "prepaid": transcription and summaries are paid for with points (credits, in thousandths); "exempt": free. */

@@ -55,6 +55,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user?.locale) setLocale(user.locale);
   }, [user?.locale, setLocale]);
 
+  // The new interface is a preview a person turns on in Settings: its styles apply under <html data-ui="next">.
+  useEffect(() => {
+    if (user?.newUi) document.documentElement.dataset.ui = "next";
+    else delete document.documentElement.dataset.ui;
+  }, [user?.newUi]);
+
   // The theme follows the account: its saved choice applies here, and a choice made here is saved to it.
   const signedIn = !!user;
   useEffect(() => {

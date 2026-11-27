@@ -8,6 +8,8 @@ import { config } from "./config";
 import { csrfGuard, hostGuard, withClientIp } from "./auth/middleware";
 import { securityWatch } from "./auth/securityWatch";
 import { isProbe } from "./services/security";
+import { getCookie } from "hono/cookie";
+import { SESSION_COOKIE, countUsers, resolveSession } from "./auth/service";
 import { adminRoutes } from "./routes/admin";
 import { billingRoutes, ecpayRoutes } from "./routes/billing";
 import { usageRoutes } from "./routes/usage";
@@ -124,6 +126,8 @@ export function createApp() {
   // Built frontend (single-page app) with history fallback.
   const dist = config.frontendDist;
   const indexHtml = join(dist, "index.html");
+  // The public landing page (what the site is, its prices), for visitors who are not signed in.
+  const welcomeHtml = join(dist, "welcome", "index.html");
   app.get("*", (c) => {
     let urlPath: string;
     try {
@@ -137,6 +141,9 @@ export function createApp() {
     if (!existsSync(indexHtml)) {
       return c.text("Frontend not built. Run `bun run build` in the repository root, or use the Vite dev server.", 503);
     }
+    if (urlPath === "/" && showWelcome(c.req.header("Cookie") ? getCookie(c, SESSION_COOKIE) : undefined) && existsSync(welcomeHtml)) {
+      return staticFile(welcomeHtml, c.req.header("Accept-Encoding"), "no-cache", "text/html; charset=utf-8");
+    }
     const candidate = resolve(dist, "." + normalize(urlPath));
     if (candidate.startsWith(dist + "/") && existsSync(candidate) && statSync(candidate).isFile()) {
       const immutable = urlPath.startsWith("/assets/");
@@ -146,6 +153,16 @@ export function createApp() {
   });
 
   return app;
+}
+
+/**
+ * The front page is the landing page for someone who is not signed in (the app's
+ * own sign-in page is at /login); a signed-in person gets the app, and a site
+ * with no accounts yet goes on to its first-run setup.
+ */
+function showWelcome(sessionToken: string | undefined): boolean {
+  if (sessionToken && resolveSession(sessionToken)) return false;
+  return countUsers() > 0;
 }
 
 /** Content codings the browser accepts (Accept-Encoding, without those it refuses with q=0). */
