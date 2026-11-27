@@ -1182,7 +1182,7 @@ export const zhTW: Dict = {
     byModel: "依摘要模型",
     byModelHint: "寫出摘要的模型，與它讀寫的 token 數。",
     pointsWhere: "點數去向",
-    pointsWhereHint: "這段期間扣的點數，轉錄與摘要各占多少。",
+    pointsWhereHint: "這段期間的點數，轉錄與摘要各占多少。",
     customPrompt: "自訂提示",
     unknown: "未知",
     noSummaries: "這段期間沒有摘要。",
