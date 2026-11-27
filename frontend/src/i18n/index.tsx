@@ -29,8 +29,9 @@ export function detectLocale(): Locale {
   } catch {
     /* storage unavailable */
   }
-  const nav = navigator.languages?.[0] ?? navigator.language ?? "en";
-  return nav.toLowerCase().startsWith("zh") ? "zh-TW" : "en";
+  // Traditional Chinese unless the visitor picked English (saved here, or on
+  // their account once they sign in).
+  return "zh-TW";
 }
 
 interface I18nValue {
