@@ -744,3 +744,16 @@
   --btn-border: var(--rule-strong);
   opacity: 1;
 }
+
+/* The sixth speaker colour, violet in the classic palette, becomes a slate blue-green here. */
+:root[data-ui="next"] {
+  --spk-5: #3f7686;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-ui="next"]:not([data-theme="light"]) {
+    --spk-5: #7fb3c2;
+  }
+}
+:root[data-ui="next"][data-theme="dark"] {
+  --spk-5: #7fb3c2;
+}
