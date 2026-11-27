@@ -764,6 +764,8 @@ export const zhTW: Dict = {
   workers: {
     standby: "待命",
     standbyHint: "按需啟動：有工作時網站會叫醒它，平常不執行。",
+    starting: "啟動中",
+    startingHint: "已經叫醒，平台正在啟動它。冷啟動加上載入模型大約要一到兩分鐘，之後它會自己接走錄音，不需要再手動喚醒。",
     rank: "第 {n} 順位",
     rankHint: "機器接錄音的先後：非備援的優先，接著是備援，依等待分鐘數由少到多。等待時間相同的機器順位相同。",
     modalAlt: "改用 Modal 雲端 GPU（按需啟動，不需要自己的電腦）",

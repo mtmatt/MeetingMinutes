@@ -101,6 +101,30 @@ describe("workers started on demand", () => {
     expect((await admin.req("PUT", `/api/admin/worker-wake/${id}`, { json: { url: null } })).status).toBe(200);
   });
 
+  test("once it has run and stopped, new work wakes it again at once; while it starts, the page says so", async () => {
+    clearQueue();
+    const admin = await adminClient();
+    const { id, token } = await enroll("Modal again");
+    await admin.req("PUT", `/api/admin/worker-wake/${id}`, { json: { url: WAKE_URL } });
+    const wake = async () => ((await (await admin.get("/api/admin/worker-profiles")).json()) as any).wake[id];
+    queued();
+    expect(await wakeSweep()).toEqual([id]);
+    // Called, not up yet: starting (a cold start), and not called again meanwhile.
+    expect((await wake()).starting).toBe(true);
+    expect(await wakeSweep()).toEqual([]);
+    // It comes up, takes the work, and when idle says it stopped: offline at once, not a minute later.
+    await internal(token, "/worker/heartbeat", { workerId: id, info: { state: "idle" } });
+    expect((await wake()).starting).toBe(false);
+    clearQueue();
+    await internal(token, "/worker/heartbeat", { workerId: id, info: { state: "stopped" } });
+    // New work a moment later (well within the two minutes between calls): it is called again at once.
+    queued();
+    expect(await wakeSweep()).toEqual([id]);
+    expect(calls).toHaveLength(2);
+    clearQueue();
+    await admin.req("PUT", `/api/admin/worker-wake/${id}`, { json: { url: null } });
+  });
+
   test("it gives up on a job it was called for several times, and reports failures", async () => {
     clearQueue();
     const admin = await adminClient();

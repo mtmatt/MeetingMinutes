@@ -762,6 +762,8 @@ export const en = {
   workers: {
     standby: "Standby",
     standbyHint: "Starts on demand: the site wakes it when there is work; otherwise it is not running.",
+    starting: "Starting",
+    startingHint: "Called for work: the platform is starting it. A cold start, with the models loading, takes a minute or two; it then takes the recording by itself, so there is no need to wake it again.",
     rank: "Choice {n}",
     rankHint: "The order in which machines take recordings: not a fallback first, then fallbacks by how long they wait. Machines that wait the same share a place.",
     modalAlt: "Use a Modal cloud GPU instead (started on demand, no machine of your own)",

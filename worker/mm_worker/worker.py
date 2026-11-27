@@ -889,6 +889,7 @@ class Supervisor:
         while not self.stop.is_set():
             if self.idle_too_long(idle_since):
                 log.info("no work for %gs; exiting (the platform starts this worker again when there is work)", self.cfg.exit_when_idle_sec)
+                self.say_stopped()
                 self.stop.set()
                 break
             idle = [w for w in self.workers if w.child is None]
@@ -933,6 +934,15 @@ class Supervisor:
             # The GPU is busy from here, so the next pick chooses among the others.
             idle_since = None
             worker.start_session(job)
+
+    def say_stopped(self):
+        """Tells the server this worker is gone, so work queued from now on wakes it again at once
+        (otherwise it would count as online for another minute)."""
+        for worker in self.workers:
+            try:
+                worker.client.heartbeat(self.cfg.worker_name, {**worker.info(), "state": "stopped"})
+            except Exception as e:
+                log.debug("could not say goodbye: %s", e)
 
     def idle_too_long(self, idle_since: Optional[float]) -> bool:
         """Started on demand, nothing running, and no work for MM_EXIT_WHEN_IDLE_SEC."""

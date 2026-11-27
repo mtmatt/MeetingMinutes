@@ -19,7 +19,8 @@ export function WorkerKeys() {
   const confirm = useConfirm();
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["admin", "worker-keys"], queryFn: api.adminWorkerKeys, refetchInterval: 15_000 });
-  const profiles = useQuery({ queryKey: ["admin", "worker-profiles"], queryFn: api.adminWorkerProfiles });
+  // Kept fresh: a worker started on demand goes from standby to starting to online within minutes.
+  const profiles = useQuery({ queryKey: ["admin", "worker-profiles"], queryFn: api.adminWorkerProfiles, refetchInterval: 15_000 });
   // Site-wide settings, and what each connected worker reports (capabilities, keys).
   const transcriber = useQuery({ queryKey: ["admin", "transcriber"], queryFn: api.adminTranscriber, refetchInterval: 20_000 });
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
@@ -112,6 +113,12 @@ export function WorkerKeys() {
             <span className="pill warn">
               <span className="dot" />
               {t("workers.pending", { left: k.enrollExpiresAt ? until(k.enrollExpiresAt, locale) : "" })}
+            </span>
+          ) : !k.online && profiles.data?.wake[k.id]?.starting ? (
+            // Called for work: the platform is starting it (a cold start takes a minute or two).
+            <span className="pill accent live" title={t("workers.startingHint")}>
+              <span className="dot" />
+              {t("workers.starting")}
             </span>
           ) : !k.online && profiles.data?.wake[k.id] ? (
             // Started on demand: not running is its normal state.

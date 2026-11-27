@@ -99,6 +99,9 @@ def test_a_worker_woken_for_nothing_exits_soon():
     t.join(timeout=10)
     assert not t.is_alive()
     assert backend.paths().count("/jobs/claim") >= 1
+    # Its last word is that it stopped, so the server can wake it again at once for new work.
+    last = [body for path, body in backend.events if path == "/worker/heartbeat"][-1]
+    assert last["info"]["state"] == "stopped"
 
 
 def test_a_worker_without_the_setting_keeps_running():
