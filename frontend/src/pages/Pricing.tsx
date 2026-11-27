@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 import { api } from "../api/client";
 import { METHOD_LABEL, PackageCard, Pitch, Rates } from "../components/Pricing";
-import { Wordmark } from "../components/Seal";
+import { PublicHeader } from "../components/PublicHeader";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { pointsPerMeetingHour } from "../lib/format";
@@ -34,27 +34,7 @@ export function PricingPage() {
 
   return (
     <div className="terms-page">
-      <header className="terms-head">
-        <Link to="/" reloadDocument={!user} className="terms-brand" aria-label="Minutes">
-          <Wordmark />
-        </Link>
-        {user ? (
-          <Link to="/" className="btn btn-sm btn-ghost">
-            <ArrowLeft /> {t("pricing.backToApp")}
-          </Link>
-        ) : (
-          <div className="pricing-head-actions">
-            {registration && (
-              <Link to="/register" className="btn btn-sm btn-ghost">
-                {t("auth.createAccount")}
-              </Link>
-            )}
-            <Link to="/login" className="btn btn-sm btn-primary">
-              {t("auth.signIn")}
-            </Link>
-          </div>
-        )}
-      </header>
+      <PublicHeader back={{ to: "/", label: t("pricing.backToApp") }} />
       <main className="terms-body pricing">
         <h1 className="pricing-title">{t("pricing.title")}</h1>
         <p className="pricing-intro">{t("pricing.intro")}</p>

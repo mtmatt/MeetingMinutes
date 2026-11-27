@@ -135,3 +135,47 @@
 [data-ui="next"] .pricing-section > h2 + * {
   margin-top: 0;
 }
+
+/* The terms of sale: a readable column in the same page. */
+[data-ui="next"] .terms-body.terms {
+  max-width: 760px;
+  padding: 72px 24px 96px;
+}
+[data-ui="next"] .terms-prose {
+  font-size: var(--step-0);
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+[data-ui="next"] .terms-prose h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.25rem, 1.6rem + 2.4vw, 3.25rem);
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  margin: 0 0 32px;
+}
+[data-ui="next"] .terms-prose h2 {
+  font-family: var(--font-sans);
+  font-size: var(--h2-size);
+  font-weight: var(--h2-weight);
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--ink);
+  margin: 48px 0 12px;
+  padding-top: 32px;
+  border-top: 1px solid var(--rule);
+}
+[data-ui="next"] .terms-prose strong {
+  color: var(--ink);
+}
+[data-ui="next"] .terms-updated {
+  margin-top: 48px;
+  font-size: var(--step--1);
+  color: var(--ink-3);
+}
+@media (max-width: 860px) {
+  [data-ui="next"] .terms-body.terms {
+    padding: 40px 16px 72px;
+  }
+}

@@ -10,6 +10,7 @@ import { useI18n, type TKey } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { TYPICAL_HOUR, dateTime, pointsPerMeetingHour, pointsText, relative, twd, twdApprox } from "../lib/format";
 import { termsTemplate } from "../lib/termsTemplate";
+import { VENDOR_NAMES } from "../lib/summaryEngine";
 
 const METHODS: PaymentMethod[] = ["Credit", "ATM", "CVS"];
 const METHOD_LABEL = { Credit: "billing.methodCredit", ATM: "billing.methodATM", CVS: "billing.methodCVS" } as const;
@@ -330,6 +331,8 @@ function RatesEditor({ rates, onChange }: { rates: BillingSettings["rates"]; onC
 /** The terms of sale shown at /terms: written here in Markdown, saved on their own. */
 function TermsEditor({ rates, noExpiry }: { rates: BillingSettings["rates"]; noExpiry: boolean }) {
   const { t, locale } = useI18n();
+  // The site's own practice, filled into the template's section on recordings.
+  const { siteRetentionDays, mediaPolicy, summarizer } = useAuth();
   const toast = useToast();
   const confirm = useConfirm();
   const qc = useQueryClient();
@@ -347,7 +350,13 @@ function TermsEditor({ rates, noExpiry }: { rates: BillingSettings["rates"]; noE
       const ok = await confirm({ title: t("sales.templateReplaceTitle"), body: t("sales.templateReplaceBody"), confirmLabel: t("sales.templateReplace") });
       if (!ok) return;
     }
-    setText(termsTemplate(locale, rates, noExpiry));
+    setText(
+      termsTemplate(locale, rates, noExpiry, {
+        retentionDays: siteRetentionDays,
+        videoAudioOnly: mediaPolicy?.videoAudioOnly ?? true,
+        summaryVendor: summarizer?.provider === "api" && summarizer.vendor ? VENDOR_NAMES[summarizer.vendor] : null,
+      }),
+    );
   };
   const save = async () => {
     setBusy(true);
