@@ -252,6 +252,13 @@ function ecpaySettings() {
   return { mode, ...(given ? { merchantId, hashKey, hashIv } : test), testShop: !given };
 }
 
+function retentionDays(raw: string): 0 | 7 | 30 {
+  const v = raw.trim();
+  if (v === "" || v === "0") return 0;
+  if (v === "7" || v === "30") return Number(v) as 7 | 30;
+  throw new Error(`MEDIA_RETENTION_DAYS must be 0 (keep recordings), 7 or 30, got "${raw}"`);
+}
+
 export const config = {
   host: str("HOST", "127.0.0.1"),
   port: int("PORT", 8787),
@@ -352,6 +359,12 @@ export const config = {
     compact: bool("MEDIA_COMPACT", false),
     compactAfterDays: Math.round(num("MEDIA_COMPACT_AFTER_DAYS", 7, 0, 3650)),
     compactKbps: Math.round(num("MEDIA_COMPACT_KBPS", 32, 12, 256)),
+    /**
+     * Recordings are deleted this many days after their transcription
+     * (0: kept; 7 or 30), keeping the transcript and summaries. The site's
+     * maximum: each person may choose a shorter period in Settings.
+     */
+    retentionDays: retentionDays(str("MEDIA_RETENTION_DAYS", "0")),
   },
   asr: {
     engine: oneOf("ASR_ENGINE", ["local", "api"] as const, "local"),

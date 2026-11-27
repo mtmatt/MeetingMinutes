@@ -6,6 +6,7 @@ import {
   Download,
   FileAudio,
   FileVideo,
+  FileX2,
   Languages,
   MoreHorizontal,
   Pencil,
@@ -29,7 +30,7 @@ import { useToast } from "../components/Toast";
 import { Transcript } from "../components/Transcript";
 import { useI18n, type TKey } from "../i18n";
 import { PAGE_DATA_FRESH_MS } from "../lib/prefetch";
-import { bytes, dateTime, duration, monthDay } from "../lib/format";
+import { bytes, dateLong, dateTime, duration, monthDay } from "../lib/format";
 import { setPageContext } from "../lib/pageContext";
 import { PlayerProvider, usePlayer, usePlayerShortcuts } from "../lib/player";
 import { apiErrorMessage, describeFailure } from "../lib/errors";
@@ -235,6 +236,8 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
   }, []);
 
   const ready = meeting.status === "ready";
+  // The recording was deleted after its retention period: the transcript and summaries stay.
+  const mediaGone = meeting.media.deletedAt != null;
   const when = meeting.occurredAt ?? meeting.createdAt;
   const headRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -284,7 +287,7 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
   };
 
   return (
-    <div className={`meeting ${ready ? "has-player" : ""}`}>
+    <div className={`meeting ${ready && !mediaGone ? "has-player" : ""}`}>
       <header className="meeting-head" ref={headRef}>
         <Link to="/" className="back-link">
           <ArrowLeft /> {t("meeting.backToLibrary")}
@@ -305,14 +308,21 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
                   <Languages /> {lang}
                 </span>
               )}
-              <span className="faint" title={meeting.media.name}>
-                {meeting.media.hasVideo ? <FileVideo /> : <FileAudio />} {bytes(meeting.media.size)}
-              </span>
+              {mediaGone ? (
+                <span className="faint" title={meeting.media.name}>
+                  <FileX2 /> {t("retention.metaDeleted")}
+                </span>
+              ) : (
+                <span className="faint" title={meeting.media.name}>
+                  {meeting.media.hasVideo ? <FileVideo /> : <FileAudio />} {bytes(meeting.media.size)}
+                  {meeting.media.deletesAt != null && <> · {t("retention.metaKeptUntil", { date: monthDay(meeting.media.deletesAt, locale) })}</>}
+                </span>
+              )}
               <MeetingStatus m={meeting} />
             </div>
           </div>
           <div className="meeting-actions">
-            {ready && meeting.media.hasVideo && (
+            {ready && !mediaGone && meeting.media.hasVideo && (
               <button className="btn btn-sm" aria-pressed={videoMode} onClick={() => setVideoMode((v) => !v)}>
                 <Video /> {t("meeting.showVideo")}
               </button>
@@ -360,11 +370,15 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
                         <span className="end mono">{ext}</span>
                       </a>
                     ))}
-                    <div className="menu-sep" />
-                    <a className="menu-item" href={mediaUrl.original(meeting.id, true)} download>
-                      {meeting.media.hasVideo ? <FileVideo /> : <FileAudio />} {meeting.media.compacted ? t("meeting.exportMediaCompact") : t("meeting.exportMedia")}
-                      <span className="end mono">{bytes(meeting.media.size)}</span>
-                    </a>
+                    {!mediaGone && (
+                      <>
+                        <div className="menu-sep" />
+                        <a className="menu-item" href={mediaUrl.original(meeting.id, true)} download>
+                          {meeting.media.hasVideo ? <FileVideo /> : <FileAudio />} {meeting.media.compacted ? t("meeting.exportMediaCompact") : t("meeting.exportMedia")}
+                          <span className="end mono">{bytes(meeting.media.size)}</span>
+                        </a>
+                      </>
+                    )}
                   </>
                 )}
               </Menu>
@@ -378,7 +392,7 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
             >
               {(close) => (
                 <>
-                  {meeting.status !== "uploading" && (
+                  {meeting.status !== "uploading" && !mediaGone && (
                     <button
                       className="menu-item"
                       onClick={() => {
@@ -389,7 +403,7 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
                       <RefreshCw /> {t("meeting.retranscribe")}
                     </button>
                   )}
-                  {ready && (
+                  {ready && !mediaGone && (
                     <button
                       className="menu-item"
                       onClick={() => {
@@ -430,7 +444,16 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
 
       {ready && (
         <>
-          <DiarizationNotice meeting={meeting} />
+          {mediaGone && (
+            <div className="callout retention-note" role="note">
+              <FileX2 />
+              <div>
+                <strong>{t("retention.deletedTitle", { date: dateLong(meeting.media.deletedAt!, locale) })}</strong>
+                <p>{t("retention.deletedBody")}</p>
+              </div>
+            </div>
+          )}
+          {!mediaGone && <DiarizationNotice meeting={meeting} />}
           <div className="meeting-tabs tabs" role="tablist">
             <button role="tab" aria-selected={tab === "transcript"} onClick={() => setTab("transcript")}>
               {t("meeting.transcript")}
@@ -449,7 +472,7 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
               <SummaryPanel meeting={meeting} selection={summarySelection} />
             </aside>
           </div>
-          <PlayerBar meeting={meeting} videoMode={videoMode} />
+          {!mediaGone && <PlayerBar meeting={meeting} videoMode={videoMode} />}
         </>
       )}
       {resplit && <ResplitDialog meeting={meeting} onClose={() => setResplit(false)} />}

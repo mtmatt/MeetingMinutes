@@ -98,6 +98,8 @@ export function publicUser(u: UserRow) {
     theme: u.theme,
     /** The person uses the new interface (a preview they turned on in Settings). */
     newUi: !!u.new_ui,
+    /** How long they keep recordings after transcription (7 or 30 days); null: as long as the site does. */
+    mediaRetentionDays: u.media_retention_days ?? null,
     email: u.email,
     emailVerified: !!u.email_verified_at,
     /** "prepaid": transcription and summaries are paid for with points (credits, in thousandths); "exempt": free. */

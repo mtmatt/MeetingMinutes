@@ -42,11 +42,12 @@ export function exportAsrEval(outDir: string, opts: ExportOptions = {}): Exporte
       const m = db.query<MeetingRow, { id: string }>("SELECT * FROM meetings WHERE id = $id").get({ id });
       if (!m) throw new Error(`No meeting ${id}.`);
       if (m.status !== "ready") throw new Error(`Meeting ${id} is not transcribed (status ${m.status}).`);
+      if (m.media_deleted_at != null) throw new Error(`The recording of ${id} was deleted under the retention period.`);
       return m;
     });
   } else {
     meetings = db
-      .query<MeetingRow, []>("SELECT * FROM meetings WHERE status = 'ready' ORDER BY COALESCE(occurred_at, created_at) DESC")
+      .query<MeetingRow, []>("SELECT * FROM meetings WHERE status = 'ready' AND media_deleted_at IS NULL ORDER BY COALESCE(occurred_at, created_at) DESC")
       .all()
       .filter((m) => edited.get({ m: m.id })!.n >= minEdited);
   }

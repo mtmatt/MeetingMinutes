@@ -540,7 +540,7 @@ export function voiceprintSpans(meetingId: string): Record<string, [number, numb
 
 /** Queue fingerprints for a transcribed meeting (at most one waiting job per meeting). */
 export function enqueueVoiceprint(m: MeetingRow, learn: boolean): boolean {
-  if (m.status !== "ready") return false;
+  if (m.status !== "ready" || m.media_deleted_at != null) return false;
   const queued = db
     .query<{ id: string }, { m: string }>("SELECT id FROM jobs WHERE meeting_id = $m AND kind = 'voiceprint' AND status = 'queued'")
     .get({ m: m.id });

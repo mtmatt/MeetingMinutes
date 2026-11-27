@@ -2556,6 +2556,11 @@
 .storage-days {
   width: min(100%, 300px);
 }
+/* Deleting recordings: its own row, under compacting. */
+.storage-retention {
+  flex-basis: 100%;
+  max-width: 640px;
+}
 .storage-stats {
   grid-template-columns: minmax(110px, max-content) 1fr;
 }

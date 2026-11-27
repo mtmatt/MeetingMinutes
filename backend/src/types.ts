@@ -12,6 +12,8 @@ export interface UserRow {
   theme: string | null;
   /** 1: the person uses the new interface (a preview). */
   new_ui: number;
+  /** Days to keep recordings (7 or 30); null: as long as the site keeps them. */
+  media_retention_days: number | null;
   created_at: number;
   updated_at: number;
   last_login_at: number | null;
@@ -91,6 +93,8 @@ export interface MeetingRow {
   compacted_at: number | null;
   /** Size of the original as uploaded, once it has been compacted. */
   original_size: number | null;
+  /** When the recording was deleted under the retention period (the transcript stays). */
+  media_deleted_at: number | null;
 }
 
 export type VoiceStatus = "confirmed" | "auto" | "suggested" | "rejected" | "ignored";

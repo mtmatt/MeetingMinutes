@@ -114,6 +114,8 @@ export const api = {
       needsSetup: boolean;
       user: User | null;
       helpContact: string | null;
+      /** How long the site keeps recordings after transcription (days); null: kept. */
+      mediaRetentionDays?: number | null;
       uploadLimitBytes: number | null;
       googleClientId: string | null;
       summarizer: SummarizerInfo | null;
@@ -183,7 +185,7 @@ export const api = {
     post<{ user: User }>(`/auth/invites/${encodeURIComponent(token)}/accept`, b),
 
   // me
-  updateMe: (b: { displayName?: string; locale?: string | null; theme?: "system" | "light" | "dark" | null; newUi?: boolean }) => patch<{ user: User }>("/me", b),
+  updateMe: (b: { displayName?: string; locale?: string | null; theme?: "system" | "light" | "dark" | null; newUi?: boolean; mediaRetentionDays?: 7 | 30 | null }) => patch<{ user: User }>("/me", b),
   changePassword: (current: string, next: string) => post<{ ok: true }>("/me/password", { current, next }),
   sessions: () => get<{ sessions: SessionInfo[] }>("/me/sessions"),
   revokeSession: (id: string) => del<{ ok: true }>(`/me/sessions/${id}`),

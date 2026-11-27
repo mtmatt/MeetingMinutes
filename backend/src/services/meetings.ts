@@ -27,6 +27,7 @@ import {
   jobDiarizationSettings,
 } from "./transcriberSettings";
 import { scheduleWakeCheck } from "./workerWake";
+import { mediaRetention } from "./mediaRetention";
 import { LOCAL_PROFILE, effectiveSettings, fallbackDelaySec } from "./workerProfiles";
 
 export const SPEAKER_COLORS = 10;
@@ -263,6 +264,8 @@ export function meetingSummary(m: MeetingRow) {
       hasPeaks: !!m.has_peaks,
       /** The original was replaced by an audio-only copy (any video is gone). */
       compacted: m.compacted_at != null,
+      /** The recording was deleted under the retention period (deletedAt), or will be (deletesAt). */
+      ...mediaRetention(m),
     },
     durationSec: m.duration_sec,
     language: m.language,
