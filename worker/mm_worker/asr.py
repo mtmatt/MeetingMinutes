@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Callable, List, Optional, Sequence, Tuple
 
 import numpy as np
+
+log = logging.getLogger("mm_worker.asr")
 
 
 class Transcriber:
@@ -32,8 +35,15 @@ class Transcriber:
             )
         else:
             # bfloat16 on NVIDIA and Apple silicon (M2 and later); ASR_DTYPE=float16 or
-            # float32 if a GPU or its driver lacks it.
-            dtype = getattr(torch, os.environ.get("ASR_DTYPE", "").strip() or "bfloat16")
+            # float32 if a GPU or its driver lacks it. GPUs older than Ampere (a T4,
+            # a V100) have no bfloat16, so they get float16 unless told otherwise.
+            chosen = os.environ.get("ASR_DTYPE", "").strip()
+            if not chosen:
+                chosen = "bfloat16"
+                if str(self.device).startswith("cuda") and torch.cuda.is_available() and not torch.cuda.is_bf16_supported():
+                    chosen = "float16"
+                    log.info("this GPU has no bfloat16: loading the ASR model in float16")
+            dtype = getattr(torch, chosen)
             self._model = Qwen3ASRModel.from_pretrained(
                 self.model_name,
                 dtype=dtype,

@@ -56,6 +56,8 @@ import {
 import type { AppEnv, MeetingRow, UserRow } from "../types";
 import { MILLI, addCredits, ledger, publicLedgerEntry } from "../services/credits";
 import { billingSettings, billingSettingsMeta, billingSettingsSchema, saveBillingSettings } from "../services/billingSettings";
+import { listWakeState, setWakeUrl, wakeUrlSchema, wakeWorker } from "../services/workerWake";
+import { adminAnnouncements, announcementInput, createAnnouncement, deleteAnnouncement, updateAnnouncement } from "../services/announcements";
 import { TERMS_MAX, saveTerms, termsText, termsUpdatedAt } from "../services/terms";
 import { getOrder, publicEcpayInfo, publicOrder, queryOrder, type OrderRow } from "../services/ecpay";
 import { MailError, mailLocale, publicMailInfo, sendMail, testMail } from "../services/mail";
@@ -432,6 +434,7 @@ adminRoutes.delete("/worker-keys/:id", (c) => {
   const jobs = revokeWorkerKey(c.req.param("id"));
   if (jobs === null) httpError(404, "No such worker.", "not_found");
   deleteWorkerProfile(c.req.param("id"));
+  setWakeUrl(c.req.param("id"), null, c.get("user").id);
   requeueJobs(jobs!, "The worker's access was revoked.");
   return c.json({ ok: true, requeued: jobs!.length });
 });
@@ -439,8 +442,26 @@ adminRoutes.delete("/worker-keys/:id", (c) => {
 // ------------------------------------------------------- settings per worker machine
 
 adminRoutes.get("/worker-profiles", (c) =>
-  c.json({ profiles: listWorkerProfiles(), local: LOCAL_PROFILE, defaultFallbackSec: DEFAULT_FALLBACK_SEC }),
+  c.json({ profiles: listWorkerProfiles(), local: LOCAL_PROFILE, defaultFallbackSec: DEFAULT_FALLBACK_SEC, wake: listWakeState() }),
 );
+
+/** A remote worker started on demand (Modal): where to call it when work waits for it; null: it runs on its own. */
+adminRoutes.put("/worker-wake/:id", async (c) => {
+  const id = c.req.param("id");
+  const key = getWorkerKey(id);
+  if (!key || key.revoked_at) httpError(404, "No such worker.", "not_found");
+  const input = await body(c, z.object({ url: wakeUrlSchema.nullable() }));
+  setWakeUrl(id, input.url, c.get("user").id);
+  return c.json({ wake: listWakeState()[id] ?? null });
+});
+
+/** Call it now, to check the address (it starts the worker, which exits again if there is nothing to do). */
+adminRoutes.post("/worker-wake/:id/test", async (c) => {
+  const id = c.req.param("id");
+  if (!getWorkerKey(id)) httpError(404, "No such worker.", "not_found");
+  const result = await wakeWorker(id, "test");
+  return c.json(result);
+});
 
 /** A machine's own choices ("local" or a remote worker's ID); null fields follow the site-wide settings. */
 adminRoutes.put("/worker-profiles/:id", async (c) => {
@@ -448,6 +469,27 @@ adminRoutes.put("/worker-profiles/:id", async (c) => {
   if (id !== LOCAL_PROFILE && !getWorkerKey(id)) httpError(404, "No such worker.", "not_found");
   const input = await body(c, workerProfileSchema);
   return c.json({ profile: saveWorkerProfile(id, input, c.get("user").id) });
+});
+
+// ---------------------------------------------------------------- announcements
+
+adminRoutes.get("/announcements", (c) => c.json({ announcements: adminAnnouncements() }));
+
+adminRoutes.post("/announcements", async (c) => {
+  const input = await body(c, announcementInput);
+  const id = createAnnouncement(input, c.get("user").id);
+  return c.json({ id }, 201);
+});
+
+adminRoutes.put("/announcements/:id", async (c) => {
+  const input = await body(c, announcementInput);
+  if (!updateAnnouncement(c.req.param("id"), input)) httpError(404, "No such announcement.", "not_found");
+  return c.json({ ok: true });
+});
+
+adminRoutes.delete("/announcements/:id", (c) => {
+  if (!deleteAnnouncement(c.req.param("id"))) httpError(404, "No such announcement.", "not_found");
+  return c.json({ ok: true });
 });
 
 // ---------------------------------------------------------------- billing

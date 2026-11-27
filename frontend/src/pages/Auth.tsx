@@ -5,6 +5,7 @@ import { Link, Navigate, useNavigate, useParams, useSearchParams } from "react-r
 import { ApiError, api } from "../api/client";
 import { apiErrorMessage } from "../lib/errors";
 import { Seal, Wordmark } from "../components/Seal";
+import { PublicAnnouncements } from "../components/Announcements";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 
@@ -131,6 +132,7 @@ export function LoginPage() {
   return (
     <AuthLayout>
       <form className="auth-form" onSubmit={submit} noValidate>
+        <PublicAnnouncements />
         <div>
           <h2>{t("auth.welcomeBack")}</h2>
           {registration ? (

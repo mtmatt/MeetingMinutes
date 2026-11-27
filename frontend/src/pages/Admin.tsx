@@ -19,6 +19,7 @@ import { SummaryModel } from "./AdminSummaryModel";
 import { Transcription } from "./AdminTranscription";
 import { AdminBilling } from "./AdminBilling";
 import { AdminSecurity } from "./AdminSecurity";
+import { AdminAnnouncements } from "./AdminAnnouncements";
 
 function CopyLink({ url }: { url: string }) {
   const { t } = useI18n();
@@ -566,7 +567,7 @@ function AdjustMinutes({ user, onClose, onDone }: { user: AdminUser; onClose: ()
   );
 }
 
-const TABS = ["users", "invites", "asr", "model", "sales", "security", "system"] as const;
+const TABS = ["users", "invites", "announcements", "asr", "model", "sales", "security", "system"] as const;
 type Tab = (typeof TABS)[number];
 
 export function AdminPage() {
@@ -598,6 +599,7 @@ export function AdminPage() {
       <div className="admin-body">
         {tab === "users" && <Users />}
         {tab === "invites" && <Invites />}
+        {tab === "announcements" && <AdminAnnouncements />}
         {tab === "asr" && <Transcription />}
         {tab === "model" && <SummaryModel />}
         {tab === "sales" && <AdminBilling />}

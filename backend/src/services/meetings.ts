@@ -26,6 +26,7 @@ import {
   jobAsrSettings,
   jobDiarizationSettings,
 } from "./transcriberSettings";
+import { scheduleWakeCheck } from "./workerWake";
 import { LOCAL_PROFILE, effectiveSettings, fallbackDelaySec } from "./workerProfiles";
 
 export const SPEAKER_COLORS = 10;
@@ -339,6 +340,8 @@ export function enqueueTranscription(m: MeetingRow, hold: number | null = null) 
     ).run({ id: m.id, t: now() });
   })();
   touchMeeting(m);
+  // A worker started on demand (Modal) is called if none that could take it is running.
+  scheduleWakeCheck();
 }
 
 export interface ClaimedJob {

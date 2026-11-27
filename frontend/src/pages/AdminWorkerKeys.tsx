@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Laptop, Plus, Server, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Check, Cloud, Copy, Laptop, Plus, Server, SlidersHorizontal, Trash2, Zap } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api/client";
-import type { AsrEngine, DiarizationEngine, TranscriberSettings, WorkerKey, WorkerProfile } from "../api/types";
+import type { AsrEngine, DiarizationEngine, TranscriberSettings, WorkerKey, WorkerProfile, WorkerWake } from "../api/types";
 import { Modal, useConfirm } from "../components/Modal";
 import { useToast } from "../components/Toast";
 import { useI18n } from "../i18n";
@@ -95,7 +95,7 @@ export function WorkerKeys() {
               <div className="worker-key-main">
                 <span className="worker-key-name">{k.name}</span>
                 <span className="mono faint">{k.id}</span>
-                {!k.revokedAt && <ProfileSummary profile={profiles.data?.profiles[k.id]} />}
+                {!k.revokedAt && <ProfileSummary profile={profiles.data?.profiles[k.id]} wake={profiles.data?.wake[k.id]} />}
               </div>
               <div className="worker-key-state">
                 {k.revokedAt ? (
@@ -104,6 +104,12 @@ export function WorkerKeys() {
                   <span className="pill warn">
                     <span className="dot" />
                     {t("workers.pending", { left: k.enrollExpiresAt ? until(k.enrollExpiresAt, locale) : "" })}
+                  </span>
+                ) : !k.online && profiles.data?.wake[k.id] ? (
+                  // Started on demand: not running is its normal state.
+                  <span className="pill" title={t("workers.standbyHint")}>
+                    <Cloud className="pill-icon" />
+                    {t("workers.standby")}
                   </span>
                 ) : (
                   <span className={`pill ${k.online ? "ok" : ""}`}>
@@ -149,6 +155,7 @@ export function WorkerKeys() {
           id={editing.id}
           name={editing.name}
           profile={profiles.data?.profiles[editing.id]}
+          wake={editing.id === "local" ? undefined : (profiles.data?.wake[editing.id] ?? null)}
           defaultFallbackSec={profiles.data?.defaultFallbackSec ?? 120}
           global={transcriber.data?.settings}
           capabilities={workersOf(editing.id)[0]?.capabilities ?? null}
@@ -255,6 +262,12 @@ function EnrollCode({ created, onClose }: { created: { name: string; code: strin
             <pre className="mono asr-env">{"scripts/worker.sh check\nscripts/restart.sh worker"}</pre>
           </li>
         </ol>
+        <details className="worker-enroll-modal">
+          <summary>{t("workers.modalAlt")}</summary>
+          <p className="field-hint">{t("workers.modalAltIntro")}</p>
+          <pre className="mono asr-env">{`modal run deploy/modal/app.py::enroll --server-url ${server} --code ${created.code}\nmodal deploy deploy/modal/app.py`}</pre>
+          <p className="field-hint">{t("workers.modalAltNext")}</p>
+        </details>
         <p className="field-hint">{t("workers.codeOnce", { left: until(created.expiresAt, locale) })}</p>
       </div>
     </Modal>
@@ -264,13 +277,14 @@ function EnrollCode({ created, onClose }: { created: { name: string; code: strin
 // ---------------------------------------------------------------- settings per machine
 
 /** One line on what a machine does: its own choices, or "site-wide". */
-export function ProfileSummary({ profile }: { profile: WorkerProfile | undefined }) {
+export function ProfileSummary({ profile, wake }: { profile: WorkerProfile | undefined; wake?: WorkerWake }) {
   const { t } = useI18n();
   const p = profile ?? { engine: null, diarization: null, fallbackSec: null };
   const parts: string[] = [];
   parts.push(p.engine ? t("profile.asrIs", { v: t(`profile.asr_${p.engine}`) }) : t("profile.asrDefault"));
   parts.push(p.diarization ? t("profile.diarIs", { v: t(`profile.diar_${p.diarization}`) }) : t("profile.diarDefault"));
   if (p.fallbackSec) parts.push(t("profile.fallbackShort", { n: Math.round(p.fallbackSec / 60) }));
+  if (wake) parts.push(t("profile.wakeShort"));
   return <span className="faint worker-profile-summary">{parts.join(" · ")}</span>;
 }
 
@@ -278,6 +292,7 @@ export function ProfileDialog({
   id,
   name,
   profile,
+  wake,
   defaultFallbackSec,
   global,
   capabilities,
@@ -288,6 +303,8 @@ export function ProfileDialog({
   id: string;
   name: string;
   profile: WorkerProfile | undefined;
+  /** A remote worker's wake-up address (null: none); undefined for this server's workers, which run on their own. */
+  wake?: WorkerWake | null;
   defaultFallbackSec: number;
   global: TranscriberSettings | undefined;
   /** What the machine's connected workers can run; null when none is connected (or too old to say). */
@@ -296,11 +313,16 @@ export function ProfileDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const toast = useToast();
   const [form, setForm] = useState<WorkerProfile>(profile ?? { engine: null, diarization: null, fallbackSec: null });
   const [minutes, setMinutes] = useState(Math.max(1, Math.round((profile?.fallbackSec ?? defaultFallbackSec) / 60)));
   const [busy, setBusy] = useState(false);
+  const [wakeUrl, setWakeUrl] = useState(wake?.url ?? "");
+  const [testing, setTesting] = useState(false);
+  const wakeChanged = wake !== undefined && wakeUrl.trim() !== (wake?.url ?? "");
+  // https, or plain http to this machine (a local stand-in while testing), as the server accepts.
+  const wakeOk = !wakeUrl.trim() || /^https:\/\/\S+$/.test(wakeUrl.trim()) || /^http:\/\/(localhost|127(\.\d{1,3}){3}|\[::1\])(:\d+)?(\/\S*)?$/.test(wakeUrl.trim());
 
   const engine = form.engine ?? global?.engine;
   const diarization = form.diarization ?? global?.diarization;
@@ -318,6 +340,7 @@ export function ProfileDialog({
     setBusy(true);
     try {
       await api.adminSaveWorkerProfile(id, { ...form, fallbackSec: form.fallbackSec ? Math.max(1, minutes) * 60 : null });
+      if (wakeChanged) await api.adminSaveWorkerWake(id, wakeUrl.trim() || null);
       toast.show(t("common.saved"));
       onSaved();
     } catch (e) {
@@ -339,7 +362,7 @@ export function ProfileDialog({
           <button className="btn btn-ghost" onClick={onClose}>
             {t("common.cancel")}
           </button>
-          <button className="btn btn-primary" onClick={save} disabled={busy}>
+          <button className="btn btn-primary" onClick={save} disabled={busy || !wakeOk}>
             {busy && <span className="spinner" />} {t("common.save")}
           </button>
         </>
@@ -389,6 +412,51 @@ export function ProfileDialog({
           )}
           <span className="field-hint">{t("profile.fallbackHint")}</span>
         </div>
+        {wake !== undefined && (
+          <div className="field">
+            <label htmlFor="wake-url">{t("profile.wake")}</label>
+            <div className="profile-wake">
+              <input
+                id="wake-url"
+                className="input mono"
+                type="url"
+                placeholder="https://…modal.run"
+                value={wakeUrl}
+                aria-invalid={!wakeOk}
+                onChange={(e) => setWakeUrl(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn"
+                disabled={testing || !wake || wakeChanged}
+                title={wakeChanged ? t("profile.wakeSaveFirst") : undefined}
+                onClick={async () => {
+                  setTesting(true);
+                  try {
+                    const r = await api.adminTestWorkerWake(id);
+                    if (r.ok) toast.show(t("profile.wakeOk", { status: r.status ?? "" }));
+                    else toast.error(new Error(t("profile.wakeFailed", { error: r.error ?? "" })));
+                  } catch (e) {
+                    toast.error(e);
+                  } finally {
+                    setTesting(false);
+                  }
+                }}
+              >
+                {testing ? <span className="spinner" /> : <Zap />} {t("profile.wakeTest")}
+              </button>
+            </div>
+            <span className="field-hint">{t("profile.wakeHint")}</span>
+            {wake?.at && (
+              <span className={`field-hint ${wake.ok ? "" : "field-error"}`}>
+                {t("profile.wakeLast", {
+                  when: relative(wake.at, t, locale),
+                  result: wake.ok ? t("profile.wakeLastOk") : t("profile.wakeFailed", { error: wake.error ?? "" }),
+                })}
+              </span>
+            )}
+          </div>
+        )}
         {problems.length > 0 && (
           <div className="callout warn" role="alert">
             <div>

@@ -78,6 +78,9 @@ class WorkerConfig:
     # Enrolled on another machine: media comes over HTTPS, nothing is read from the server's disk.
     remote: bool = False
     media_poll_interval: float = 30.0
+    # Started on demand (a serverless GPU such as Modal): exit once there has been no work
+    # for this many seconds. None: run until stopped, as a worker on a machine of its own does.
+    exit_when_idle_sec: Optional[float] = None
     extra: dict = field(default_factory=dict)
 
     @property
@@ -160,6 +163,9 @@ def load_config() -> WorkerConfig:
     if remote and credential:
         # The server accepts only worker IDs that start with this machine's key ID.
         worker_id = os.environ.get("MM_WORKER_ID") or credential["workerId"]
+    elif remote:
+        # A token given as WORKER_TOKEN (a serverless platform's secret): "mmw_<key ID>.<secret>".
+        worker_id = os.environ.get("MM_WORKER_ID") or key_id_of(token)
     else:
         worker_id = os.environ.get("MM_WORKER_ID") or (host if len(gpus) > 1 else f"{host}-gpu{gpus[0]}")
 
@@ -187,7 +193,23 @@ def load_config() -> WorkerConfig:
         media_jobs=os.environ.get("MM_MEDIA_JOBS", "1").strip().lower() not in ("0", "false", "no", "off"),
         model_dir=Path(os.environ["MM_MODEL_DIR"]).expanduser() if os.environ.get("MM_MODEL_DIR", "").strip() else data_dir / "models",
         remote=remote,
+        exit_when_idle_sec=_idle_exit(),
     )
+
+
+def _idle_exit() -> Optional[float]:
+    """MM_EXIT_WHEN_IDLE_SEC: seconds without work before the worker exits (unset: never)."""
+    v = os.environ.get("MM_EXIT_WHEN_IDLE_SEC", "").strip()
+    return max(0.0, float(v)) if v else None
+
+
+def key_id_of(token: str) -> str:
+    """The key ID a remote worker's token belongs to ("mmw_<key ID>.<secret>")."""
+    body = token.removeprefix("mmw_")
+    key = body.split(".", 1)[0]
+    if not token.startswith("mmw_") or "." not in body or not key:
+        raise SystemExit("WORKER_TOKEN does not look like a worker token (mmw_…); enroll the worker again.")
+    return key
 
 
 def credential_path(data_dir: Path) -> Path:

@@ -38,10 +38,13 @@ export function useLiveUpdates(enabled: boolean) {
       qc.removeQueries({ queryKey: ["meeting", data.meetingId] });
       invalidate(["meetings"]);
     });
+    // An administrator published, changed or removed an announcement.
+    es.addEventListener("announcements.updated", () => invalidate(["announcements"]));
     // After a reconnect we may have missed events; refresh everything visible.
     es.addEventListener("ready", () => {
       void qc.invalidateQueries({ queryKey: ["meetings"] });
       void qc.invalidateQueries({ queryKey: ["meeting"] });
+      void qc.invalidateQueries({ queryKey: ["announcements"] });
     });
     return () => {
       es.close();

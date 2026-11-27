@@ -11,6 +11,7 @@ import { isProbe } from "./services/security";
 import { adminRoutes } from "./routes/admin";
 import { billingRoutes, ecpayRoutes } from "./routes/billing";
 import { usageRoutes } from "./routes/usage";
+import { announcementRoutes } from "./routes/announcements";
 import { authRoutes, meRoutes } from "./routes/auth";
 import { eventRoutes } from "./routes/events";
 import { internalRoutes } from "./routes/internal";
@@ -113,6 +114,7 @@ export function createApp() {
   api.route("/presets", presetRoutes);
   api.route("/billing", billingRoutes);
   api.route("/usage", usageRoutes);
+  api.route("/announcements", announcementRoutes);
   api.route("/voices", voiceRoutes);
   api.route("/admin", adminRoutes);
   api.route("/events", eventRoutes);

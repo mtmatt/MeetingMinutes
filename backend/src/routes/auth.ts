@@ -16,6 +16,7 @@ import {
 } from "../auth/accounts";
 import { alreadyRegisteredMail, mailConfigured, mailLocale, MailError, resetMail, sendMail, verifyMail } from "../services/mail";
 import { billingSettings } from "../services/billingSettings";
+import { publicAnnouncements } from "../services/announcements";
 import { termsLink, termsText, termsUpdatedAt } from "../services/terms";
 import {
   SESSION_COOKIE,
@@ -107,6 +108,9 @@ authRoutes.get("/state", (c) => {
 });
 
 /** The terms of sale written on the admin page; public, for buyers and payment providers to read. */
+/** Announcements for everyone, in effect now: shown on the sign-in page too (maintenance, outages). */
+authRoutes.get("/announcements", (c) => c.json({ announcements: publicAnnouncements() }));
+
 authRoutes.get("/terms", (c) => {
   const markdown = termsText();
   if (!markdown.trim()) httpError(404, "This site has no terms of sale.", "not_found");

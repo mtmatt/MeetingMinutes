@@ -440,4 +440,27 @@ export const migrations: string[] = [
   ALTER TABLE payment_orders ADD COLUMN terms_accepted_at INTEGER;
   ALTER TABLE payment_orders ADD COLUMN terms_version INTEGER;
   `,
+  // Announcements from the administrators: shown as a banner to whom they are for, between
+  // their start and end, until each person dismisses one; and who has seen which.
+  `
+  CREATE TABLE announcements (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    body        TEXT NOT NULL DEFAULT '',
+    level       TEXT NOT NULL CHECK (level IN ('info', 'warning', 'critical')),
+    audience    TEXT NOT NULL CHECK (audience IN ('everyone', 'users', 'prepaid', 'exempt', 'admins')),
+    starts_at   INTEGER,
+    ends_at     INTEGER,
+    dismissible INTEGER NOT NULL DEFAULT 1,
+    created_by  TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  );
+  CREATE TABLE announcement_seen (
+    announcement_id TEXT NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    seen_at         INTEGER NOT NULL,
+    PRIMARY KEY (announcement_id, user_id)
+  );
+  `,
 ];

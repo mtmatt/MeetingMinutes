@@ -354,6 +354,15 @@ export interface TranscriberState {
 }
 
 /** A machine's own choices over the site-wide transcription settings; null follows them. */
+/** A worker started on demand (Modal): where the server calls it, and how the last call went. */
+export interface WorkerWake {
+  url: string;
+  at: number | null;
+  ok: boolean | null;
+  status: number | null;
+  error: string | null;
+}
+
 export interface WorkerProfile {
   engine: AsrEngine | null;
   diarization: DiarizationEngine | null;
@@ -546,6 +555,55 @@ export interface BillingInfo {
   termsUrl: string | null;
   orders: Order[];
   ledger: LedgerEntry[];
+}
+
+// ---------------------------------------------------------- announcements
+
+export type AnnouncementLevel = "info" | "warning" | "critical";
+export type AnnouncementAudience = "everyone" | "users" | "prepaid" | "exempt" | "admins";
+
+export interface Announcement {
+  id: string;
+  title: string;
+  /** Markdown. */
+  body: string;
+  level: AnnouncementLevel;
+  startsAt: number | null;
+  endsAt: number | null;
+  dismissible: boolean;
+  publishedAt: number;
+  updatedAt: number;
+  edited: boolean;
+  /** Signed-in lists: closed (or read on the announcements page). */
+  seen?: boolean;
+}
+
+export interface AnnouncementList {
+  active: Announcement[];
+  past: Announcement[];
+  unseen: number;
+}
+
+export interface AdminAnnouncement extends Omit<Announcement, "seen"> {
+  audience: AnnouncementAudience;
+  createdAt: number;
+  createdBy: string | null;
+  status: "scheduled" | "active" | "ended";
+  /** People who closed it (or read it on the announcements page). */
+  seenBy: number;
+  /** Active accounts it is for (all of them for "everyone"). */
+  audienceSize: number;
+}
+
+export interface AnnouncementInput {
+  title: string;
+  body: string;
+  level: AnnouncementLevel;
+  audience: AnnouncementAudience;
+  startsAt: number | null;
+  endsAt: number | null;
+  dismissible: boolean;
+  notifyAgain?: boolean;
 }
 
 // ------------------------------------------------------------------ usage
