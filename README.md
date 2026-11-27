@@ -444,6 +444,38 @@ Each worker reports what it can run and which API keys it has, and the server ha
 
 **Fallback machines.** A machine marked as a fallback takes a recording only after it has waited a while (2 minutes by default) **while another worker is connected**; when every other worker is offline it takes work at once. With the server as a fallback, the GPU machines do the work while they are on, and the server picks it up when they are off. The upload page describes every path a recording may take ("depending on which worker takes it…") when machines are set differently.
 
+### A cloud GPU started on demand (Modal)
+
+A worker can also run on [Modal](https://modal.com), a serverless GPU platform that bills by the second and costs nothing while idle (its Starter plan includes a monthly compute credit). It is not kept running: when a recording it can take is queued, the server calls its **wake-up address**, Modal starts the worker on a GPU, and the worker processes the queue like any other remote worker, then exits once there has been no work for a minute. `deploy/modal/app.py` is the whole setup.
+
+On a computer with the Modal CLI (`pip install modal`, then `modal setup`), in this repository:
+
+1. **Admin → System → Workers on other machines → Add**, then (the dialog shows this command too):
+   ```
+   modal run deploy/modal/app.py::enroll --server-url https://minutes.example.com --code mme_...
+   ```
+   The credential goes to the Modal volume `meetingminutes-worker-data`, not to this checkout.
+2. The keys the worker needs, as a Modal secret (only those your settings use): `HF_TOKEN` for pyannote on the GPU (accept the model's terms on Hugging Face first), `OPENROUTER_API_KEY` for speech recognition through the API, `PYANNOTEAI_API_KEY` for pyannoteAI.
+   ```
+   modal secret create meetingminutes-worker HF_TOKEN=hf_... OPENROUTER_API_KEY=sk-or-...
+   ```
+3. Deploy, then enter the printed address that ends in `-wake.modal.run` as the **wake-up address** in that worker's **Settings**, and press **Wake it now** to check it:
+   ```
+   modal deploy deploy/modal/app.py                  # MM_MODAL_GPU=L4 modal deploy … for another GPU
+   modal run deploy/modal/app.py::prepare            # optional: download the models now (a few GB, once)
+   ```
+
+How it behaves:
+
+- **When it is called.** The server checks every 15 seconds, and right after a recording is queued. It calls only while the worker is offline and a job it can take is waiting: for a worker marked as a fallback, only once the job has waited its turn. It calls at most once every 2 minutes (a cold start, model loading included, takes about one to two minutes), and gives up on a job after 3 calls that did not lead to it being taken. The settings dialog shows how the last call went. While it is not running, the list shows it as **Standby** rather than offline.
+- **Only the server can start it.** Each call is signed with an HMAC of the time and the worker's ID, keyed by the hash of the worker's token, which the server stores and the worker can compute. The wake-up endpoint (a small CPU function) answers anyone else with 401 and starts no GPU, and calls older than five minutes are refused too. One container runs at a time.
+- **What it runs** follows the machine's settings, like any worker. A typical choice is speakers separated by pyannote on the Modal GPU, with speech recognised by Qwen3-ASR on that GPU or through the API. On a T4, which has no bfloat16, the ASR model loads in float16 by itself.
+- **Costs.** GPU time is billed per second, from the container's start until the worker exits a minute after the queue empties. Measure an hour-long meeting once in the Modal dashboard before relying on an estimate. Set a spending limit in Modal's settings.
+- **With other workers.** If a machine of your own (a Mac, a GPU box) also works for the site, mark the Modal worker as a **fallback**: your machine takes recordings while it is on, and Modal is called only when a recording has waited.
+- **Updating.** The container runs the worker code from the checkout you deployed: after `git pull`, run `modal deploy deploy/modal/app.py` again.
+
+The worker side is ordinary: `python -m mm_worker run --exit-when-idle 60` (or `MM_EXIT_WHEN_IDLE_SEC`) makes any worker exit after a minute without work, and a remote worker's token may also be given as `WORKER_TOKEN` (with `MM_SERVER_URL`) instead of an enrollment file.
+
 ## Presets for adding a recording
 
 Settings people reuse can be kept as named presets: the language, the number of speakers, the vocabulary (names and terms the recogniser should spell your way, such as `NTU COOL、資工系`), the script, and whether and how to summarise. On **New recording**, choose a preset to fill all of them in; after changing settings, **Update** keeps them in that preset, or **Save as preset** makes a new one. The preset marked default is filled in whenever the page opens. **Settings → Presets** lists them, to change the default, rename or delete one. Presets are per person (up to 30), and changing one never touches recordings already added.

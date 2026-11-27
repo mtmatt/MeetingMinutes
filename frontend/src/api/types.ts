@@ -354,6 +354,15 @@ export interface TranscriberState {
 }
 
 /** A machine's own choices over the site-wide transcription settings; null follows them. */
+/** A worker started on demand (Modal): where the server calls it, and how the last call went. */
+export interface WorkerWake {
+  url: string;
+  at: number | null;
+  ok: boolean | null;
+  status: number | null;
+  error: string | null;
+}
+
 export interface WorkerProfile {
   engine: AsrEngine | null;
   diarization: DiarizationEngine | null;

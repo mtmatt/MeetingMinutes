@@ -18,6 +18,7 @@ import type { JobRow, MeetingRow, SpeakerRow, VoiceProfileRow, VoiceSampleRow, V
 import { publish } from "./events";
 import { renameSpeaker } from "./speakerNames";
 import { currentVoiceModel } from "./transcriberSettings";
+import { scheduleWakeCheck } from "./workerWake";
 
 /** A fingerprint as the worker reports it. */
 export interface Voice {
@@ -553,6 +554,7 @@ export function enqueueVoiceprint(m: MeetingRow, learn: boolean): boolean {
     l: learn ? 1 : 0,
     t: now(),
   });
+  scheduleWakeCheck();
   return true;
 }
 

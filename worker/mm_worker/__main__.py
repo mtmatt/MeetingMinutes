@@ -1,6 +1,7 @@
 """Worker entry point.
 
     python -m mm_worker run            poll the backend; load models on demand per job (default)
+    python -m mm_worker run --exit-when-idle 60   the same, exiting after a minute without work (Modal)
     python -m mm_worker check          load both models once and print environment info
     python -m mm_worker transcribe F   transcribe a local file and print the transcript
     python -m mm_worker bench [F]      time speaker separation on the CPU (sherpa-onnx)
@@ -95,7 +96,13 @@ def main(argv: Optional[list[str]] = None):
     parser = argparse.ArgumentParser(prog="mm-worker", description="MeetingMinutes GPU transcription worker")
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="cmd")
-    sub.add_parser("run", help="process jobs from the backend (default)")
+    r = sub.add_parser("run", help="process jobs from the backend (default)")
+    r.add_argument(
+        "--exit-when-idle",
+        type=float,
+        metavar="SEC",
+        help="exit after SEC seconds without work (for a worker started on demand, e.g. on Modal)",
+    )
     sub.add_parser("check", help="load models and print environment info")
     t = sub.add_parser("transcribe", help="transcribe a local file")
     t.add_argument("path")
@@ -185,6 +192,10 @@ def main(argv: Optional[list[str]] = None):
     if args.cmd == "check":
         cmd_check(cfg)
     else:
+        if getattr(args, "exit_when_idle", None) is not None:
+            from dataclasses import replace
+
+            cfg = replace(cfg, exit_when_idle_sec=max(0.0, args.exit_when_idle))
         cmd_run(cfg)
 
 

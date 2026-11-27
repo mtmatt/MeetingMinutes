@@ -1,3 +1,4 @@
+import { wakeSweep } from "./services/workerWake";
 import { config } from "./config";
 import { createApp } from "./app";
 import { ensureSetupToken } from "./auth/setup";
@@ -84,6 +85,10 @@ const internal = config.tls
   : null;
 
 setInterval(reapStaleJobs, 30_000);
+// Workers started on demand (Modal): called when queued work waits for them (also right after a job is queued).
+setInterval(() => {
+  wakeSweep().catch((e) => console.error("[workers] wake-up check failed:", e));
+}, 15_000);
 setInterval(purgeExpiredSessions, 60 * 60 * 1000);
 // Security events older than 90 days, and blocks that ended.
 setInterval(() => {

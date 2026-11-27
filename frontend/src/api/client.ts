@@ -38,7 +38,7 @@ import type {
   TranscribeOptions,
   User,
   VoiceOutcome,
-  VoicesState, UsageRange, UsageReport } from "./types";
+  VoicesState, UsageRange, UsageReport, WorkerWake } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -267,7 +267,10 @@ export const api = {
   adminWorkerKeys: () => get<{ keys: WorkerKey[]; enrollTtlMs: number }>("/admin/worker-keys"),
   adminCreateWorkerKey: (name: string) => post<{ id: string; name: string; code: string; expiresAt: number }>("/admin/worker-keys", { name }),
   adminRevokeWorkerKey: (id: string) => del<{ ok: true; requeued: number }>(`/admin/worker-keys/${encodeURIComponent(id)}`),
-  adminWorkerProfiles: () => get<{ profiles: Record<string, WorkerProfile>; local: string; defaultFallbackSec: number }>("/admin/worker-profiles"),
+  adminWorkerProfiles: () =>
+    get<{ profiles: Record<string, WorkerProfile>; local: string; defaultFallbackSec: number; wake: Record<string, WorkerWake> }>("/admin/worker-profiles"),
+  adminSaveWorkerWake: (id: string, url: string | null) => request<{ wake: WorkerWake | null }>("PUT", `/admin/worker-wake/${encodeURIComponent(id)}`, { url }),
+  adminTestWorkerWake: (id: string) => post<{ ok: boolean; status: number | null; error: string | null }>(`/admin/worker-wake/${encodeURIComponent(id)}/test`),
   adminSaveWorkerProfile: (id: string, p: WorkerProfile) =>
     request<{ profile: WorkerProfile }>("PUT", `/admin/worker-profiles/${encodeURIComponent(id)}`, p),
   /** Look at a model server with the form's values, before they are saved. */

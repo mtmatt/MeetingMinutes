@@ -878,11 +878,23 @@ class Supervisor:
             ", ".join(self.cfg.gpus),
             self.cfg.server_url,
         )
+        if self.cfg.exit_when_idle_sec is not None:
+            log.info("started on demand: exiting after %gs without work", self.cfg.exit_when_idle_sec)
         caps = self.workers[0].client.capabilities or {}
         if "local" not in caps.get("asr", []) or "local" not in caps.get("diarization", []):
             log.info("GPU models not installed: this worker takes only transcriptions set to the transcription API with CPU or pyannoteAI speaker separation")
+        # Started on demand: since when nothing has run and no job was there to claim.
+        idle_since: Optional[float] = time.monotonic()
         while not self.stop.is_set():
+            if self.idle_too_long(idle_since):
+                log.info("no work for %gs; exiting (the platform starts this worker again when there is work)", self.cfg.exit_when_idle_sec)
+                self.stop.set()
+                break
             idle = [w for w in self.workers if w.child is None]
+            if len(idle) < len(self.workers):
+                idle_since = None
+            elif idle_since is None:
+                idle_since = time.monotonic()
             worker = self.pick(idle) if idle else None
             if worker is None:
                 self.stop.wait(self.cfg.poll_interval)
@@ -918,7 +930,17 @@ class Supervisor:
             if job_kind(job) == "transcribe":
                 self.note_backend({"transcriber": {"engine": asr_engine(job), "diarization": diarization_engine(job)}})
             # The GPU is busy from here, so the next pick chooses among the others.
+            idle_since = None
             worker.start_session(job)
+
+    def idle_too_long(self, idle_since: Optional[float]) -> bool:
+        """Started on demand, nothing running, and no work for MM_EXIT_WHEN_IDLE_SEC."""
+        limit = self.cfg.exit_when_idle_sec
+        if limit is None or idle_since is None:
+            return False
+        if any(w.child is not None for w in self.workers):
+            return False
+        return time.monotonic() - idle_since >= limit
 
     def shutdown(self, signum=None, frame=None):
         log.info("shutting down (signal %s)", signum)
