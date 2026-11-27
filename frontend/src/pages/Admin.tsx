@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Coins, Cpu, HardDrive, KeyRound, Link2, MoreHorizontal, Plus, ShieldCheck, Trash2, UserCheck, UserMinus, UserX } from "lucide-react";
+import { BarChart3, Coins, Cpu, HardDrive, KeyRound, Link2, MoreHorizontal, Plus, ShieldCheck, Trash2, UserCheck, UserMinus, UserX } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { api } from "../api/client";
 import type { AdminUser, Invite, Role, WorkerInfo } from "../api/types";
 import { Menu } from "../components/Menu";
@@ -45,6 +46,7 @@ function Users() {
   const toast = useToast();
   const confirm = useConfirm();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { data } = useQuery({ queryKey: ["admin", "users"], queryFn: api.adminUsers });
   const [resetFor, setResetFor] = useState<{ name: string; url: string } | null>(null);
   const [creditsFor, setCreditsFor] = useState<AdminUser | null>(null);
@@ -166,6 +168,9 @@ function Users() {
                             <KeyRound /> {t("admin.resetLink")}
                           </button>
                           <div className="menu-sep" />
+                          <button className="menu-item" onClick={act(() => navigate(`/usage?user=${u.id}`))}>
+                            <BarChart3 /> {t("admin.viewUsage")}
+                          </button>
                           <button className="menu-item" onClick={act(() => setCreditsFor(u))}>
                             <Coins /> {t("admin.adjustMinutes")}
                           </button>

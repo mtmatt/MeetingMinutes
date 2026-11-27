@@ -38,8 +38,7 @@ import type {
   TranscribeOptions,
   User,
   VoiceOutcome,
-  VoicesState,
-} from "./types";
+  VoicesState, UsageRange, UsageReport } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -142,6 +141,8 @@ export const api = {
 
   // billing
   billing: () => get<BillingInfo>("/billing"),
+  /** `user`: an administrator's choice of a person's id, or "all" for the whole site. */
+  usage: (range: UsageRange, user = "") => get<UsageReport>(`/usage?range=${range}${user ? `&user=${encodeURIComponent(user)}` : ""}`),
   createOrder: (packageId: string, locale: string, acceptTerms = false) =>
     post<{ order: Order; checkout: { action: string; fields: Record<string, string> } }>("/billing/orders", { packageId, locale, acceptTerms }),
   order: (id: string) => get<{ order: Order }>(`/billing/orders/${encodeURIComponent(id)}`),

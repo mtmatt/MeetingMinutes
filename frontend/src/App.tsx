@@ -22,6 +22,7 @@ const pages = {
   admin: () => import("./pages/Admin"),
   billing: () => import("./pages/Billing"),
   terms: () => import("./pages/Terms"),
+  usage: () => import("./pages/Usage"),
 };
 
 /**
@@ -34,7 +35,7 @@ export function preloadPages(pathname: string) {
     ? pages.meeting
     : pathname === "/new"
       ? pages.upload
-      : ({ "/templates": pages.templates, "/voices": pages.voices, "/settings": pages.settings, "/admin": pages.admin, "/billing": pages.billing } as Record<string, () => Promise<unknown>>)[pathname];
+      : ({ "/templates": pages.templates, "/voices": pages.voices, "/settings": pages.settings, "/admin": pages.admin, "/billing": pages.billing, "/usage": pages.usage } as Record<string, () => Promise<unknown>>)[pathname];
   first?.().catch(() => {});
   const later = () => void pages.meeting().catch(() => {});
   if ("requestIdleCallback" in window) window.requestIdleCallback(later, { timeout: 4000 });
@@ -102,6 +103,7 @@ export const router = createBrowserRouter([
       { path: "/voices", lazy: async () => ({ Component: (await pages.voices()).VoicesPage }) },
       { path: "/settings", lazy: async () => ({ Component: (await pages.settings()).SettingsPage }) },
       { path: "/billing", lazy: async () => ({ Component: (await pages.billing()).BillingPage }) },
+      { path: "/usage", lazy: async () => ({ Component: (await pages.usage()).UsagePage }) },
       { element: <AdminOnly />, children: [{ path: "/admin", lazy: async () => ({ Component: (await pages.admin()).AdminPage }) }] },
     ],
   },

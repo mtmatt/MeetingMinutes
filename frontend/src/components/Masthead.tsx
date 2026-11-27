@@ -1,4 +1,4 @@
-import { AudioLines, ChevronDown, Coins, FileText, Languages, Library, LogOut, Mic, Monitor, Moon, Plus, Settings, Shield, Sun, Upload } from "lucide-react";
+import { AudioLines, BarChart3, ChevronDown, Coins, FileText, Languages, Library, LogOut, Mic, Monitor, Moon, Plus, Settings, Shield, Sun, Upload } from "lucide-react";
 import { NavLink, useNavigate } from "react-router";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
@@ -158,6 +158,9 @@ export function Masthead() {
                 <div className="menu-sep" />
                 <NavLink className="menu-item" to="/settings" onClick={close}>
                   <Settings /> {t("nav.settings")}
+                </NavLink>
+                <NavLink className="menu-item" to="/usage" onClick={close}>
+                  <BarChart3 /> {t("nav.usage")}
                 </NavLink>
                 {prepaid && (
                   <NavLink className="menu-item" to="/billing" onClick={close}>

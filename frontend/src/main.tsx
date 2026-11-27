@@ -10,6 +10,7 @@ import "./styles/pages.css";
 import "./styles/meeting.css";
 import "./styles/prose.css";
 import "./styles/billing.css";
+import "./styles/usage.css";
 import "./lib/theme";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";

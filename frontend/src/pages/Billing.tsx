@@ -390,7 +390,12 @@ function History({ ledger }: { ledger: LedgerEntry[] }) {
   };
   return (
     <section className="billing-section">
-      <h2>{t("billing.history")}</h2>
+      <div className="billing-section-head">
+        <h2>{t("billing.history")}</h2>
+        <Link to="/usage" className="billing-usage-link">
+          {t("billing.seeUsage")} <ArrowRight className="inline-icon" />
+        </Link>
+      </div>
       <div className="table-wrap">
         <table className="table billing-history">
           <thead>
