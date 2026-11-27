@@ -752,7 +752,7 @@ export const en = {
     diarDefault: "Separation: site-wide",
     fallback: "Fallback: take a job only after it has waited",
     fallbackMinutes: "minutes",
-    fallbackHint: "While another worker is connected, this one takes only recordings that have waited this long; when all others are offline it takes them at once, so nothing sits waiting.",
+    fallbackHint: "While a machine ahead of it is connected, or can be woken on demand (Modal), this one takes only recordings that have waited this long; otherwise it takes them at once, so nothing sits waiting. Ahead means not a fallback, or a fallback that waits less, so fallbacks take turns by their wait.",
     fallbackShort: "fallback after {n} min",
     cannotAsr: "This machine's connected worker has no local speech model installed: with this choice it will get no work.",
     cannotDiar: "This machine's connected worker cannot separate speakers this way: with this choice it will get no work.",

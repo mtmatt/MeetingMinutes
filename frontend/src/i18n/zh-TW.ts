@@ -754,7 +754,7 @@ export const zhTW: Dict = {
     diarDefault: "區分：跟隨全站",
     fallback: "備援：工作等一段時間沒人領才接手",
     fallbackMinutes: "分鐘",
-    fallbackHint: "有其他 worker 連線時，這台只接已經等了這麼久的錄音；其他 worker 都離線時，它會立刻接手，不會讓錄音乾等。",
+    fallbackHint: "有順位在前的 worker 連線中，或可以按需喚醒（Modal）時，這台只接已經等了這麼久的錄音；沒有的話它會立刻接手，不會讓錄音乾等。順位在前指的是：不是備援，或是等待時間比較短的備援；所以多台備援會依等待時間輪流。",
     fallbackShort: "備援 {n} 分鐘",
     cannotAsr: "這台連線中的 worker 沒有安裝本機語音辨識模型，選這個它不會接到工作。",
     cannotDiar: "這台連線中的 worker 無法用這種方式區分發言者，選這個它不會接到工作。",

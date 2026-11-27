@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { db } from "../src/db";
+import { setWakeUrl } from "../src/services/workerWake";
 import { Client, adminClient, app, memberClient } from "./helpers";
 
 async function call(token: string, path: string, json: unknown) {
@@ -109,6 +110,35 @@ describe("settings per worker machine", () => {
     const id2 = await upload(admin);
     expect((await claimAs(SHARED, "srv-fallback", id2, GPU_CAPS))?.meetingId).toBe(id2);
     await admin.del(`/api/admin/worker-keys/${gpu.id}`);
+  });
+
+  test("fallbacks wait for a worker started on demand, and take turns by their wait", async () => {
+    // As set up in practice: Modal first (started on demand), a Mac after 1 minute, the server after 10.
+    const admin = await adminClient();
+    await admin.del("/api/admin/transcriber");
+    db.query("UPDATE workers SET last_seen_at = 0").run();
+    const modal = await enroll("Modal");
+    setWakeUrl(modal.id, "https://me--meetingminutes-worker-wake.modal.run", null);
+    const mac = await enroll("Mac");
+    await admin.req("PUT", `/api/admin/worker-profiles/${mac.id}`, { json: { engine: null, diarization: null, fallbackSec: 60 } });
+    await admin.req("PUT", "/api/admin/worker-profiles/local", { json: { engine: null, diarization: null, fallbackSec: 600 } });
+    await call(mac.token, "/worker/heartbeat", { workerId: mac.id });
+    await call(SHARED, "/worker/heartbeat", { workerId: "srv-tiers" });
+    const id = await upload(admin);
+    // Modal is offline but can be woken: neither fallback takes the new recording.
+    expect(await claimAs(SHARED, "srv-tiers", id, GPU_CAPS)).toBeNull();
+    expect(await claimAs(mac.token, mac.id, id, GPU_CAPS)).toBeNull();
+    // After a minute and a half the Mac's turn has come, not yet the server's (the Mac is ahead of it).
+    db.query("UPDATE jobs SET created_at = created_at - 90000 WHERE meeting_id = $m AND status = 'queued'").run({ m: id });
+    expect(await claimAs(SHARED, "srv-tiers", id, GPU_CAPS)).toBeNull();
+    expect((await claimAs(mac.token, mac.id, id, GPU_CAPS))?.meetingId).toBe(id);
+    // Without the wake-up address, the Mac is first again.
+    setWakeUrl(modal.id, null, null);
+    const id2 = await upload(admin);
+    expect((await claimAs(mac.token, mac.id, id2, GPU_CAPS))?.meetingId).toBe(id2);
+    await admin.req("PUT", "/api/admin/worker-profiles/local", { json: { engine: null, diarization: null, fallbackSec: null } });
+    await admin.del(`/api/admin/worker-keys/${modal.id}`);
+    await admin.del(`/api/admin/worker-keys/${mac.id}`);
   });
 
   test("people are told what any machine may do", async () => {
