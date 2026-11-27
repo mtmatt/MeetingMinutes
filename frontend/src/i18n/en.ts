@@ -731,6 +731,7 @@ export const en = {
     wakeTest: "Wake it now",
     wakeDevUrl: "This is the temporary address of modal run (it ends in -dev and stops working when that command ends). Use the one modal deploy prints, without -dev.",
     wakeOk: "Wake-up sent (the platform answered {status}). With nothing to do, it shuts down again within a minute.",
+    wakeAlready: "It is already starting (called for the work waiting): no second one was started. A cold start takes a minute or two.",
     wakeFailed: "Could not wake it: {error}",
     wakeLast: "Last wake-up: {when}, {result}",
     wakeLastOk: "it answered",
@@ -762,6 +763,8 @@ export const en = {
   workers: {
     standby: "Standby",
     standbyHint: "Starts on demand: the site wakes it when there is work; otherwise it is not running.",
+    starting: "Starting",
+    startingHint: "Called for work: the platform is starting it. A cold start, with the models loading, takes a minute or two; it then takes the recording by itself, so there is no need to wake it again.",
     rank: "Choice {n}",
     rankHint: "The order in which machines take recordings: not a fallback first, then fallbacks by how long they wait. Machines that wait the same share a place.",
     modalAlt: "Use a Modal cloud GPU instead (started on demand, no machine of your own)",

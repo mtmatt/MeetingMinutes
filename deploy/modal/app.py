@@ -149,6 +149,9 @@ def worker():
     try:
         code = subprocess.run([sys.executable, "-m", "mm_worker", "run"], env=env, cwd="/opt/mm").returncode
     finally:
+        # The worker has stopped taking work: from now on a wake-up call must start a new run,
+        # not take this one, still saving the volume, for one that is about to take the job.
+        _forget_run(modal.current_function_call_id())
         # Models downloaded during this run stay in the volume for the next.
         volume.commit()
     if code:
@@ -195,6 +198,14 @@ def wake(request: Request):
     call = worker.spawn()
     state["worker_call"] = call.object_id
     return {"ok": True, "call": call.object_id}
+
+
+def _forget_run(call_id) -> None:
+    try:
+        if call_id and state.get("worker_call") == call_id:
+            state["worker_call"] = None
+    except Exception as e:  # the wake-up endpoint then checks the call itself
+        print(f"could not clear the run: {e}")
 
 
 def _still_running(call_id: str) -> bool:

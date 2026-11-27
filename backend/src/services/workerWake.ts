@@ -64,10 +64,23 @@ interface WakeState {
   /** The job the last calls were for, and how many there were. */
   jobId: string | null;
   tries: number;
+  /** When the worker last reported in (heartbeat or claim): after `at`, the last call worked. */
+  answeredAt: number | null;
 }
 
 const states = new Map<string, WakeState>();
-const blank = (): WakeState => ({ at: null, ok: null, status: null, error: null, jobId: null, tries: 0 });
+const blank = (): WakeState => ({ at: null, ok: null, status: null, error: null, jobId: null, tries: 0, answeredAt: null });
+
+/** Called, and not up yet: a cold start (one to two minutes on a GPU platform). */
+function starting(s: WakeState, t: number): boolean {
+  return s.ok === true && s.at != null && t - s.at < WAKE_RETRY_MS && !(s.answeredAt != null && s.answeredAt >= s.at);
+}
+
+/** A worker of this key reported in: whatever it was called for, it is up. */
+export function noteWorkerAnswered(keyId: string, t = now()) {
+  const s = states.get(keyId);
+  if (s) s.answeredAt = t;
+}
 
 function all(): Record<string, string> {
   const saved = parseJson<Record<string, unknown>>(readSetting(KEY), {});
@@ -94,11 +107,12 @@ export function setWakeUrl(keyId: string, url: string | null, userId: string | n
 }
 
 /** Every worker woken on demand: its address and how the last call went. */
-export function listWakeState(): Record<string, { url: string } & Omit<WakeState, "jobId" | "tries">> {
+export function listWakeState(): Record<string, { url: string; at: number | null; ok: boolean | null; status: number | null; error: string | null; starting: boolean }> {
+  const t = now();
   return Object.fromEntries(
     Object.entries(all()).map(([id, url]) => {
       const s = states.get(id) ?? blank();
-      return [id, { url, at: s.at, ok: s.ok, status: s.status, error: s.error }];
+      return [id, { url, at: s.at, ok: s.ok, status: s.status, error: s.error, starting: starting(s, t) }];
     }),
   );
 }
@@ -118,7 +132,7 @@ export async function wakeWorker(
   reason: "queued" | "test",
   jobId: string | null = null,
   tryUrl?: string,
-): Promise<{ ok: boolean; status: number | null; error: string | null }> {
+): Promise<{ ok: boolean; status: number | null; error: string | null; running?: boolean }> {
   const saved = wakeUrl(keyId);
   const url = tryUrl ?? saved;
   const remember = url === saved;
@@ -136,7 +150,7 @@ export async function wakeWorker(
   const t = now();
   state.at = t;
   if (remember) states.set(keyId, state);
-  let result: { ok: boolean; status: number | null; error: string | null };
+  let result: { ok: boolean; status: number | null; error: string | null; running?: boolean };
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -145,16 +159,40 @@ export async function wakeWorker(
       signal: AbortSignal.timeout(20_000),
       redirect: "error",
     });
-    // Only the status: what the other side answers is not read, so it cannot be echoed to the page or the log.
-    await res.body?.cancel().catch(() => {});
-    result = { ok: res.ok, status: res.status, error: res.ok ? null : `HTTP ${res.status}` };
+    // Only the status, and from a success whether a run was already starting: nothing the other
+    // side says is echoed to the page or the log.
+    const running = res.ok ? await alreadyRunning(res) : false;
+    if (!res.ok) await res.body?.cancel().catch(() => {});
+    result = { ok: res.ok, status: res.status, error: res.ok ? null : `HTTP ${res.status}`, ...(running ? { running: true } : {}) };
   } catch (e) {
     result = { ok: false, status: null, error: (e instanceof Error ? e.message : String(e)).replace(/[^\x20-\x7e]/g, "?").slice(0, 200) };
   }
-  Object.assign(state, result);
-  if (result.ok) console.log(`[workers] woke ${keyId} (${reason})`);
+  Object.assign(state, { ok: result.ok, status: result.status, error: result.error });
+  if (result.ok) console.log(`[workers] woke ${keyId} (${reason}${result.running ? ", already starting" : ""})`);
   else console.warn(`[workers] could not wake ${keyId}: ${result.error}`);
   return result;
+}
+
+/** Modal's endpoint answers {"running": true} when a run is already starting: read at most 1 KB, for that flag only. */
+async function alreadyRunning(res: Response): Promise<boolean> {
+  try {
+    const reader = res.body?.getReader();
+    if (!reader) return false;
+    let text = "";
+    const decoder = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      if (text.length > 1024) {
+        await reader.cancel().catch(() => {});
+        return false;
+      }
+    }
+    return (JSON.parse(text) as { running?: unknown })?.running === true;
+  } catch {
+    return false;
+  }
 }
 
 function online(keyId: string, t: number): boolean {
@@ -188,7 +226,9 @@ export async function wakeSweep(t = now()): Promise<string[]> {
   for (const keyId of Object.keys(urls)) {
     if (online(keyId, t)) continue;
     const state = states.get(keyId);
-    if (state?.at && t - state.at < WAKE_RETRY_MS) continue;
+    // Called a moment ago and not up yet: give the cold start its time. Once it has been up since
+    // that call (it ran, and exited when idle), new work calls it again at once.
+    if (state?.at && t - state.at < WAKE_RETRY_MS && !(state.answeredAt != null && state.answeredAt >= state.at)) continue;
     const caps = lastCapabilities(keyId);
     const can = caps ? canRun(caps, effectiveSettings(keyId)) : { transcribe: true, voiceprint: true };
     const before = t - fallbackDelaySec(keyId) * 1000;

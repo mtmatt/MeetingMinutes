@@ -361,6 +361,8 @@ export interface WorkerWake {
   ok: boolean | null;
   status: number | null;
   error: string | null;
+  /** Called a moment ago and not up yet: a cold start. */
+  starting?: boolean;
 }
 
 export interface WorkerProfile {

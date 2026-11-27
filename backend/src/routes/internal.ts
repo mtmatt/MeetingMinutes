@@ -26,6 +26,7 @@ import {
 } from "../services/meetings";
 import { effectiveSettings, profileIdFor } from "../services/workerProfiles";
 import { enrollWorker, workerIdBelongs } from "../services/workerKeys";
+import { noteWorkerAnswered } from "../services/workerWake";
 import type { AppEnv, JobKind } from "../types";
 import { SMALL_JSON_LIMIT_BYTES, body } from "./validate";
 
@@ -92,6 +93,13 @@ internalRoutes.post("/worker/heartbeat", async (c) => {
   );
   own(c, input.workerId);
   seen(input.workerId, input.name, input.info);
+  const keyId = c.get("worker").keyId;
+  if (keyId) noteWorkerAnswered(keyId);
+  // A worker started on demand says so as it exits when idle: offline now, not a minute from now,
+  // so that work queued meanwhile wakes it again at once. (Online means seen in the last minute.)
+  if (input.info?.state === "stopped") {
+    db.query("UPDATE workers SET last_seen_at = $t WHERE id = $id").run({ id: input.workerId, t: now() - 61_000 });
+  }
   // Where transcription runs (for this machine) decides how much free GPU memory a worker waits for before claiming.
   const s = effectiveSettings(profileIdFor(c.get("worker").keyId));
   return c.json({ ok: true, transcriber: { engine: s.engine, diarization: s.diarization } });
@@ -117,6 +125,7 @@ internalRoutes.post("/jobs/claim", async (c) => {
   );
   own(c, input.workerId);
   seen(input.workerId);
+  if (c.get("worker").keyId) noteWorkerAnswered(c.get("worker").keyId!);
   const remote = !c.get("worker").local;
   const kinds = (input.kinds ?? ["transcribe"]).filter(
     // Compacting rewrites originals on this server's disk: workers here only.

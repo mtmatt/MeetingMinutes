@@ -389,8 +389,9 @@ function System() {
   const engine = useSummaryEngine();
   const { data, isLoading } = useQuery({ queryKey: ["admin", "system"], queryFn: api.adminSystem, refetchInterval: 10_000 });
   // Workers started on demand (a wake-up address): offline between jobs by design.
-  const profiles = useQuery({ queryKey: ["admin", "worker-profiles"], queryFn: api.adminWorkerProfiles });
-  const onDemand = (workerId: string) => Object.keys(profiles.data?.wake ?? {}).some((k) => workerId === k || workerId.startsWith(`${k}-`));
+  const profiles = useQuery({ queryKey: ["admin", "worker-profiles"], queryFn: api.adminWorkerProfiles, refetchInterval: 10_000 });
+  const wakeOf = (workerId: string) => Object.entries(profiles.data?.wake ?? {}).find(([k]) => workerId === k || workerId.startsWith(`${k}-`))?.[1];
+  const onDemand = (workerId: string) => wakeOf(workerId) !== undefined;
   if (isLoading || !data) return <div className="skeleton" style={{ height: 240 }} />;
   const diskUsed = data.disk ? 1 - data.disk.freeBytes / data.disk.totalBytes : 0;
   // Online workers first, in name order (gpu0, gpu1, …); workers gone for more
@@ -415,9 +416,17 @@ function System() {
             {shownWorkers.map((w) => (
               <div key={w.id} className={`card worker ${w.online ? "" : "offline"}`}>
                 <div className="worker-top">
-                  <span className={`pill ${w.online ? (w.info.state === "busy" ? "accent live" : "ok") : ""}`}>
+                  <span className={`pill ${w.online ? (w.info.state === "busy" ? "accent live" : "ok") : wakeOf(w.id)?.starting ? "accent live" : ""}`}>
                     <span className="dot" />
-                    {w.online ? (w.info.state === "busy" ? t("admin.busy") : t("admin.idle")) : onDemand(w.id) ? t("workers.standby") : t("admin.offline")}
+                    {w.online
+                      ? w.info.state === "busy"
+                        ? t("admin.busy")
+                        : t("admin.idle")
+                      : wakeOf(w.id)?.starting
+                        ? t("workers.starting")
+                        : onDemand(w.id)
+                          ? t("workers.standby")
+                          : t("admin.offline")}
                   </span>
                   <span className="faint" style={{ fontSize: "var(--step--2)" }}>
                     {relative(w.lastSeenAt, t, locale)}
