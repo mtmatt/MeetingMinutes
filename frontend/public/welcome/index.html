@@ -52,9 +52,6 @@
   --ly-scale: 0.98;
 }
 </style>
-<link rel="stylesheet" href="assets/ui/base.css">
-<link rel="stylesheet" href="assets/ui/window/fragment.css">
-<link rel="stylesheet" href="assets/ui/search/fragment.css">
 <!-- page CSS: only what sits inside a visual, the panels' height and the few page rules the recipes name -->
 <style>
 /* the dealt section grounds (bg-mist, bg-band) keep the system's section box: one or two screens, padded
@@ -64,9 +61,16 @@ main > section.section.section:is(.bg-mist, .bg-band):not(.hero) { padding: var(
 @media (max-width: 639px) { main > section.section.section:is(.bg-mist, .bg-band):not(.hero) { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1fr; min-height: calc(var(--hm, var(--h, 1)) * 100lvh); } }
 main > section.section.section.bg-band[data-moment="pinned-chapters"].is-live { padding: 0; }
 
-/* the drawn windows: a paper-white surface in the page's ink, whatever ground they sit on */
-:is(.hero__art, .app, .mo-pc__visual, .frame) .ui, .app.ui { --fx-bg: #fffdf9; --fx-surface: #f4f1ea; --fx-ink: #1c1b18; --fx-muted: #57554f; --fx-accent: #c8412b; --fx-accent-ink: #ffffff; }
-.frame:has(> .stage > * > .ui) { background: var(--ground-bg); }
+/* the real app's screens: a window edge and a soft shadow, the screenshot shown as it was taken */
+.shot { display: block; width: 100%; height: auto; max-width: none; border-radius: 10px; background: #f5f2eb; box-shadow: 0 0 0 1px rgb(28 27 24 / .12), 0 2px 4px -1px rgb(28 27 24 / .10), 0 24px 48px -24px rgb(28 27 24 / .35); }
+.frame:has(.shot), .panel:has(.shot) { background: var(--ground-bg); }
+section[data-moment="pinned-chapters"] .mo-pc__visual.mo-pc__visual--lit { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; }
+section[data-moment="pinned-chapters"] .mo-pc__visual > img.shot--fit { width: auto; height: auto; max-width: 100%; max-height: 100%; aspect-ratio: auto; }
+/* the meeting page: the screenshot runs across the wrap, cut by the frame's foot on a desktop, whole on a phone and a tablet */
+.app-shot { margin: var(--s-7) 0 0; min-height: 0; overflow: hidden; border-radius: 10px; box-shadow: 0 0 0 1px rgb(28 27 24 / .12), 0 24px 48px -24px rgb(28 27 24 / .35); }
+.app-shot .shot { border-radius: 0; box-shadow: none; }
+@media (min-width: 1024px) { .app-shot .shot { height: 100%; object-fit: cover; object-position: top; } }
+@media (max-width: 1023px) { #meeting .app-shot { flex: none; height: auto; } }
 /* Chinese headings break only between phrases (the <wbr> in each), never inside a word; a phrase too wide still wraps */
 :is(h1, h2, h3, .t-card) { word-break: keep-all; overflow-wrap: anywhere; }
 
@@ -76,143 +80,25 @@ main > section.section.section.bg-band[data-moment="pinned-chapters"].is-live { 
 .footer .nav__logo .seal { width: 0.8em; height: 0.8em; margin-right: 0.24em; }
 .nav__logo { white-space: nowrap; }
 
-/* hero: the collage's small card and the proof line (the collage demo's page CSS, in the page's tokens) */
+/* hero: the proof line under the buttons */
 .hero__proof { font-size: var(--t-small); color: var(--muted); margin-top: var(--s-5); }
-.hero__art > .ly-piece--note { left: var(--s-6); bottom: var(--s-6); width: 300px; z-index: 2; }
-@media (max-width: 1023px) { .hero__art > .ly-piece--note { left: var(--s-4); bottom: var(--s-4); width: 270px; } }
 /* a phone: the frame ends a little above the hero's foot, so the space to the next heading reads like the others */
-@media (max-width: 639px) { .hero--collage .hero__art { margin-bottom: var(--s-6); } }
-.hero__art .ui-win__main { padding-right: var(--ly-cut-room); }
-.hero__art :is(.ui-win__cols, .ui-win__row) { grid-template-columns: 24px 64px minmax(0, 1fr) 76px; }
-.hero__art .ui-win__cols span:first-child { grid-column: 1 / 3; }
-.note-card { padding: 14px 16px; border-radius: 12px; }
-.note-card__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
-.note-card__row .ui-title { font-size: 14px; }
-.note-line { display: flex; align-items: center; gap: 10px; padding: 7px 0; color: var(--u-text-2); border-top: 1px solid var(--u-line); }
-.note-line:first-of-type { border-top: 0; }
-.note-line i { width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--u-fill-2); color: var(--u-ink); font-style: normal; font-size: 12px; }
-.note-line b { font-weight: 500; color: var(--u-ink); }
+@media (max-width: 639px) { .hero--collage .hero__art { margin-bottom: 56px; } }
 
-/* the meeting window (app-frame): the transcript beside the minutes it produced, one window across the wrap */
-.app.ui { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); grid-template-rows: auto minmax(0, 1fr); margin-top: var(--s-7); background: var(--u-bg); border: 1px solid var(--u-border); border-radius: var(--u-r); box-shadow: var(--u-shadow); overflow: hidden; }
-.app__bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 16px; border-bottom: 1px solid var(--u-line); background: var(--u-fill); min-width: 0; }
-.app__crumb { display: flex; align-items: baseline; gap: 8px; min-width: 0; white-space: nowrap; overflow: hidden; color: var(--u-muted); }
-.app__crumb b { font-weight: 500; color: var(--u-ink); font-size: 14px; }
-.app__meta { color: var(--u-muted); white-space: nowrap; }
-.app__acts { margin-left: auto; display: flex; gap: 8px; flex: none; }
-.app__acts .ui-btn img { width: 12px; height: 16px; }
-.app > .app__pane { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
-.app > .app__pane + .app__pane { border-left: 1px solid var(--u-line); }
-.app > .app__pane::after { content: ""; position: absolute; inset: auto 0 0 0; height: 64px; background: linear-gradient(transparent, var(--u-bg)); pointer-events: none; }
-.pane__head { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 20px; border-bottom: 1px solid var(--u-line); color: var(--u-muted); }
-.pane__head .ui-title { color: var(--u-ink); }
-.tx { padding: 8px 12px 0; }
-.tx__line { display: grid; grid-template-columns: 64px 76px minmax(0, 1fr); gap: 0 12px; align-items: baseline; padding: 7px 8px; border-radius: 8px; }
-.tx__line + .tx__line { margin-top: 1px; }
-.tx__t { font: 400 12px/20px var(--font-mono); color: color-mix(in oklab, var(--u-ink) 72%, var(--u-bg)); font-variant-numeric: tabular-nums; }
-.tx__who { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tx__who[data-tone="1"] { color: #2f4b73; } .tx__who[data-tone="2"] { color: #66421a; } .tx__who[data-tone="3"] { color: #3b5532; }
-.tx__line.is-on { background: var(--u-tint); box-shadow: inset 2px 0 0 var(--u-accent); }
-.mn { padding: 16px 24px 0; display: grid; gap: 18px; }
-.mn__h { font-size: 12px; font-weight: 500; color: var(--u-muted); margin-bottom: 6px; }
-.mn ul { display: grid; gap: 6px; }
-.mn__p { color: var(--u-text-2); }
-.mn li { position: relative; padding-left: 14px; color: var(--u-text-2); }
-.mn li::before { content: ""; position: absolute; left: 2px; top: 9px; width: 4px; height: 4px; border-radius: 50%; background: var(--u-muted); }
-.mn .todo li { padding-left: 24px; }
-.mn .todo li::before { left: 0; top: 3px; width: 14px; height: 14px; border-radius: 4px; background: none; box-shadow: inset 0 0 0 1.5px var(--u-line-2); }
-.mn .todo b { font-weight: 500; color: var(--u-ink); }
-.mn .todo small { color: var(--u-muted); font-size: 12px; }
-#meeting .app { height: 100%; min-height: 0; }
-@media (min-width: 1024px) and (max-width: 1279px) { .tx__line { grid-template-columns: 60px 68px minmax(0, 1fr); } }
-@media (max-width: 1023px) {
-  .app.ui { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
-  .app > .app__pane + .app__pane { border-left: 0; border-top: 1px solid var(--u-line); }
-  .app > .app__pane--min::after { display: none; }
-  .app__meta { display: none; }
-}
-@media (max-width: 639px) {
-  .app__bar { height: 48px; padding: 0 12px; }
-  .app__acts .ui-btn span { display: none; }
-  .tx { padding: 4px 4px 0; }
-  .tx__line { grid-template-columns: 58px minmax(0, 1fr); }
-  .tx__line .tx__who { grid-column: 2; }
-  .tx__line .tx__say { grid-column: 2; }
-  #meeting .app { flex: none; height: auto; }
-  .app > .app__pane::after { display: none; }
-  .mn { padding: 12px 16px 0; gap: 12px; }
-}
 
 /* the four feature cards: one panel height for the group */
 #features .panel { --p-h: 336px; }
 @media (max-width: 1279px) { #features .panel { --p-h: 300px; } }
 @media (min-width: 640px) and (max-width: 1023px) { #features .panel { --p-h: calc(100svh - 560px); } }
 @media (max-width: 639px) { #features .panel { --p-h: 160px; } }
-/* speakers: the names a meeting found, one being named */
-.spk { width: 360px; }
-.spk__row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 12px; height: 52px; padding: 0 16px; border-top: 1px solid var(--u-line); }
-.spk__row:first-of-type { border-top: 0; }
-.spk__row .ui-avatar { width: 28px; height: 28px; }
-.spk__name b { display: block; font-weight: 500; }
-.spk__name small { display: block; font-size: 12px; color: var(--u-muted); }
-.spk__field { display: flex; align-items: center; gap: 2px; height: 30px; padding: 0 10px; border-radius: 7px; background: var(--u-bg); box-shadow: inset 0 0 0 1.5px var(--u-accent); font-weight: 500; }
-.spk__field i { width: 1.5px; height: 16px; background: var(--u-ink); }
-/* recorder: the browser's own recording, held still */
-.rec { width: 340px; padding: 18px; display: grid; gap: 16px; }
-.rec__top { display: flex; align-items: center; gap: 10px; }
-.rec__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--u-accent); box-shadow: 0 0 0 4px var(--u-tint); }
-.rec__time { margin-left: auto; font: 400 20px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
-.rec__bars { display: flex; align-items: center; gap: 3px; height: 44px; }
-.rec__bars i { flex: 1; border-radius: 2px; background: var(--u-fill-3); }
-.rec__src { display: flex; gap: 8px; }
-.rec__src span { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; height: 32px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--u-line-2); color: var(--u-muted); }
-.rec__src span.is-on { color: var(--u-ink); background: var(--u-fill-2); font-weight: 500; }
-.rec .ui-btn { justify-self: stretch; height: 36px; }
-@media (max-width: 639px) { .rec { gap: 12px; padding: 14px; } .rec__bars { display: none; } }
-/* export: the minutes' export menu with the real Google Docs mark */
-.exp { width: 340px; padding: 8px; }
-.exp__head { padding: 8px 10px 10px; color: var(--u-muted); font-size: 12px; }
-.exp__item { display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 10px; border-radius: 8px; }
-.exp__item.is-sel { background: var(--u-fill-2); }
-.exp__ico { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--u-tile); box-shadow: var(--u-tile-edge); color: var(--u-ink); flex: none; }
-.exp__ico img { width: 14px; height: 19px; }
-.exp__item b { display: block; font-weight: 500; }
-.exp__item small { display: block; font-size: 12px; color: var(--u-muted); }
-
-.gdoc { width: 400px; }
-.gdoc__bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--u-line); background: var(--u-fill); }
-.gdoc__bar b { display: block; font-weight: 500; }
-.gdoc__bar small { display: block; font-size: 12px; color: var(--u-muted); }
-.gdoc__page { padding: 18px 24px 24px; display: grid; gap: 6px; color: var(--u-text-2); }
-.gdoc__h { font-size: 16px; line-height: 24px; font-weight: 500; color: var(--u-ink); margin-bottom: 4px; }
-.gdoc__s { font-weight: 500; color: var(--u-ink); margin-top: 6px; }
-
-/* how it works: each step's drawn window on the lit ground */
+/* how it works: each step's screenshot on the lit ground */
 [data-moment="pinned-chapters"] .mo-pc__visual { min-width: 0; }
-.mo-pc__visual--lit .ui { width: min(100%, 440px); min-width: 0; }
 @media (max-width: 639px) { [data-moment="pinned-chapters"] .mo-pc__step { grid-template-columns: minmax(0, 1fr); } }
 @media (min-width: 640px) { [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__visual.mo-pc__visual--lit { aspect-ratio: auto; height: 30svh; min-height: 220px; } }
 @media (min-width: 640px) and (max-width: 1023px) { [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__visual.mo-pc__visual--lit { height: 46svh; } }
 @media (max-width: 639px) { [data-moment="pinned-chapters"]:not(.is-live) .mo-pc__visual.mo-pc__visual--lit { aspect-ratio: auto; height: 280px; padding: 12px; } }
-.up { padding: 16px; display: grid; gap: 12px; }
-.up__tabs { display: flex; gap: 6px; }
-.up__tabs span { height: 28px; padding: 0 12px; display: inline-flex; align-items: center; border-radius: 7px; color: var(--u-muted); }
-.up__tabs span.is-on { background: var(--u-fill-2); color: var(--u-ink); font-weight: 500; }
-.up__file { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 12px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--u-line-2); }
-.up__file .exp__ico { grid-row: 1 / span 2; }
-.up__file b { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.up__file small { color: var(--u-muted); font-size: 12px; grid-column: 2; }
-.up__bar { grid-column: 2 / -1; height: 4px; border-radius: 2px; background: var(--u-fill-3); overflow: hidden; }
-.up__bar i { display: block; width: 100%; height: 100%; background: var(--u-ink); }
-.tpl { padding: 8px; }
-.tpl__item { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 2px 10px; padding: 10px; border-radius: 8px; }
-.tpl__item.is-sel { background: var(--u-tint); box-shadow: inset 2px 0 0 var(--u-accent); }
-.tpl__item i { width: 14px; height: 14px; margin-top: 3px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--u-line-2); }
-.tpl__item.is-sel i { box-shadow: inset 0 0 0 4px var(--u-ink); }
-.tpl__item b { font-weight: 500; }
-.tpl__item small { grid-column: 2; color: var(--u-muted); font-size: 12px; }
 
-/* pricing: the packages as ruled rows (a name, its price, one line, one button) beside the points log */
+/* pricing: the packages as ruled rows (a name, its price, one line, one button) beside the points history */
 .prices > li { grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; }
 .prices .rows__name { font-size: var(--t-lead); }
 .prices .rows__value { font-size: var(--t-lead); font-weight: 500; }
@@ -224,35 +110,23 @@ main > section.section.section.bg-band[data-moment="pinned-chapters"].is-live { 
   .prices > li { grid-template-columns: minmax(0, 1fr) auto; }
   .prices > li > .btn { grid-column: 1 / -1; grid-row: 3; margin-top: var(--s-2); }
 }
-.log { width: 420px; }
-.log__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 12px 16px; border-top: 1px solid var(--u-line); }
-.log__row b { font-weight: 500; }
-.log__row small { color: var(--u-muted); font-size: 12px; }
-.log__row em { grid-column: 2; grid-row: 1; font-style: normal; font-variant-numeric: tabular-nums; font-weight: 500; text-align: right; }
-.log__row.is-zero em { color: var(--u-muted); }
-.log__row.is-on { box-shadow: inset 2px 0 0 var(--u-accent); }
-.log__foot { display: flex; justify-content: space-between; padding: 12px 16px; border-top: 1px solid var(--u-line); background: var(--u-fill); }
-.log__foot b { font-weight: 500; font-variant-numeric: tabular-nums; }
-
-/* the tablet holds the stacked price list and the points log in two screens (layout-v4.md, the tablet) */
 /* the tablet keeps the price list beside its picture and the questions beside theirs, so each stays one screen */
 @media (min-width: 640px) and (max-width: 1023px) {
   #pricing .grid > .span-6:first-child { grid-column: 1 / span 6; }
   #pricing .grid > .frame { grid-column: 7 / -1; }
   #pricing .prices > li { grid-template-columns: minmax(0, 1fr) auto; }
   #pricing .prices > li > .btn { grid-column: 1 / -1; grid-row: 3; margin-top: var(--s-2); }
-  #faq > .wrap { grid-template-rows: auto 1fr; }
-  #faq > .wrap > .span-5 { grid-column: 1 / span 6; }
-  #faq .faq { grid-column: 7 / -1; grid-row: 1 / span 2; }
-  #faq .faq-frame { grid-column: 1 / span 6; grid-row: 2; align-self: start; }
 }
 @media (max-width: 639px) { #pricing, #faq { --hm: 2; } #pricing .frame--split { --ratio: 180%; } }
 
-/* the FAQ's picture: three transcript lines, one per language the transcript takes */
 .faq-frame { --ratio: 0px; height: 340px; }
-@media (min-width: 1024px) { #faq > .wrap { grid-template-rows: auto 1fr; } #faq .faq { grid-row: 1 / span 2; } #faq .faq-frame { grid-row: 2; align-self: start; } }
-@media (max-width: 1023px) { .faq-frame { height: 240px; } }
-@media (max-width: 639px) { .faq-frame { height: 600px; } }
+/* the FAQ: the questions on the left under the heading, the transcript on the right */
+.faq-col { grid-column: 1 / -1; min-width: 0; }
+@media (min-width: 1024px) { #faq .faq-col { grid-column: 1 / span 6; } }
+.faq-head { margin-bottom: var(--s-6); }
+@media (min-width: 640px) and (max-width: 1279px) { #faq .faq-head { margin-bottom: var(--s-5); } #faq .faq > .faq__item { padding-block: var(--s-4); } #faq .faq > .faq__item:first-child { padding-top: 0; } }
+@media (max-width: 1023px) { .faq-frame { height: 220px; } }
+@media (max-width: 639px) { .faq-frame { height: 300px; } #export .shot { margin-top: -64px; } }
 
 /* the statement under liquid-type: its line sits on the page's left line under the type */
 .statement .mo-lt__type { margin-top: 0; }
@@ -297,15 +171,9 @@ main > section.section.section.bg-band[data-moment="pinned-chapters"].is-live { 
               <a href="#export">匯出<span>下載或存成 Google 文件</span></a>
             </div>
             <a class="menu-card span-3 start-10" href="#billing">
-              <div class="panel"><div class="stage stage--fade-br"><div class="at-corner" style="--ax:24px;--ay:24px">
-                <div class="ui ui-panel note-card" style="width:260px">
-                  <div class="note-card__row"><span class="ui-title">點數紀錄</span><span class="ui-meta">11 月</span></div>
-                  <div class="note-line"><span>產品週會 · 轉錄</span><b style="margin-left:auto">−53 點</b></div>
-                  <div class="note-line"><span>客戶訪談 · 未完成</span><b style="margin-left:auto">0 點</b></div>
-                </div>
-              </div></div></div>
+              <div class="panel"><div class="stage stage--fade-br"><div class="at-corner" style="--ax:20px;--ay:20px;width:360px"><img class="shot" src="shots/billing-1120.webp" srcset="shots/billing-600.webp 600w, shots/billing-1120.webp 1120w" sizes="360px" width="1120" height="871" alt="" loading="lazy" decoding="async"></div></div></div>
               <span class="t-card">只收完成的工作</span>
-              <span class="t-small muted">轉錄按秒計算，不綁月費</span>
+              <span class="t-small muted">每筆扣點都列在紀錄裡</span>
             </a>
           </div>
         </div>
@@ -333,45 +201,11 @@ main > section.section.section.bg-band[data-moment="pinned-chapters"].is-live { 
         <div class="btn-row"><a class="btn btn--primary" href="/login">登入<svg class="m-arrow" viewBox="0 0 12 12" aria-hidden="true"><path class="m-arrow__stem" d="M1 6h8"/><path class="m-arrow__head" d="M4.5 2.5 8 6l-3.5 3.5"/></svg></a><a class="btn btn--secondary" href="/pricing">查看方案與價格</a></div>
         <p class="hero__proof">預付點數<span data-price-from-wrap> <span data-price-from>NT$100</span> 起</span>，不綁月費。</p>
       </div>
-      <div class="hero__art span-6 start-7" role="img" aria-label="Minutes 的會議列表：產品週會已完成，季度規劃正在轉錄；旁邊的小卡寫著產品週會的逐字稿、會議紀錄都已完成，扣了 53 點" data-fx="grain-gradient" data-fx-seed="11" data-fx-params='{"speed":0,"grainMotion":0,"calm":0.6,"calmX":0.3,"calmY":0.3}'>
-        <div class="ly-piece ly-piece--main" aria-hidden="true">
-          <div class="ui ui-panel ui-win" data-ui="window" data-open="等待中" data-work="整理中" data-done="已完成">
-            <div class="ui-win__bar">
-              <span class="ui-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span class="ui-win__crumb">Minutes <i>/</i> <b>會議</b></span>
-              <span class="ui-spacer"></span>
-              <span class="ui-win__search" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg><span class="ui-win__ph">搜尋會議</span><span class="ui-kbd">/</span></span>
-            </div>
-            <div class="ui-win__body">
-              <nav class="ui-win__side" aria-hidden="true">
-                <span class="ui-win__nav is-on"><svg class="ui-icon" viewBox="0 0 16 16"><path d="M2.5 9h3l1 1.5h3l1-1.5h3"/><path d="M2.5 9 4 3.5h8L13.5 9v3.5h-11z"/></svg>全部會議<em>24</em></span>
-                <span class="ui-win__nav"><svg class="ui-icon" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></svg>轉錄中<em>1</em></span>
-                <span class="ui-win__nav"><svg class="ui-icon" viewBox="0 0 16 16"><path d="m3.5 8.4 2.8 2.8 6.2-6.4"/></svg>已完成<em>23</em></span>
-                <span class="ui-win__label">範本</span>
-                <span class="ui-win__nav"><span class="ui-win__hash">#</span>會議紀錄</span>
-                <span class="ui-win__nav"><span class="ui-win__hash">#</span>待辦事項</span>
-              </nav>
-              <div class="ui-win__main">
-                <div class="ui-win__cols" aria-hidden="true"><span>會議</span><span>日期與長度</span><span>狀態</span></div>
-                <ul class="ui-win__rows">
-                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="1">產</span><span class="ui-win__who">產品週會</span><span class="ui-win__sub">11/23 · 52 分</span><span class="ui-win__st is-done" data-st>已完成</span></li>
-                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="3">季</span><span class="ui-win__who">季度規劃</span><span class="ui-win__sub">11/24 · 78 分</span><span class="ui-win__st" data-st>轉錄中</span></li>
-                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="4">客</span><span class="ui-win__who">客戶訪談</span><span class="ui-win__sub">11/20 · 41 分</span><span class="ui-win__st is-done" data-st>已完成</span></li>
-                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="2">設</span><span class="ui-win__who">設計評審</span><span class="ui-win__sub">11/19 · 36 分</span><span class="ui-win__st is-done" data-st>已完成</span></li>
-                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="5">招</span><span class="ui-win__who">招募面談</span><span class="ui-win__sub">11/18 · 47 分</span><span class="ui-win__st is-done" data-st>已完成</span></li>
-                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="3">業</span><span class="ui-win__who">業務週報</span><span class="ui-win__sub">11/16 · 28 分</span><span class="ui-win__st is-done" data-st>已完成</span></li>
-                  <li class="ui-win__row" data-row><span class="ui-avatar" data-tone="1">產</span><span class="ui-win__who">產品週會</span><span class="ui-win__sub">11/09 · 49 分</span><span class="ui-win__st is-done" data-st>已完成</span></li>
-                </ul>
-              </div>
-            </div>
-          </div>
+      <div class="hero__art span-6 start-7" data-fx="grain-gradient" data-fx-seed="11" data-fx-params='{"speed":0,"grainMotion":0,"calm":0.6,"calmX":0.3,"calmY":0.3}'>
+        <div class="ly-piece ly-piece--main">
+          <picture><source media="(max-width: 639px)" srcset="shots/hero-phone-680.webp" width="680" height="1116"><img class="shot" src="shots/hero-library-1240.webp" srcset="shots/hero-library-720.webp 720w, shots/hero-library-1240.webp 1240w" sizes="620px" width="1240" height="1653" alt="Minutes 的會議庫：2026 年 11 月的五場會議，季度規劃正在語音轉文字（42%），產品週會、客戶訪談、設計評審和業務週報都已完成摘要" fetchpriority="high" decoding="async"></picture>
         </div>
-        <div class="ly-piece ly-piece--note ui ui-panel note-card" aria-hidden="true" data-ly-steps="700">
-          <div class="note-card__row"><span class="ui-title">產品週會</span><span class="ui-chip ui-chip--accent" data-step data-step-at="4">已完成</span></div>
-          <div class="note-line" data-step><i>✓</i><span>逐字稿，<b>3 位發言者</b></span></div>
-          <div class="note-line" data-step><i>✓</i><span>會議紀錄，範本<b>「會議紀錄」</b></span></div>
-          <div class="note-line" data-step><i>✓</i><span>錄音 52 分 14 秒，扣 <b>53 點</b></span></div>
-        </div>
+        
       </div>
     </div></div>
   </section>
@@ -381,44 +215,16 @@ main > section.section.section.bg-band[data-moment="pinned-chapters"].is-live { 
       <div class="grid">
         <h2 class="span-5" id="meeting-h">一場會議的<wbr>逐字稿和會議紀錄</h2>
         <div class="span-6 start-7 stack-4">
-          <p class="muted">左邊是逐字稿，每句都有時間和發言者；右邊是照範本整理好的重點、決議和待辦事項。</p>
+          <p class="muted">左邊是發言時間和逐字稿，每句都有時間和發言者；右邊是照範本整理好的摘要、重點、決議和待辦事項。</p>
           <a class="link" href="#steps">查看三個步驟</a>
         </div>
       </div>
-      <div class="ui app fill" role="img" aria-label="產品週會的會議頁面：左邊逐字稿每句附時間與發言者，中文夾雜英文；右邊是會議紀錄的重點、決議和待辦事項">
-        <div class="app__bar">
-          <span class="ui-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="app__crumb">會議 <i>/</i> <b>產品週會</b></span>
-          <span class="app__meta">11 月 23 日（一）· 52:14 · 3 位發言者</span>
-          <span class="app__acts"><span class="ui-btn ui-btn--ghost ui-btn--sm"><svg class="ui-icon" viewBox="0 0 16 16"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg><span>下載</span></span><span class="ui-btn ui-btn--ghost ui-btn--sm"><img data-icon="google-docs" src="assets/icons/google-docs.svg" alt="" width="14" height="19" loading="lazy"><span>匯出到 Google 文件</span></span></span>
-        </div>
-        <div class="app__pane app__pane--tx">
-          <div class="pane__head"><span class="ui-title">逐字稿</span><span class="ui-meta">中文、英文</span></div>
-          <div class="tx ui ui-tx">
-            <div class="tx__line"><span class="tx__t">00:00:08</span><span class="tx__who" data-tone="1">林怡君</span><span class="tx__say">好，我們開始。先看上週的 action items。</span></div>
-            <div class="tx__line"><span class="tx__t">00:00:21</span><span class="tx__who" data-tone="2">陳家豪</span><span class="tx__say">iOS 的 release 卡在 App Store review，我週四會再送一次。</span></div>
-            <div class="tx__line"><span class="tx__t">00:00:37</span><span class="tx__who" data-tone="1">林怡君</span><span class="tx__say">OK，那 Android 呢？</span></div>
-            <div class="tx__line"><span class="tx__t">00:00:42</span><span class="tx__who" data-tone="3">發言者 3</span><span class="tx__say">Android 已經上 beta，這週的 crash rate 有降下來。</span></div>
-            <div class="tx__line"><span class="tx__t">00:01:05</span><span class="tx__who" data-tone="1">林怡君</span><span class="tx__say">第二件事是 onboarding 改版的 A/B test。</span></div>
-            <div class="tx__line"><span class="tx__t">00:01:16</span><span class="tx__who" data-tone="2">陳家豪</span><span class="tx__say">我建議延到下個 sprint，現在的樣本數還不夠。</span></div>
-            <div class="tx__line"><span class="tx__t">00:01:31</span><span class="tx__who" data-tone="3">發言者 3</span><span class="tx__say">同意，數據我週三前整理一份給大家。</span></div>
-            <div class="tx__line is-on"><span class="tx__t">00:02:14</span><span class="tx__who" data-tone="1">林怡君</span><span class="tx__say">那就這樣決定：A/B test 延到下個 sprint。</span></div>
-            <div class="tx__line"><span class="tx__t">00:02:31</span><span class="tx__who" data-tone="1">林怡君</span><span class="tx__say">最後，客服回報的匯出問題，誰可以 follow？</span></div>
-            <div class="tx__line"><span class="tx__t">00:02:40</span><span class="tx__who" data-tone="2">陳家豪</span><span class="tx__say">我來，週五前回覆客服。</span></div>
-            <div class="tx__line"><span class="tx__t">00:02:52</span><span class="tx__who" data-tone="3">發言者 3</span><span class="tx__say">補充一下，這個問題目前只在 Safari 出現。</span></div>
-            <div class="tx__line"><span class="tx__t">00:03:09</span><span class="tx__who" data-tone="1">林怡君</span><span class="tx__say">好，謝謝大家，下週同一時間。</span></div>
-          </div>
-        </div>
-        <div class="app__pane app__pane--min">
-          <div class="pane__head"><span class="ui-title">會議紀錄</span><span class="ui-meta">範本：會議紀錄</span></div>
-          <div class="mn ui ui-mn">
-            <div><div class="mn__h">摘要</div><div class="mn__p">確認 iOS 重新送審的時間、onboarding 的 A/B test 延期，並指定客服匯出問題的負責人。</div></div>
-            <div><div class="mn__h">重點</div><ul><li>iOS 版卡在 App Store 審核，週四重新送審。</li><li>Android beta 本週的當機率下降。</li><li>客服回報的匯出問題目前只發生在 Safari。</li></ul></div>
-            <div><div class="mn__h">決議</div><ul><li>onboarding 改版的 A/B test 延到下個 sprint。</li></ul></div>
-            <div class="todo"><div class="mn__h">待辦事項</div><ul><li><b>陳家豪</b>　iOS 重新送審 <small>11/26（四）</small></li><li><b>發言者 3</b>　整理 A/B test 數據 <small>11/25（三）</small></li><li><b>陳家豪</b>　回覆客服匯出問題 <small>11/27（五）</small></li></ul></div>
-          </div>
-        </div>
-      </div>
+      <figure class="app-shot fill">
+        <picture>
+          <source media="(max-width: 639px)" srcset="shots/meeting-phone-680.webp" width="680" height="1813">
+          <img class="shot" src="shots/meeting-1920.webp" srcset="shots/meeting-1200.webp 1200w, shots/meeting-1920.webp 1920w" sizes="(max-width: 1279px) calc(100vw - 96px), 1280px" width="1920" height="1029" alt="產品週會的會議頁面：上方是發言時間（林怡君 41%、王雅婷 31%、陳家豪 28%）和逐字稿，每句附時間與發言者，中文夾雜英文；右邊是依範本「會議紀錄」整理的摘要、重點、決議和待辦事項" loading="lazy" decoding="async">
+        </picture>
+      </figure>
     </div>
   </section>
 
@@ -431,40 +237,17 @@ main > section.section.section.bg-band[data-moment="pinned-chapters"].is-live { 
           <li class="mo-pc__step">
             <h3>上傳錄音或錄影檔</h3>
             <p>會議結束後，把錄音或錄影檔上傳到 Minutes；開會時也可以直接在瀏覽器錄。</p>
-            <figure class="mo-pc__visual mo-pc__visual--lit" role="img" aria-label="上傳視窗：產品週會的錄音檔已上傳完成，長度 52 分 14 秒">
-              <div class="ui ui-panel up">
-                <div class="up__tabs"><span class="is-on">上傳檔案</span><span>直接錄音</span></div>
-                <div class="up__file"><span class="exp__ico"><svg class="ui-icon" viewBox="0 0 16 16"><path d="M6 11.5V4l6.5-1.5V10"/><circle cx="4.5" cy="11.5" r="1.5"/><circle cx="11" cy="10" r="1.5"/></svg></span><b>產品週會-1123.m4a</b><span class="ui-chip ui-chip--plain">已上傳</span><small>52 分 14 秒 · 48.6 MB</small><span class="up__bar"><i></i></span></div>
-                <div class="up__file"><span class="exp__ico"><svg class="ui-icon" viewBox="0 0 16 16"><rect x="2" y="4" width="9" height="8" rx="1.5"/><path d="m11 7 3-2v6l-3-2"/></svg></span><b>季度規劃.mp4</b><span class="ui-chip ui-chip--accent">上傳中</span><small>1 小時 18 分 · 612 MB</small><span class="up__bar"><i style="width:64%"></i></span></div>
-              </div>
-            </figure>
+            <figure class="mo-pc__visual mo-pc__visual--lit"><img class="shot shot--fit" src="shots/step-upload-1096.webp" srcset="shots/step-upload-600.webp 600w, shots/step-upload-1096.webp 1096w" sizes="(max-width: 639px) 300px, 548px" width="1096" height="754" alt="新增錄音的第 1 步：上傳檔案或直接錄音，拖放音訊或影片檔，支援 MP3、M4A、WAV、MP4 等格式，最大 4 GB" loading="lazy" decoding="async"></figure>
           </li>
           <li class="mo-pc__step">
             <h3>轉成逐字稿，分出發言者</h3>
             <p>中文、英文和中英夾雜都能轉錄，每句附上時間；不同的人會自動分開標示。</p>
-            <figure class="mo-pc__visual mo-pc__visual--lit" role="img" aria-label="逐字稿：每句附時間，發言者 1、發言者 2 分開標示，中英夾雜">
-              <div class="ui ui-panel">
-                <div class="pane__head"><span class="ui-title">逐字稿</span><span class="ui-meta">產品週會</span></div>
-                <div class="tx">
-                  <div class="tx__line"><span class="tx__t">00:00:08</span><span class="tx__who" data-tone="1">發言者 1</span><span class="tx__say">好，我們開始。先看上週的 action items。</span></div>
-                  <div class="tx__line"><span class="tx__t">00:00:21</span><span class="tx__who" data-tone="2">發言者 2</span><span class="tx__say">iOS 的 release 卡在 review，我週四再送一次。</span></div>
-                  <div class="tx__line"><span class="tx__t">00:00:37</span><span class="tx__who" data-tone="1">發言者 1</span><span class="tx__say">OK，那 Android 呢？</span></div>
-                  <div class="tx__line"><span class="tx__t">00:00:42</span><span class="tx__who" data-tone="3">發言者 3</span><span class="tx__say">Android 已經上 beta 了。</span></div>
-                </div>
-              </div>
-            </figure>
+            <figure class="mo-pc__visual mo-pc__visual--lit"><img class="shot shot--fit" src="shots/step-transcript-1096.webp" srcset="shots/step-transcript-600.webp 600w, shots/step-transcript-1096.webp 1096w" sizes="(max-width: 639px) 300px, 548px" width="1096" height="764" alt="產品週會的逐字稿：每句附時間與發言者（林怡君、陳家豪、王雅婷），中文夾雜英文" loading="lazy" decoding="async"></figure>
           </li>
           <li class="mo-pc__step">
             <h3>選範本，整理成會議紀錄</h3>
             <p>選一個範本，Minutes 就照它把逐字稿整理成重點、決議和待辦事項。</p>
-            <figure class="mo-pc__visual mo-pc__visual--lit" role="img" aria-label="範本清單：會議紀錄、待辦事項、主管摘要、決策紀錄，選了會議紀錄">
-              <div class="ui ui-panel tpl">
-                <div class="tpl__item is-sel"><i></i><b>會議紀錄</b><small>摘要、各議題討論、決議與待辦事項</small></div>
-                <div class="tpl__item"><i></i><b>待辦事項</b><small>誰、做什麼、何時完成</small></div>
-                <div class="tpl__item"><i></i><b>主管摘要</b><small>重點、決議、風險與需求</small></div>
-                <div class="tpl__item"><i></i><b>決策紀錄</b><small>每項決策的背景、理由與負責人</small></div>
-              </div>
-            </figure>
+            <figure class="mo-pc__visual mo-pc__visual--lit"><img class="shot shot--fit" src="shots/step-template-1096.webp" srcset="shots/step-template-600.webp 600w, shots/step-template-1096.webp 1096w" sizes="(max-width: 639px) 300px, 548px" width="1096" height="842" alt="新增錄音的摘要設定：逐字稿完成後自動產生摘要，範本可選會議紀錄、待辦事項、主管摘要、詳細筆記、決策紀錄、課程／講座筆記" loading="lazy" decoding="async"></figure>
           </li>
         </ol>
       </div>
@@ -483,37 +266,14 @@ main > section.section.section.bg-band[data-moment="pinned-chapters"].is-live { 
             <h3>替每位發言者命名</h3>
             <p>系統先把不同的人標成「發言者 1」「發言者 2」，你可以替每一位填上名字。</p>
             <div class="panel" data-fx="painterly-landscape" data-fx-seed="21" data-fx-palette='{"bg":"#d9ccb7","surface":"#e9e0d2","ink":"#2a2622","accent":"#a8794a"}' data-fx-params='{"drift":0,"blur":1,"brush":0.35,"slope":0,"hillY":0.3,"horizon":0.62}'>
-              <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:360px;--ax:max(24px, 50% - 180px);--ay:48px;--ay-sm:24px">
-                <div class="ui ui-panel spk" role="img" aria-label="發言者清單：發言者 1 改名為林怡君，發言者 2 改名為陳家豪，發言者 3 正在輸入名字">
-                  <div class="ui-head"><div class="ui-title">發言者</div><span class="ui-spacer"></span><div class="ui-meta">產品週會</div></div>
-                  <div class="spk__row"><span class="ui-avatar" data-tone="1">林</span><span class="spk__name"><b>林怡君</b><small>原為發言者 1 · 說了 21 分鐘</small></span><span class="ui-meta">✓</span></div>
-                  <div class="spk__row"><span class="ui-avatar" data-tone="2">陳</span><span class="spk__name"><b>陳家豪</b><small>原為發言者 2 · 說了 17 分鐘</small></span><span class="ui-meta">✓</span></div>
-                  <div class="spk__row"><span class="ui-avatar" data-tone="3">3</span><span class="spk__field">王雅<i></i></span><span class="ui-btn ui-btn--sm">儲存</span></div>
-                  <div class="spk__row"><span class="ui-avatar" data-tone="5">4</span><span class="spk__name"><b>發言者 4</b><small>說了 2 分鐘</small></span><span class="ui-meta">命名</span></div>
-                </div>
-              </div></div>
+              <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:520px;--ax:max(24px, 50% - 260px);--ay:40px;--ay-sm:20px"><img class="shot" src="shots/rename-1120.webp" srcset="shots/rename-600.webp 600w, shots/rename-1120.webp 1120w" sizes="(max-width: 639px) 310px, 520px" width="1120" height="502" alt="業務週報的發言時間：把「發言者 3」改名為陳美玲，旁邊打開她的第一段發言可以試聽；張志明、林怡君和發言者 4 列在一起" loading="lazy" decoding="async"></div></div>
             </div>
           </article>
           <article class="card card--row card--open span-6" id="search">
             <h3>搜尋每一場會議</h3>
-            <p>所有會議都能搜尋。輸入一個詞，就找到是哪一場會議、誰在什麼時間說的。</p>
+            <p>所有會議的標題和逐字稿都能搜尋。輸入一個詞，就找到是哪一場會議、在第幾分鐘說的。</p>
             <div class="panel" data-fx="painterly-landscape" data-fx-seed="34" data-fx-palette='{"bg":"#cdd6c6","surface":"#dce3d6","ink":"#262d24","accent":"#6c8e63"}' data-fx-params='{"drift":0,"blur":1,"brush":0.35,"slope":0,"hillY":0.3,"horizon":0.62}'>
-              <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:400px;--ax:max(24px, 50% - 200px);--ay:48px;--ay-sm:24px" data-ui-loop>
-                <div class="ui ui-panel ui-search" data-ui="search">
-                  <div class="ui-search__field">
-                    <svg class="ui-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3 3"/></svg>
-                    <span class="ui-search__q"><span data-search-q>送審</span><i class="ui-search__caret"></i></span>
-                    <kbd class="ui-search__kbd">/</kbd>
-                  </div>
-                  <div class="ui-search__group">2 場會議，3 處</div>
-                  <ul class="ui-search__list" data-search-list>
-                    <li class="ui-search__row is-sel"><span class="ui-search__ico"><svg class="ui-icon" viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/></svg></span><span class="ui-search__t">iOS 週四重新<b>送審</b></span><span class="ui-search__m">產品週會</span></li>
-                    <li class="ui-search__row"><span class="ui-search__ico"><svg class="ui-icon" viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/></svg></span><span class="ui-search__t">Android 先不<b>送審</b></span><span class="ui-search__m">產品週會</span></li>
-                    <li class="ui-search__row"><span class="ui-search__ico"><svg class="ui-icon" viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/></svg></span><span class="ui-search__t"><b>送審</b>前換截圖</span><span class="ui-search__m">設計評審</span></li>
-                  </ul>
-                  <div class="ui-search__foot"><span><kbd>&uarr;</kbd><kbd>&darr;</kbd> 移動</span><span><kbd>Enter</kbd> 開啟</span></div>
-                </div>
-              </div></div>
+              <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:520px;--ax:max(24px, 50% - 260px);--ay:40px;--ay-sm:20px"><img class="shot" src="shots/search-1120.webp" srcset="shots/search-600.webp 600w, shots/search-1120.webp 1120w" sizes="(max-width: 639px) 310px, 520px" width="1120" height="893" alt="在會議庫搜尋「報價」：找到產品週會、客戶訪談和業務週報三場會議，各自顯示出現的時間與那一句話" loading="lazy" decoding="async"></div></div>
             </div>
           </article>
         </div>
@@ -521,37 +281,16 @@ main > section.section.section.bg-band[data-moment="pinned-chapters"].is-live { 
       <div class="grid">
         <article class="card card--row card--open span-6" id="record">
           <h3>直接在瀏覽器錄音</h3>
-          <p>手邊沒有錄音檔也可以：開會時在瀏覽器按下錄音，錄完就能送出轉錄。</p>
+          <p>手邊沒有錄音檔也可以：開會時在瀏覽器錄下麥克風或線上會議分頁的聲音，錄完就送出轉錄。</p>
           <div class="panel" data-fx="painterly-landscape" data-fx-seed="47" data-fx-palette='{"bg":"#cdd6c6","surface":"#dce3d6","ink":"#262d24","accent":"#6c8e63"}' data-fx-params='{"drift":0,"blur":1,"brush":0.35,"slope":0,"hillY":0.3,"horizon":0.62}'>
-            <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:340px;--ax:max(24px, 50% - 170px);--ay:calc(100% - 268px);--ay-sm:16px">
-              <div class="ui ui-panel rec" role="img" aria-label="瀏覽器錄音中，已錄 38 分 12 秒，來源是麥克風">
-                <div class="rec__top"><span class="rec__dot"></span><span class="ui-title">錄音中 · 季度規劃</span><span class="rec__time">38:12</span></div>
-                <div class="rec__bars" aria-hidden="true"><i style="height:30%"></i><i style="height:55%"></i><i style="height:40%"></i><i style="height:80%"></i><i style="height:62%"></i><i style="height:35%"></i><i style="height:70%"></i><i style="height:92%"></i><i style="height:58%"></i><i style="height:44%"></i><i style="height:66%"></i><i style="height:38%"></i><i style="height:74%"></i><i style="height:50%"></i><i style="height:28%"></i><i style="height:60%"></i><i style="height:84%"></i><i style="height:46%"></i><i style="height:32%"></i><i style="height:52%"></i></div>
-                <div class="rec__src"><span class="is-on">麥克風</span><span>會議分頁</span></div>
-                <span class="ui-btn">結束錄音並上傳</span>
-              </div>
-            </div></div>
+            <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:520px;--ax:max(24px, 50% - 260px);--ay:40px;--ay-sm:20px"><img class="shot" src="shots/record-1120.webp" srcset="shots/record-600.webp 600w, shots/record-1120.webp 1120w" sizes="(max-width: 639px) 310px, 520px" width="1120" height="938" alt="直接錄音進行中：計時 0:00:08，我的麥克風已連接，音量條顯示有聲音，錄音暫存在這個瀏覽器" loading="lazy" decoding="async"></div></div>
           </div>
         </article>
         <article class="card card--row card--open span-6" id="export">
-          <h3>匯出會議紀錄到 Google 文件</h3>
-          <p>會議紀錄可以存成 Google 文件，也可以下載，再分享給沒來開會的人。</p>
+          <h3>下載摘要，或貼到 Google 文件</h3>
+          <p>摘要可以下載成 Markdown，或連同格式貼到 Google 文件；逐字稿另有 txt、srt 等格式。</p>
           <div class="panel" data-fx="painterly-landscape" data-fx-seed="58" data-fx-palette='{"bg":"#d9ccb7","surface":"#e9e0d2","ink":"#2a2622","accent":"#a8794a"}' data-fx-params='{"drift":0,"blur":1,"brush":0.35,"slope":0,"hillY":0.3,"horizon":0.62}'>
-            <div class="stage stage--fade-b"><div class="at-rise fit to-edge" style="--fit-max:400px;--ax:max(24px, 50% - 200px);--ay:48px;--ay-sm:24px">
-              <div class="ui ui-panel gdoc" role="img" aria-label="匯出到 Google 文件的產品週會會議紀錄：摘要、決議與待辦事項">
-                <div class="gdoc__bar"><span class="exp__ico"><img data-icon="google-docs" src="assets/icons/google-docs.svg" alt="" width="14" height="19" loading="lazy"></span><span><b>產品週會：會議紀錄</b><small>Google 文件 · 從 Minutes 匯出</small></span></div>
-                <div class="gdoc__page">
-                  <div class="gdoc__h">產品週會　11 月 23 日</div>
-                  <div class="gdoc__s">摘要</div>
-                  <div>確認 iOS 重新送審的時間、onboarding 的 A/B test 延期，並指定客服匯出問題的負責人。</div>
-                  <div class="gdoc__s">決議</div>
-                  <div>onboarding 改版的 A/B test 延到下個 sprint。</div>
-                  <div class="gdoc__s">待辦事項</div>
-                  <div>陳家豪：iOS 重新送審，11/26 前</div>
-                  <div>王雅婷：整理 A/B test 數據，11/25 前</div>
-                </div>
-              </div>
-            </div></div>
+            <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:384px;--ax:max(24px, 50% - 192px);--ay:32px;--ay-sm:16px"><img class="shot" src="shots/export-768.webp" srcset="shots/export-400.webp 400w, shots/export-768.webp 768w" sizes="(max-width: 639px) 300px, 384px" width="768" height="1240" alt="會議頁的匯出選單：摘要可下載成 .md（可附完整逐字稿），或連同格式複製貼到 Google 文件；逐字稿可存成 txt、md、srt、vtt 或 json" loading="lazy" decoding="async"></div></div>
           </div>
         </article>
       </div>
@@ -587,16 +326,7 @@ main > section.section.section.bg-band[data-moment="pinned-chapters"].is-live { 
           </div>
         </div>
         <div class="frame frame--split span-6 start-7">
-          <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:420px;--ax:max(24px, 50% - 210px);--ay:48px;--ay-sm:24px">
-            <div class="ui ui-panel log" role="img" aria-label="點數紀錄：產品週會轉錄 52 分 14 秒扣 53 點，會議紀錄扣 3 點，客戶訪談轉錄未完成扣 0 點，加值 500 點">
-              <div class="ui-head"><div class="ui-title">點數紀錄</div><span class="ui-spacer"></span><div class="ui-meta">11 月</div></div>
-              <div class="log__row"><b>產品週會 · 轉錄</b><em>−53 點</em><small>錄音 52 分 14 秒</small></div>
-              <div class="log__row"><b>產品週會 · 會議紀錄</b><em>−3 點</em><small>範本「會議紀錄」· 讀 18,240 token、寫 2,106 token</small></div>
-              <div class="log__row is-zero is-on"><b>客戶訪談 · 轉錄</b><em>0 點</em><small>沒有完成，不扣點</small></div>
-              <div class="log__row"><b>購買 500 點</b><em>+500 點</em><small>綠界科技 · 信用卡</small></div>
-              <div class="log__foot"><span>剩餘點數</span><b>444 點</b></div>
-            </div>
-          </div></div>
+          <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:520px;--ax:max(24px, 50% - 260px);--ay:40px;--ay-sm:20px"><img class="shot" src="shots/billing-1120.webp" srcset="shots/billing-600.webp 600w, shots/billing-1120.webp 1120w" sizes="(max-width: 639px) 310px, 520px" width="1120" height="871" alt="點數與購買頁的紀錄：產品週會摘要扣 3 點（讀取 18,240、輸出 2,106 token）、轉錄 52:14 扣 53 點，客戶訪談、設計評審各筆扣點與餘額" loading="lazy" decoding="async"></div></div>
         </div>
       </div>
     </div>
@@ -604,31 +334,20 @@ main > section.section.section.bg-band[data-moment="pinned-chapters"].is-live { 
 
   <section class="section ground-surface" id="faq" aria-labelledby="faq-h">
     <div class="wrap grid grid--top">
-      <div class="span-5 stack-4">
+      <div class="faq-col">
+      <div class="stack-4 faq-head">
         <h2 id="faq-h">常見問題</h2>
-        <p>沒看到你的問題，寫信給我們。</p>
         <a class="link" href="mailto:limatt@mattbleuet.com" data-contact>聯絡我們</a>
       </div>
-      <div class="faq span-6 start-7">
-        <div class="faq__item"><h3>支援哪些語言？</h3><p>中文（華語）、英文，和中英夾雜的對話；逐字稿每句都附上時間。</p></div>
-        <div class="faq__item"><h3>需要訂閱嗎？</h3><p>不需要。點數預付，用完再買，沒有月費。</p></div>
-        <div class="faq__item" data-hour-wrap><h3>一小時的會議大約要幾點？</h3><p>以每分鐘 <span data-rate="perMinute">1</span> 點計算，約 <span data-hour-points>60</span> 點<span data-hour-price-wrap>；用 <span data-hour-pack>2,000</span> 點的方案換算約 <span data-hour-price>NT$48</span></span>。摘要另依文字量計點。</p></div>
-        <div class="faq__item"><h3>可以上傳錄影檔嗎？</h3><p>可以，錄音和錄影檔都能上傳；轉錄只依錄音長度計點。</p></div>
-        <div class="faq__item"><h3>退款怎麼處理？</h3><p>請見<a class="link" href="/terms" data-terms>購買條款與退款說明</a>。</p></div>
+        <div class="faq">
+          <div class="faq__item"><h3>支援哪些語言？</h3><p>中文（華語）、英文，和中英夾雜的對話；逐字稿每句都附上時間。</p></div>
+            <div class="faq__item" data-hour-wrap><h3>一小時的會議大約要幾點？</h3><p>以每分鐘 <span data-rate="perMinute">1</span> 點計算，約 <span data-hour-points>60</span> 點<span data-hour-price-wrap>；用 <span data-hour-pack>2,000</span> 點方案約 <span data-hour-price>NT$48</span></span>。摘要另計。</p></div>
+          <div class="faq__item"><h3>可以上傳錄影檔嗎？</h3><p>可以。錄影檔只用來轉錄：轉錄完成後會轉成只有聲音的檔案，不保留影片畫面。轉錄依錄音長度計點。</p></div>
+          <div class="faq__item"><h3>退款怎麼處理？</h3><p>請見<a class="link" href="/terms" data-terms>購買條款與退款說明</a>。</p></div>
+        </div>
       </div>
-      <div class="frame faq-frame span-5">
-        <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:420px;--ax:max(24px, 50% - 210px);--ay:32px;--ay-sm:24px">
-          <div class="ui ui-panel" role="img" aria-label="三句逐字稿：一句中文、一句英文、一句中英夾雜，各附時間">
-            <div class="pane__head"><span class="ui-title">設計評審</span><span class="ui-meta">逐字稿</span></div>
-            <div class="tx">
-              <div class="tx__line"><span class="tx__t">00:12:03</span><span class="tx__who" data-tone="1">林怡君</span><span class="tx__say">首頁的字級再放大一點。</span></div>
-              <div class="tx__line"><span class="tx__t">00:12:09</span><span class="tx__who" data-tone="2">Mark</span><span class="tx__say">I'll update the mockups by Friday.</span></div>
-              <div class="tx__line"><span class="tx__t">00:12:16</span><span class="tx__who" data-tone="3">陳家豪</span><span class="tx__say">那 dark mode 的 spec 也一起改。</span></div>
-              <div class="tx__line"><span class="tx__t">00:12:24</span><span class="tx__who" data-tone="2">Mark</span><span class="tx__say">Sure，我週五一起給。</span></div>
-              <div class="tx__line"><span class="tx__t">00:12:31</span><span class="tx__who" data-tone="1">林怡君</span><span class="tx__say">好，這兩件記在 Mark 身上。</span></div>
-            </div>
-          </div>
-        </div></div>
+      <div class="frame faq-frame span-6 start-7">
+        <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:470px;--ax:max(24px, 50% - 235px);--ay:32px;--ay-sm:20px"><img class="shot" src="shots/faq-transcript-940.webp" srcset="shots/faq-transcript-600.webp 600w, shots/faq-transcript-940.webp 940w" sizes="(max-width: 639px) 310px, 470px" width="940" height="349" alt="設計評審的逐字稿：林怡君說中文，Mark 說英文和中英夾雜的句子，每句附時間" loading="lazy" decoding="async"></div></div>
       </div>
     </div>
   </section>
