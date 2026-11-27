@@ -448,31 +448,77 @@ Each worker reports what it can run and which API keys it has, and the server ha
 
 A worker can also run on [Modal](https://modal.com), a serverless GPU platform that bills by the second and costs nothing while idle (its Starter plan includes a monthly compute credit). It is not kept running: when a recording it can take is queued, the server calls its **wake-up address**, Modal starts the worker on a GPU, and the worker processes the queue like any other remote worker, then exits once there has been no work for a minute. `deploy/modal/app.py` is the whole setup.
 
-On a computer with the Modal CLI (`pip install modal`, then `modal setup`), in this repository:
+#### What you need
 
-1. **Admin → System → Workers on other machines → Add**, then (the dialog shows this command too):
+- The site online at a public `https://` address, with `PUBLIC_URL` set: the worker on Modal connects to it from outside, like any remote worker.
+- A [Modal](https://modal.com) account. Set a spending limit in its settings.
+- A computer with this repository checked out and Python, to run the Modal commands below. It is needed only while setting up and updating, not while the worker runs.
+- For speakers separated by pyannote on the Modal GPU: a Hugging Face account that has accepted the conditions of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1), and a read token.
+
+#### Setting it up
+
+Run these in this repository's folder, in this order.
+
+1. **Install the Modal CLI and sign in** (once per computer):
+   ```bash
+   pip install modal
    ```
-   modal run deploy/modal/app.py::enroll --server-url https://minutes.example.com --code mme_...
+   ```bash
+   modal setup
    ```
-   The credential goes to the Modal volume `meetingminutes-worker-data`, not to this checkout.
-2. The keys the worker needs, as a Modal secret (only those your settings use): `HF_TOKEN` for pyannote on the GPU (accept the model's terms on Hugging Face first), `OPENROUTER_API_KEY` for speech recognition through the API, `PYANNOTEAI_API_KEY` for pyannoteAI.
-   ```
+2. **Create the Modal secret with the worker's keys, before anything else.** Every Modal command loads the whole app, whose GPU functions use this secret, so enrolling fails until it exists; and `HF_TOKEN` is what downloads the pyannote model. Put in only the keys your settings use: `HF_TOKEN` for pyannote on the GPU, `OPENROUTER_API_KEY` for speech recognition through OpenRouter, `PYANNOTEAI_API_KEY` for pyannoteAI.
+   ```bash
    modal secret create meetingminutes-worker HF_TOKEN=hf_... OPENROUTER_API_KEY=sk-or-...
    ```
-3. Deploy, then enter the printed address that ends in `-wake.modal.run` as the **wake-up address** in that worker's **Settings**, and press **Wake it now** to check it:
+   To change a key later, run it again with `--force`.
+3. **Make a one-time code on the site:** **Admin → System → Workers on other machines → Add**, name it (for example "Modal T4") and press **Create enrollment code**. The dialog's "Use a Modal cloud GPU instead" part shows the next commands with the code filled in. The code works once, for an hour.
+4. **Enroll** with that code:
+   ```bash
+   modal run deploy/modal/app.py::enroll --server-url https://minutes.example.com --code mme_...
    ```
-   modal deploy deploy/modal/app.py                  # MM_MODAL_GPU=L4 modal deploy … for another GPU
-   modal run deploy/modal/app.py::prepare            # optional: download the models now (a few GB, once)
+   The worker's credential goes to the Modal volume `meetingminutes-worker-data`, never to this checkout; the wake-up endpoint gets only the key ID and the token's hash.
+5. **Deploy.** It prints the wake-up address, ending in `-wake.modal.run`:
+   ```bash
+   modal deploy deploy/modal/app.py
    ```
+   For another GPU than the T4: `MM_MODAL_GPU=L4 modal deploy deploy/modal/app.py` (see the settings below).
+6. **Download the models now** (recommended: a few GB, once, kept in the volume), so the first recording does not wait for them. This also checks that the keys work and the models load on the GPU:
+   ```bash
+   modal run deploy/modal/app.py::prepare
+   ```
+7. **Enter the wake-up address** on the site: in that worker's **Settings** (Admin → System), paste it as the **wake-up address**, save, and press **Wake it now**. "Wake-up sent" means the whole path works: the server signed the call, Modal checked it and started the GPU. With nothing queued, the worker exits again within a minute. The same dialog sets what this machine runs (speech recognition and speaker separation), like any worker.
+8. **Try a short recording.** The worker shows as **Standby** in the list, **Connected** while it works, then Standby again. Then look at the run in the Modal dashboard: how long it took and what it cost. Measure an hour-long meeting once before relying on an estimate for pricing.
 
-How it behaves:
+#### How it behaves
 
-- **When it is called.** The server checks every 15 seconds, and right after a recording is queued. It calls only while the worker is offline and a job it can take is waiting: for a worker marked as a fallback, only once the job has waited its turn. It calls at most once every 2 minutes (a cold start, model loading included, takes about one to two minutes), and gives up on a job after 3 calls that did not lead to it being taken. The settings dialog shows how the last call went. While it is not running, the list shows it as **Standby** rather than offline.
-- **Only the server can start it.** Each call is signed with an HMAC of the time and the worker's ID, keyed by the hash of the worker's token, which the server stores and the worker can compute. The wake-up endpoint (a small CPU function) answers anyone else with 401 and starts no GPU. It also refuses a call more than a minute old and any call no newer than the last one it accepted, so a call seen on the way cannot be sent again; and while a worker run is starting or working it starts no second one. It holds only the key ID and the token's hash (in a Modal Dict), no secrets and not the volume with the credential. One container runs at a time. Enrolled with an earlier version of `app.py`? Run `modal run deploy/modal/app.py::sync_wake_key` once after deploying.
+- **When it is called.** The server checks every 15 seconds, and right after a recording is queued. It calls only while the worker is offline and a job it can take is waiting: for a worker marked as a fallback, only once the job has waited its turn. It calls at most once every 2 minutes (a cold start, model loading included, takes about one to two minutes), and gives up on a job after 3 calls that did not lead to it being taken. The settings dialog shows how the last call went.
+- **Only the server can start it.** Each call is signed with an HMAC of the time and the worker's ID, keyed by the hash of the worker's token, which the server stores and the worker can compute. The wake-up endpoint (a small CPU function) answers anyone else with 401 and starts no GPU. It also refuses a call more than a minute old and any call no newer than the last one it accepted, so a call seen on the way cannot be sent again; and while a worker run is starting or working it starts no second one. It holds only the key ID and the token's hash (in a Modal Dict), no secrets and not the volume with the credential. One container runs at a time.
 - **What it runs** follows the machine's settings, like any worker. A typical choice is speakers separated by pyannote on the Modal GPU, with speech recognised by Qwen3-ASR on that GPU or through the API. On a T4, which has no bfloat16, the ASR model loads in float16 by itself.
-- **Costs.** GPU time is billed per second, from the container's start until the worker exits a minute after the queue empties. Measure an hour-long meeting once in the Modal dashboard before relying on an estimate. Set a spending limit in Modal's settings.
+- **Costs.** GPU time is billed per second, from the container's start (cold start and model loading included) until the worker exits a minute after the queue empties.
 - **With other workers.** If a machine of your own (a Mac, a GPU box) also works for the site, mark the Modal worker as a **fallback**: your machine takes recordings while it is on, and Modal is called only when a recording has waited.
-- **Updating.** The container runs the worker code from the checkout you deployed: after `git pull`, run `modal deploy deploy/modal/app.py` again.
+
+#### Settings
+
+Environment variables of `modal deploy` (and of `modal run`, which must match):
+
+| Variable               | Default                 | What it does                                                    |
+| ---------------------- | ----------------------- | --------------------------------------------------------------- |
+| `MM_MODAL_GPU`         | `T4`                    | GPU type: `T4` (16 GB), `L4` (24 GB), `A10G`, …                 |
+| `MM_MODAL_IDLE_SEC`    | `60`                    | Seconds without work before the worker exits.                   |
+| `MM_MODAL_SECRET`      | `meetingminutes-worker` | Name of the Modal secret with the keys.                         |
+| `MM_MODAL_TIMEOUT_SEC` | `21600` (6 hours)       | Longest one run may take (a long recording and what follows it). |
+
+#### Updating
+
+The container runs the worker code from the checkout you deployed: after `git pull`, run `modal deploy deploy/modal/app.py` again. Enrolled with a version of `app.py` from before the wake-up endpoint kept its own key? Run `modal run deploy/modal/app.py::sync_wake_key` once after deploying.
+
+#### When something is wrong
+
+- **Enrolling or deploying says the secret is not found:** create it first (step 2), with the name in `MM_MODAL_SECRET`.
+- **Wake it now answers 503:** the endpoint has no key yet; enroll (step 4), or run `sync_wake_key`.
+- **401:** the call was refused: a server clock far off (more than a minute), or the worker was enrolled again on the site without enrolling Modal again.
+- **Woken, but recordings are not taken:** the worker's settings ask for something it cannot do, such as pyannote without `HF_TOKEN`, or the API without its key. Its row in Admin → System and the Modal logs say which.
+- **Speakers are not separated:** `HF_TOKEN` is missing, or the model's conditions were not accepted on Hugging Face with that account; `prepare` shows the error.
 
 The worker side is ordinary: `python -m mm_worker run --exit-when-idle 60` (or `MM_EXIT_WHEN_IDLE_SEC`) makes any worker exit after a minute without work, and a remote worker's token may also be given as `WORKER_TOKEN` (with `MM_SERVER_URL`) instead of an enrollment file.
 

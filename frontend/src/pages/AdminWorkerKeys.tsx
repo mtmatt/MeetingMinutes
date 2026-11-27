@@ -265,7 +265,7 @@ function EnrollCode({ created, onClose }: { created: { name: string; code: strin
         <details className="worker-enroll-modal">
           <summary>{t("workers.modalAlt")}</summary>
           <p className="field-hint">{t("workers.modalAltIntro")}</p>
-          <pre className="mono asr-env">{`modal run deploy/modal/app.py::enroll --server-url ${server} --code ${created.code}\nmodal deploy deploy/modal/app.py`}</pre>
+          <pre className="mono asr-env">{`modal secret create meetingminutes-worker HF_TOKEN=hf_... OPENROUTER_API_KEY=sk-or-...\nmodal run deploy/modal/app.py::enroll --server-url ${server} --code ${created.code}\nmodal deploy deploy/modal/app.py\nmodal run deploy/modal/app.py::prepare`}</pre>
           <p className="field-hint">{t("workers.modalAltNext")}</p>
         </details>
         <p className="field-hint">{t("workers.codeOnce", { left: until(created.expiresAt, locale) })}</p>

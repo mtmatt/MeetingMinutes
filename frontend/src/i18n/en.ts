@@ -763,7 +763,7 @@ export const en = {
     standby: "Standby",
     standbyHint: "Starts on demand: the site wakes it when there is work; otherwise it is not running.",
     modalAlt: "Use a Modal cloud GPU instead (started on demand, no machine of your own)",
-    modalAltIntro: "On a computer with the Modal CLI (pip install modal, then modal setup), in this project's folder:",
+    modalAltIntro: "On a computer with the Modal CLI (pip install modal, then modal setup), in this project's folder, in this order. The secret comes first: enrolling needs it, and HF_TOKEN downloads the pyannote model. Keep only the keys your settings use.",
     modalAltNext: "When it is deployed, Modal prints an address ending in -wake; enter it as the wake-up address in this machine's settings. The full steps are in the README's Modal section.",
     title: "Workers on other machines",
     lede: "Let other computers (Linux with an NVIDIA GPU, a Mac with Apple silicon) transcribe. They only connect out to this site, so they need no open port; each has its own credential that can be revoked on its own, and downloads only the recording it is working on, deleting it afterwards.",
