@@ -277,7 +277,8 @@ export const api = {
   adminWorkerProfiles: () =>
     get<{ profiles: Record<string, WorkerProfile>; local: string; defaultFallbackSec: number; wake: Record<string, WorkerWake> }>("/admin/worker-profiles"),
   adminSaveWorkerWake: (id: string, url: string | null) => request<{ wake: WorkerWake | null }>("PUT", `/admin/worker-wake/${encodeURIComponent(id)}`, { url }),
-  adminTestWorkerWake: (id: string) => post<{ ok: boolean; status: number | null; error: string | null }>(`/admin/worker-wake/${encodeURIComponent(id)}/test`),
+  adminTestWorkerWake: (id: string, url?: string) =>
+    post<{ ok: boolean; status: number | null; error: string | null }>(`/admin/worker-wake/${encodeURIComponent(id)}/test`, url ? { url } : {}),
   adminSaveWorkerProfile: (id: string, p: WorkerProfile) =>
     request<{ profile: WorkerProfile }>("PUT", `/admin/worker-profiles/${encodeURIComponent(id)}`, p),
   /** Look at a model server with the form's values, before they are saved. */

@@ -731,7 +731,7 @@ export const zhTW: Dict = {
     wake: "按需啟動的喚醒網址（Modal 等雲端 GPU）",
     wakeHint: "填了這個，這台平常不會一直開著：有它能處理的錄音在排隊、而它沒在執行時，網站會呼叫這個網址把它叫起來，處理完它會自己關掉。呼叫附有用這台憑證簽的簽章，別人無法叫醒它。Modal 部署後會印出這個網址。",
     wakeTest: "現在喚醒一次",
-    wakeSaveFirst: "先儲存網址再測試",
+    wakeDevUrl: "這是 modal run 的暫時網址（結尾有 -dev，指令結束就失效）。請改用 modal deploy 印出、沒有 -dev 的網址。",
     wakeOk: "已送出喚醒（平台回應 {status}）。沒有工作的話，它會在一分鐘內自己關掉。",
     wakeFailed: "喚醒失敗：{error}",
     wakeLast: "上次喚醒：{when}，{result}",

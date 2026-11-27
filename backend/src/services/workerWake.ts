@@ -109,15 +109,25 @@ export function wakeSignature(tokenHash: string, keyId: string, t: number): stri
   return `t=${t},sig=${sig}`;
 }
 
-/** Calls the worker's wake-up address now. */
-export async function wakeWorker(keyId: string, reason: "queued" | "test", jobId: string | null = null): Promise<{ ok: boolean; status: number | null; error: string | null }> {
-  const url = wakeUrl(keyId);
+/**
+ * Calls the worker's wake-up address now, or `tryUrl` (an address not saved yet, to test it).
+ * Only calls to the saved address are remembered as "the last call".
+ */
+export async function wakeWorker(
+  keyId: string,
+  reason: "queued" | "test",
+  jobId: string | null = null,
+  tryUrl?: string,
+): Promise<{ ok: boolean; status: number | null; error: string | null }> {
+  const saved = wakeUrl(keyId);
+  const url = tryUrl ?? saved;
+  const remember = url === saved;
   const key = db
     .query<{ token_hash: string | null; revoked_at: number | null }, { id: string }>("SELECT token_hash, revoked_at FROM worker_keys WHERE id = $id")
     .get({ id: keyId });
   if (!url) return { ok: false, status: null, error: "No wake-up address is set." };
   if (!key || key.revoked_at || !key.token_hash) return { ok: false, status: null, error: "The worker is not enrolled." };
-  const state = states.get(keyId) ?? blank();
+  const state = remember ? (states.get(keyId) ?? blank()) : blank();
   if (jobId && state.jobId === jobId) state.tries += 1;
   else if (jobId) {
     state.jobId = jobId;
@@ -125,7 +135,7 @@ export async function wakeWorker(keyId: string, reason: "queued" | "test", jobId
   }
   const t = now();
   state.at = t;
-  states.set(keyId, state);
+  if (remember) states.set(keyId, state);
   let result: { ok: boolean; status: number | null; error: string | null };
   try {
     const res = await fetch(url, {
