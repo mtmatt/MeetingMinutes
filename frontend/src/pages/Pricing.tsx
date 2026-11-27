@@ -7,6 +7,7 @@ import { Wordmark } from "../components/Seal";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { pointsPerMeetingHour } from "../lib/format";
+import { useForceNewUi } from "../lib/newUi";
 
 /**
  * What the site sells and for how much, in NT$: open to anyone, signed in or
@@ -15,6 +16,8 @@ import { pointsPerMeetingHour } from "../lib/format";
  * get in touch, without an account.
  */
 export function PricingPage() {
+  // The landing page's look, for everyone: this page is where it sends visitors.
+  useForceNewUi();
   const { t } = useI18n();
   const { user, registration, helpContact } = useAuth();
   const q = useQuery({ queryKey: ["pricing"], queryFn: api.pricing, retry: false });
@@ -35,9 +38,22 @@ export function PricingPage() {
         <Link to="/" reloadDocument={!user} className="terms-brand" aria-label="Minutes">
           <Wordmark />
         </Link>
-        <Link to={user ? "/" : "/login"} className="btn btn-sm btn-ghost">
-          <ArrowLeft /> {user ? t("pricing.backToApp") : t("auth.backToSignIn")}
-        </Link>
+        {user ? (
+          <Link to="/" className="btn btn-sm btn-ghost">
+            <ArrowLeft /> {t("pricing.backToApp")}
+          </Link>
+        ) : (
+          <div className="pricing-head-actions">
+            {registration && (
+              <Link to="/register" className="btn btn-sm btn-ghost">
+                {t("auth.createAccount")}
+              </Link>
+            )}
+            <Link to="/login" className="btn btn-sm btn-primary">
+              {t("auth.signIn")}
+            </Link>
+          </div>
+        )}
       </header>
       <main className="terms-body pricing">
         <p className="smallcaps pricing-kicker">{t("pricing.kicker")}</p>

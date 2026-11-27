@@ -1,0 +1,137 @@
+/*
+ * The public price list (/pricing) in the landing page's look. It is shown in
+ * the new look to everyone (PricingPage forces data-ui="next"), so it reads as
+ * the next page of the landing page it is linked from.
+ */
+
+[data-ui="next"] .terms-page {
+  background: var(--bg);
+}
+/* The landing page's header: the brand, then the actions at the right; opaque, one hairline. */
+[data-ui="next"] .terms-page > .terms-head {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  max-width: none;
+  margin: 0;
+  padding: 12px max(24px, calc((100% - 1120px) / 2));
+  min-height: var(--masthead-h);
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
+}
+[data-ui="next"] .pricing-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+[data-ui="next"] .terms-body.pricing {
+  max-width: 1120px;
+  padding: 72px 24px 96px;
+}
+[data-ui="next"] .pricing-kicker {
+  margin: 0 0 12px;
+}
+[data-ui="next"] .pricing-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 1.6rem + 3vw, 4rem);
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  margin: 0 0 20px;
+}
+[data-ui="next"] .pricing-intro {
+  font-size: var(--step-1);
+  line-height: 1.6;
+  max-width: 56ch;
+  color: var(--ink-2);
+}
+
+/* Sections: the title at the left, the content at the right, a hairline between. */
+[data-ui="next"] .pricing-section {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 0 48px;
+  margin-top: 0;
+  padding: 48px 0;
+  border-top: 1px solid var(--rule);
+}
+[data-ui="next"] .pricing-section:first-of-type {
+  margin-top: 64px;
+}
+[data-ui="next"] .pricing-section > h2 {
+  grid-column: 1;
+  grid-row: 1 / span 20;
+  margin: 0;
+  font-size: var(--h2-size);
+  font-weight: var(--h2-weight);
+  line-height: var(--h2-leading);
+}
+[data-ui="next"] .pricing-section > :not(h2) {
+  grid-column: 2;
+}
+[data-ui="next"] .pricing-section p {
+  max-width: 64ch;
+  font-size: var(--step-0);
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+[data-ui="next"] .pricing-section > * + :not(h2) {
+  margin-top: 16px;
+}
+[data-ui="next"] .pricing-features {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 32px;
+}
+[data-ui="next"] .pricing-features li {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--step-0);
+  line-height: 1.6;
+}
+[data-ui="next"] .pricing-section .billing-packages {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+[data-ui="next"] .pricing-soon {
+  justify-self: start;
+}
+[data-ui="next"] .pricing-currency {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+}
+[data-ui="next"] .pricing-section a:not(.btn) {
+  color: var(--ink);
+}
+
+@media (max-width: 860px) {
+  [data-ui="next"] .terms-body.pricing {
+    padding: 40px 16px 72px;
+  }
+  [data-ui="next"] .terms-page > .terms-head {
+    padding: 10px 16px;
+  }
+  [data-ui="next"] .pricing-section {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 32px 0;
+  }
+  [data-ui="next"] .pricing-section > h2 {
+    grid-row: auto;
+    margin-bottom: 16px;
+  }
+  [data-ui="next"] .pricing-section > :not(h2) {
+    grid-column: 1;
+  }
+  [data-ui="next"] .pricing-section:first-of-type {
+    margin-top: 40px;
+  }
+  [data-ui="next"] .pricing-features {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* The content's first line sits level with the section's title. */
+[data-ui="next"] .pricing-section > h2 + * {
+  margin-top: 0;
+}

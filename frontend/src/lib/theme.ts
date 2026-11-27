@@ -12,14 +12,28 @@ export function isThemePref(v: unknown): v is ThemePref {
  * another browser, or to the site's new address) and in this browser (so the
  * page has it before the account is loaded, without a flash of the wrong one).
  */
+/** Light unless the person chose otherwise (the system's setting is a choice they can make). */
+export const DEFAULT_THEME: ThemePref = "light";
+
+/** Whether this browser holds a choice the person made (rather than the default). */
+let chosenHere = false;
+
 function read(): ThemePref {
   try {
     const v = localStorage.getItem(KEY);
-    if (isThemePref(v)) return v;
+    if (isThemePref(v)) {
+      chosenHere = true;
+      return v;
+    }
   } catch {
     /* ignore */
   }
-  return "system";
+  return DEFAULT_THEME;
+}
+
+/** This browser holds a theme the person chose (not just the default). */
+export function themeChosenHere(): boolean {
+  return chosenHere;
 }
 
 function apply(pref: ThemePref) {
@@ -47,6 +61,7 @@ export function setTheme(p: ThemePref, save = true) {
   if (p !== current) {
     current = p;
     apply(p);
+    chosenHere = true;
     try {
       localStorage.setItem(KEY, p);
     } catch {

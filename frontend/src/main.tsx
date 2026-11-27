@@ -17,6 +17,7 @@ import "./styles/next/library.css";
 import "./styles/next/meeting.css";
 import "./styles/next/account.css";
 import "./styles/next/admin.css";
+import "./styles/next/public.css";
 import "./lib/theme";
 import "./lib/newUi";
 

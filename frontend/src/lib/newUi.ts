@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 /**
  * The new interface (a preview a person turns on in Settings). Its styles apply
  * under <html data-ui="next">. The choice lives with the account; it is also
@@ -6,9 +8,19 @@
  */
 const KEY = "mm.ui";
 
-function apply(on: boolean) {
-  if (on) document.documentElement.dataset.ui = "next";
+/** The account's (or this browser's) choice. */
+let chosen = false;
+/** Pages that always show the new look (the public price list), however many are open. */
+let forced = 0;
+
+function render() {
+  if (chosen || forced > 0) document.documentElement.dataset.ui = "next";
   else delete document.documentElement.dataset.ui;
+}
+
+function apply(on: boolean) {
+  chosen = on;
+  render();
 }
 
 try {
@@ -26,4 +38,20 @@ export function setNewUi(on: boolean) {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Shows the new look while the calling page is open, whatever the account's
+ * choice: public pages that sit next to the landing page (which has it) use it
+ * for everyone.
+ */
+export function useForceNewUi() {
+  useEffect(() => {
+    forced++;
+    render();
+    return () => {
+      forced--;
+      render();
+    };
+  }, []);
 }
