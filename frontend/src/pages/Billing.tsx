@@ -8,7 +8,8 @@ import { useToast } from "../components/Toast";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { paymentKind, submitCheckout, useBilling } from "../lib/billing";
-import { TYPICAL_HOUR, clock, dateTime, meetingTimeFor, pointsNumber, pointsPerMeetingHour, pointsText, twd, twdApprox } from "../lib/format";
+import { METHOD_LABEL, PackageCard, Pitch, Rates } from "../components/Pricing";
+import { TYPICAL_HOUR, clock, dateTime, meetingTimeFor, pointsNumber, pointsPerMeetingHour, pointsText, twd } from "../lib/format";
 
 /**
  * Prepaid points: the balance and what it pays for, the packages on sale (paid on ECPay's page),
@@ -108,21 +109,6 @@ function Balance({ b }: { b: BillingInfo }) {
   );
 }
 
-/** What each kind of work costs, in the reader's words. */
-function Rates({ rates }: { rates: BillingInfo["rates"] }) {
-  const { t, locale } = useI18n();
-  const n = (x: number) => x.toLocaleString(locale === "zh-TW" ? "zh-TW" : "en", { maximumFractionDigits: 3 });
-  const summaryFree = rates.perKInput <= 0 && rates.perKOutput <= 0;
-  return (
-    <dl className="billing-rates">
-      <dt>{t("billing.rateTranscription")}</dt>
-      <dd>{rates.perMinute > 0 ? t("billing.ratePerMinute", { n: n(rates.perMinute) }) : t("billing.rateFree")}</dd>
-      <dt>{t("billing.rateSummary")}</dt>
-      <dd>{summaryFree ? t("billing.rateFree") : t("billing.ratePerTokens", { input: n(rates.perKInput), output: n(rates.perKOutput) })}</dd>
-    </dl>
-  );
-}
-
 /** `preview`: an administrator looking as a buyer would; packages show even before the sale opens, and nothing can be bought. */
 function Packages({ b, preview = false }: { b: BillingInfo; preview?: boolean }) {
   const { t, locale } = useI18n();
@@ -141,9 +127,8 @@ function Packages({ b, preview = false }: { b: BillingInfo; preview?: boolean })
     );
   }
   const cheapest = Math.min(...b.packages.map((p) => p.price / p.points));
-  // A typical hour of meeting (recording and summary), in points and, at each package's price, in dollars.
+  // A typical hour of meeting (recording and summary), in points.
   const hourPoints = pointsPerMeetingHour(b.rates);
-  const summariesPriced = b.rates.perKInput > 0 || b.rates.perKOutput > 0;
 
   const buy = async (p: CreditPackage) => {
     if (preview) return;
@@ -180,39 +165,15 @@ function Packages({ b, preview = false }: { b: BillingInfo; preview?: boolean })
         </label>
       )}
       <div className="billing-packages">
-        {b.packages.map((p) => {
-          const unit = p.price / p.points;
-          const hours = meetingTimeFor(p.points * 1000, b.rates, locale);
-          return (
-            <div key={p.id} className="billing-package">
-              <div className="billing-package-minutes">
-                <span className="billing-package-number">{p.points.toLocaleString()}</span>
-                <span className="billing-package-unit">{t("billing.pointsUnit")}</span>
-              </div>
-              <div className="billing-package-hours">
-                {hours ? (
-                  <>
-                    <span>{t("billing.meetingsAbout", { time: hours })}</span>
-                    {summariesPriced && <span>{t("billing.summariesIncluded")}</span>}
-                  </>
-                ) : (
-                  "\u00a0"
-                )}
-              </div>
-              <div className="billing-package-price">{twd(p.price)}</div>
-              <div className="billing-package-each">
-                {hourPoints > 0 && <span className="billing-package-hourly">{t("billing.perHour", { price: twdApprox((hourPoints * p.price) / p.points) })}</span>}
-                {b.packages.length > 1 && unit === cheapest && <span className="pill ok">{t("billing.bestValue")}</span>}
-              </div>
-              <div className="billing-package-point faint">{t("billing.perPoint", { price: unit.toLocaleString("en", { maximumFractionDigits: 2 }) })}</div>
-              <button type="button" className="btn btn-primary btn-block" onClick={() => buy(p)} disabled={preview || busy != null || (needsAgreement && !agreed)}
-                title={preview ? t("billing.previewBuyOff") : undefined}
-              >
-                {busy === p.id ? <span className="spinner" /> : <CreditCard />} {t("billing.buyThis")}
-              </button>
-            </div>
-          );
-        })}
+        {b.packages.map((p) => (
+          <PackageCard key={p.id} p={p} packages={b.packages} rates={b.rates}>
+            <button type="button" className="btn btn-primary btn-block" onClick={() => buy(p)} disabled={preview || busy != null || (needsAgreement && !agreed)}
+              title={preview ? t("billing.previewBuyOff") : undefined}
+            >
+              {busy === p.id ? <span className="spinner" /> : <CreditCard />} {t("billing.buyThis")}
+            </button>
+          </PackageCard>
+        ))}
       </div>
       {hourPoints > 0 && (
         <p className="billing-pay-note faint">
@@ -223,25 +184,6 @@ function Packages({ b, preview = false }: { b: BillingInfo; preview?: boolean })
     </section>
   );
 }
-
-/**
- * Why prepaid points: no subscription, pay for what is used, by the second; points that never
- * expire when the administrator says so; and the lowest price of an hour's meeting.
- */
-function Pitch({ b, lowest }: { b: BillingInfo; lowest: number | null }) {
-  const { t } = useI18n();
-  const parts = [t("billing.pitchNoSubscription")];
-  if (b.rates.perMinute > 0) parts.push(t("billing.pitchBySecond"));
-  if (b.noExpiry) parts.push(t("billing.pitchNoExpiry"));
-  return (
-    <div className="billing-pitch">
-      <p className="billing-pitch-points">{parts.join(t("billing.pitchSep"))}</p>
-      {lowest != null && <p className="billing-pitch-price">{t("billing.pitchFrom", { price: twdApprox(lowest) })}</p>}
-    </div>
-  );
-}
-
-const METHOD_LABEL = { Credit: "billing.methodCredit", ATM: "billing.methodATM", CVS: "billing.methodCVS" } as const;
 
 /** Back from ECPay: how the order stands, asking ECPay if no word came yet. */
 function OrderBanner({ id }: { id: string }) {

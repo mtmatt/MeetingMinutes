@@ -23,6 +23,7 @@ const pages = {
   admin: () => import("./pages/Admin"),
   billing: () => import("./pages/Billing"),
   terms: () => import("./pages/Terms"),
+  pricing: () => import("./pages/Pricing"),
   usage: () => import("./pages/Usage"),
   announcements: () => import("./pages/Announcements"),
 };
@@ -125,5 +126,7 @@ export const router = createBrowserRouter([
   { path: "/verify-email/:token", element: <VerifyEmailPage /> },
   // The terms of sale: for anyone, signed in or not (buyers, and payment providers reviewing the site).
   { path: "/terms", lazy: async () => ({ Component: (await pages.terms()).TermsPage }) },
+  // What is sold and for how much (NT$): for anyone, signed in or not.
+  { path: "/pricing", lazy: async () => ({ Component: (await pages.pricing()).PricingPage }) },
   { path: "*", element: <NotFoundPage /> },
 ]);

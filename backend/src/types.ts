@@ -10,6 +10,8 @@ export interface UserRow {
   locale: string | null;
   /** "system", "light" or "dark"; null until chosen. */
   theme: string | null;
+  /** 1: the person uses the new interface (a preview). */
+  new_ui: number;
   created_at: number;
   updated_at: number;
   last_login_at: number | null;

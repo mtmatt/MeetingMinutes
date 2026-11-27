@@ -17,7 +17,7 @@ export function TermsPage() {
   return (
     <div className="terms-page">
       <header className="terms-head">
-        <Link to="/" className="terms-brand" aria-label="Minutes">
+        <Link to="/" reloadDocument={!user} className="terms-brand" aria-label="Minutes">
           <Wordmark />
         </Link>
         <Link to={user ? "/billing" : "/login"} className="btn btn-sm btn-ghost">

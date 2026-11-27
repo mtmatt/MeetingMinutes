@@ -1,0 +1,14 @@
+[
+ {
+  "file": "google-docs.svg",
+  "icon": "si:googledocs",
+  "name": "Google Docs",
+  "kind": "mono",
+  "source": "simple-icons@16.30.0",
+  "author": "Simple Icons Collaborators",
+  "licence": "CC0-1.0",
+  "url": "https://github.com/simple-icons/simple-icons",
+  "trademark": true,
+  "colour": "one-colour fallback in the brand hex"
+ }
+]

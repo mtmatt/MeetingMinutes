@@ -95,7 +95,9 @@
   gap: 14px;
 }
 .billing-package {
-  display: grid;
+  /* A column, so every card's price lines up and its button sits at the bottom. */
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   padding: 20px;
   background: var(--surface);
@@ -136,7 +138,10 @@
   font-variant-numeric: tabular-nums;
 }
 .billing-package .btn {
-  margin-top: 10px;
+  margin-top: auto;
+}
+.billing-package-point {
+  margin-bottom: 10px;
 }
 .billing-package-hours {
   color: var(--ink-2);
@@ -951,6 +956,51 @@
   font-size: var(--step--1);
   border-top: 1px solid var(--rule);
   padding-top: 14px;
+}
+/* ------------------------------------------------------------ public pricing */
+
+.pricing-kicker {
+  margin: 0 0 6px;
+}
+.pricing-title {
+  font-size: var(--step-4);
+  margin: 0 0 16px;
+}
+.pricing-intro {
+  font-size: var(--step-1);
+  line-height: 1.6;
+  color: var(--ink-2);
+  max-width: 62ch;
+}
+.pricing-section {
+  margin-top: var(--space-7);
+}
+.pricing-section h2 {
+  font-size: var(--step-2);
+  margin: 0 0 12px;
+}
+.pricing-section p {
+  max-width: 70ch;
+  line-height: 1.65;
+}
+.pricing-features {
+  margin: 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 6px;
+  line-height: 1.6;
+}
+.pricing-section .billing-rates {
+  margin-top: 12px;
+}
+.pricing-soon {
+  display: inline-flex;
+  margin: 0 0 var(--space-4);
+}
+.pricing-currency {
+  margin-top: var(--space-4);
+  font-size: var(--step--1);
+  color: var(--ink-2);
 }
 .billing-agree {
   align-items: flex-start;

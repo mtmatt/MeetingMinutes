@@ -1,0 +1,738 @@
+/*
+ * The new interface (preview), shown only to accounts that turned it on in
+ * Settings: <html data-ui="next">. Everything here is scoped to that attribute,
+ * so with the switch off the site looks exactly as before.
+ *
+ * One system, shared with the public landing page (frontend/public/welcome):
+ *   - the same paper, ink and vermilion, the interface 90-95% neutral;
+ *   - Funnel Sans / Funnel Display for Latin text, the system's Chinese face
+ *     (PingFang TC, Noto Sans TC, Microsoft JhengHei) for Chinese;
+ *   - one radius family (8 / 12 / 20), buttons at 8;
+ *   - one button pair (filled primary, outlined secondary), one card;
+ *   - reading text 16px, labels 13px at weight 500, nothing smaller, no
+ *     tracked capitals;
+ *   - controls 44px tall where there is room;
+ *   - motion: hover in 150ms, out 120ms, press 90ms, one ease; nothing moves on
+ *     scroll; under reduced motion only colours change.
+ *
+ * Page-specific rules live beside this file (library.css, meeting.css,
+ * account.css, admin.css), scoped the same way.
+ */
+
+@font-face {
+  font-family: "Funnel Sans";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url(./fonts/funnel-sans-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Funnel Display";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url(./fonts/funnel-display-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "DM Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./fonts/dm-mono-400-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+2000-206F;
+}
+
+/* ------------------------------------------------------------- tokens */
+
+:root[data-ui="next"] {
+  --font-sans: "Funnel Sans", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, -apple-system, sans-serif;
+  --font-title: var(--font-sans);
+  --font-display: "Funnel Display", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Type: 13px is the floor (labels), 16px the reading size. */
+  --step--2: 0.8125rem;
+  --step--1: 0.875rem;
+  --step-0: 1rem;
+  --step-1: 1.125rem;
+  --step-2: 1.375rem;
+  --step-3: 1.75rem;
+  --step-4: 2.375rem;
+  --step-5: clamp(2.5rem, 1.7rem + 3vw, 3.75rem);
+  --h1-size: clamp(2rem, 1.5rem + 1.6vw, 2.75rem);
+  --h1-weight: 450;
+  --h1-leading: 1.12;
+  --h2-size: 1.375rem;
+  --h2-weight: 550;
+  --h2-leading: 1.3;
+  --h3-size: 1.125rem;
+  --h3-weight: 550;
+  --h3-leading: 1.35;
+
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-l: 20px;
+  --radius-btn: 8px;
+
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-in: 150ms;
+  --dur-out: 120ms;
+  --dur-press: 90ms;
+  --dur-fast: 120ms;
+  --dur: 200ms;
+
+  --masthead-h: 64px;
+  --control-h: 44px;
+  --control-h-sm: 36px;
+
+  /* Light: the landing page's paper. */
+  --bg: #f5f2eb;
+  --bg-grain: #f5f2eb;
+  --surface: #fffdf9;
+  --surface-2: #f4f1ea;
+  --surface-3: #ebe6db;
+  --ink: #1c1b18;
+  --ink-2: #57554f;
+  --ink-3: #66645f;
+  --ink-4: #8f8b82;
+  --rule: #e3ddd1;
+  --rule-strong: #cdc6b7;
+  --accent: #c8412b;
+  --accent-hover: color-mix(in oklab, #c8412b 86%, #1c1b18);
+  --accent-ink: #ffffff;
+  --accent-soft: #f8e3dc;
+  --accent-wash: rgba(200, 65, 43, 0.07);
+  --focus: var(--accent);
+  --shadow-1: none;
+  --shadow-2: 0 12px 24px -12px rgba(28, 27, 24, 0.16), 0 1px 2px rgba(28, 27, 24, 0.05);
+  --shadow-3: 0 24px 56px -16px rgba(28, 27, 24, 0.28);
+  --shadow-lift: 0 12px 24px -12px rgba(28, 27, 24, 0.1);
+  --scrim: rgba(28, 27, 24, 0.4);
+}
+
+/* Dark: the landing page's inverted band, with a lighter vermilion so links and focus rings read on it. */
+@media (prefers-color-scheme: dark) {
+  :root[data-ui="next"]:not([data-theme="light"]) {
+    --bg: #1c1b18;
+    --bg-grain: #1c1b18;
+    --surface: #23221f;
+    --surface-2: #282724;
+    --surface-3: #312f2b;
+    --ink: #f5f2eb;
+    --ink-2: #c3bfb6;
+    --ink-3: #a3a098;
+    --ink-4: #78756e;
+    --rule: #33312c;
+    --rule-strong: #47443e;
+    --accent: #e5664b;
+    --accent-hover: color-mix(in oklab, #e5664b 86%, #f5f2eb);
+    --accent-ink: #1a0f0c;
+    --accent-soft: #3a221c;
+    --accent-wash: rgba(229, 102, 75, 0.1);
+    --shadow-2: 0 12px 28px -12px rgba(0, 0, 0, 0.6);
+    --shadow-3: 0 28px 64px -18px rgba(0, 0, 0, 0.7);
+    --shadow-lift: 0 12px 24px -12px rgba(0, 0, 0, 0.5);
+    --scrim: rgba(0, 0, 0, 0.55);
+  }
+}
+:root[data-ui="next"][data-theme="dark"] {
+  --bg: #1c1b18;
+  --bg-grain: #1c1b18;
+  --surface: #23221f;
+  --surface-2: #282724;
+  --surface-3: #312f2b;
+  --ink: #f5f2eb;
+  --ink-2: #c3bfb6;
+  --ink-3: #a3a098;
+  --ink-4: #78756e;
+  --rule: #33312c;
+  --rule-strong: #47443e;
+  --accent: #e5664b;
+  --accent-hover: color-mix(in oklab, #e5664b 86%, #f5f2eb);
+  --accent-ink: #1a0f0c;
+  --accent-soft: #3a221c;
+  --accent-wash: rgba(229, 102, 75, 0.1);
+  --shadow-2: 0 12px 28px -12px rgba(0, 0, 0, 0.6);
+  --shadow-3: 0 28px 64px -18px rgba(0, 0, 0, 0.7);
+  --shadow-lift: 0 12px 24px -12px rgba(0, 0, 0, 0.5);
+  --scrim: rgba(0, 0, 0, 0.55);
+}
+
+/* --------------------------------------------------------------- base */
+
+[data-ui="next"] body {
+  background-image: none;
+  font-size: var(--step-0);
+  line-height: 1.6;
+  font-feature-settings: normal;
+}
+
+[data-ui="next"] h1 {
+  font-family: var(--font-display);
+  letter-spacing: -0.025em;
+}
+[data-ui="next"] h2 {
+  letter-spacing: -0.01em;
+}
+[data-ui="next"] h3,
+[data-ui="next"] h4 {
+  letter-spacing: 0;
+}
+
+[data-ui="next"] a {
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 4px;
+  transition: text-decoration-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] a:hover {
+  text-decoration-color: currentColor;
+  transition-duration: var(--dur-in);
+}
+
+/* Focus: a 2px ring in the action colour, 2px off, drawn at once. */
+[data-ui="next"] :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  transition: none;
+}
+
+/* Labels, eyebrows and table heads: 13px, weight 500, plain case. */
+[data-ui="next"] .smallcaps,
+[data-ui="next"] .tag,
+[data-ui="next"] .table th {
+  font-size: var(--step--2);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+}
+
+[data-ui="next"] .wordmark-text {
+  font-family: var(--font-display);
+  font-style: normal;
+  font-weight: 500;
+  font-size: 1.3rem;
+  letter-spacing: -0.02em;
+  font-variation-settings: normal;
+  transform: none;
+}
+
+/* ------------------------------------------------------------ buttons */
+
+[data-ui="next"] .btn {
+  --btn-bg: var(--bg);
+  --btn-fg: var(--ink);
+  --btn-border: var(--rule-strong);
+  height: var(--control-h);
+  padding: 0 20px;
+  border-radius: var(--radius-btn);
+  font-size: var(--step-0);
+  font-weight: 500;
+  letter-spacing: 0;
+  box-shadow: none;
+  transition:
+    background-color var(--dur-out) var(--ease-out),
+    border-color var(--dur-out) var(--ease-out),
+    color var(--dur-out) var(--ease-out),
+    transform var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .btn:hover:not(:disabled) {
+  --btn-bg: color-mix(in oklab, var(--bg) 94%, var(--ink));
+  --btn-border: color-mix(in oklab, var(--ink) 35%, transparent);
+  transform: translateY(-1px);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .btn:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+  transition-duration: var(--dur-press);
+}
+[data-ui="next"] .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+[data-ui="next"] .btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Primary: the one filled button. Hover steps 14% toward the ink. */
+[data-ui="next"] .btn-primary {
+  --btn-bg: var(--accent);
+  --btn-fg: var(--accent-ink);
+  --btn-border: var(--accent);
+  box-shadow: none;
+}
+[data-ui="next"] .btn-primary:hover:not(:disabled) {
+  --btn-bg: var(--accent-hover);
+  --btn-border: var(--accent-hover);
+}
+[data-ui="next"] .btn-primary:disabled {
+  --btn-bg: var(--surface-3);
+  --btn-fg: var(--ink-3);
+  --btn-border: var(--surface-3);
+  opacity: 1;
+}
+
+/* Ink: the same filled look in the ink, for a second strong action on a page. */
+[data-ui="next"] .btn-ink {
+  --btn-bg: var(--ink);
+  --btn-fg: var(--bg);
+  --btn-border: var(--ink);
+}
+[data-ui="next"] .btn-ink:hover:not(:disabled) {
+  --btn-bg: color-mix(in oklab, var(--ink) 86%, var(--bg));
+  --btn-border: color-mix(in oklab, var(--ink) 86%, var(--bg));
+}
+
+/* Ghost: a quiet text action; no box until hovered. */
+[data-ui="next"] .btn-ghost {
+  --btn-bg: transparent;
+  --btn-border: transparent;
+  --btn-fg: var(--ink-2);
+}
+[data-ui="next"] .btn-ghost:hover:not(:disabled) {
+  --btn-bg: color-mix(in oklab, var(--bg) 92%, var(--ink));
+  --btn-border: transparent;
+  --btn-fg: var(--ink);
+  transform: none;
+}
+
+[data-ui="next"] .btn-danger {
+  --btn-fg: var(--danger);
+}
+[data-ui="next"] .btn-danger:hover:not(:disabled) {
+  --btn-bg: var(--danger-soft);
+  --btn-border: var(--danger);
+}
+
+[data-ui="next"] .btn-lg {
+  height: 52px;
+  padding: 0 26px;
+  font-size: var(--step-1);
+}
+[data-ui="next"] .btn-sm {
+  height: var(--control-h-sm);
+  padding: 0 14px;
+  font-size: var(--step--1);
+}
+[data-ui="next"] .btn-sm svg {
+  width: 16px;
+  height: 16px;
+}
+
+[data-ui="next"] .icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-s);
+  transition:
+    background-color var(--dur-out) var(--ease-out),
+    color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .icon-btn:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--bg) 92%, var(--ink));
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .icon-btn:active:not(:disabled) {
+  transform: scale(0.96);
+  transition-duration: var(--dur-press);
+}
+[data-ui="next"] .icon-btn svg {
+  width: 18px;
+  height: 18px;
+}
+[data-ui="next"] .icon-btn.sm {
+  width: 32px;
+  height: 32px;
+}
+[data-ui="next"] .icon-btn.sm svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* On touch screens every control gets a full 44px target. */
+@media (pointer: coarse) {
+  [data-ui="next"] .btn-sm,
+  [data-ui="next"] .icon-btn,
+  [data-ui="next"] .icon-btn.sm {
+    min-height: var(--control-h);
+  }
+  [data-ui="next"] .icon-btn,
+  [data-ui="next"] .icon-btn.sm {
+    min-width: var(--control-h);
+  }
+}
+
+/* ------------------------------------------------------------- fields */
+
+[data-ui="next"] .field {
+  gap: 8px;
+}
+[data-ui="next"] .field > label,
+[data-ui="next"] .field-label {
+  font-size: var(--step--1);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+}
+[data-ui="next"] .field-hint {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+}
+
+[data-ui="next"] .input,
+[data-ui="next"] .textarea,
+[data-ui="next"] .select {
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-s);
+  font-size: var(--step-0);
+  padding: 10px 14px;
+  transition:
+    border-color 140ms var(--ease-out),
+    box-shadow 140ms var(--ease-out);
+}
+[data-ui="next"] .input,
+[data-ui="next"] .select {
+  height: var(--control-h);
+}
+[data-ui="next"] .select {
+  padding-right: 38px;
+  background-position: right 14px center;
+}
+[data-ui="next"] .input:hover,
+[data-ui="next"] .textarea:hover,
+[data-ui="next"] .select:hover {
+  border-color: color-mix(in oklab, var(--ink) 35%, transparent);
+}
+/* Focus: the action colour's border and a 3px soft ring. */
+[data-ui="next"] .input:focus,
+[data-ui="next"] .textarea:focus,
+[data-ui="next"] .select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent);
+}
+[data-ui="next"] .input[aria-invalid="true"],
+[data-ui="next"] .textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--danger) 18%, transparent);
+}
+[data-ui="next"] .textarea.code {
+  font-size: var(--step--1);
+}
+
+[data-ui="next"] .input-line {
+  border-bottom-color: var(--rule-strong);
+  transition: border-color 140ms var(--ease-out);
+}
+[data-ui="next"] .input-line:focus-within {
+  border-color: var(--accent);
+}
+
+/* Segmented control: the same 8px family, a raised surface for the choice. */
+[data-ui="next"] .segmented {
+  padding: 3px;
+  border-radius: calc(var(--radius-s) + 3px);
+  background: var(--surface-2);
+  border-color: var(--rule);
+}
+[data-ui="next"] .segmented button {
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-s);
+  font-size: var(--step--1);
+  font-weight: 500;
+  transition:
+    background-color var(--dur-out) var(--ease-out),
+    color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .segmented button[aria-pressed="true"] {
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--rule-strong);
+}
+
+[data-ui="next"] .switch-track {
+  transition: background-color var(--dur-in) var(--ease-out), border-color var(--dur-in) var(--ease-out);
+}
+[data-ui="next"] .switch-track::after {
+  transition: transform var(--dur-in) var(--ease-out);
+}
+[data-ui="next"] .switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------ pills, labels */
+
+[data-ui="next"] .pill {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: var(--step--2);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* -------------------------------------------------------------- cards */
+
+/* One card: the lighter surface, a hairline, the large radius, no resting shadow. */
+[data-ui="next"] .card {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-l);
+  box-shadow: none;
+}
+/* A card that is a link lifts 2px, its border darkens and a soft shadow appears. */
+[data-ui="next"] a.card,
+[data-ui="next"] .card.is-link {
+  transition:
+    transform var(--dur-out) var(--ease-out),
+    border-color var(--dur-out) var(--ease-out),
+    box-shadow var(--dur-out) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  [data-ui="next"] a.card:hover,
+  [data-ui="next"] .card.is-link:hover {
+    transform: translateY(-2px);
+    border-color: var(--rule-strong);
+    box-shadow: var(--shadow-lift);
+    transition-duration: var(--dur-in);
+  }
+}
+
+[data-ui="next"] .callout {
+  border-radius: var(--radius-m);
+  font-size: var(--step--1);
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------- menus, modal, toast */
+
+[data-ui="next"] .menu {
+  padding: 6px;
+  border-radius: var(--radius-m);
+  border-color: var(--rule);
+  box-shadow: var(--shadow-2);
+}
+[data-ui="next"] .menu-item {
+  min-height: 40px;
+  padding: 8px 12px;
+  border-radius: var(--radius-s);
+  font-size: var(--step-0);
+}
+[data-ui="next"] .menu-item:hover,
+[data-ui="next"] .menu-item:focus-visible {
+  background: var(--surface-2);
+}
+[data-ui="next"] .menu-item-desc,
+[data-ui="next"] .menu-note,
+[data-ui="next"] .menu-chip {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .menu-chip {
+  min-height: 36px;
+  font-weight: 500;
+  border-radius: var(--radius-s);
+}
+
+[data-ui="next"] .scrim {
+  backdrop-filter: none;
+}
+[data-ui="next"] .modal {
+  border-radius: var(--radius-l);
+  border-color: var(--rule);
+}
+[data-ui="next"] .modal-head {
+  padding: 24px 24px 8px;
+}
+[data-ui="next"] .modal-body {
+  font-size: var(--step-0);
+}
+[data-ui="next"] .modal-foot {
+  padding: 16px 24px 24px;
+}
+
+[data-ui="next"] .toast {
+  border-radius: var(--radius-m);
+  font-size: var(--step--1);
+}
+[data-ui="next"] .toast .toast-action,
+[data-ui="next"] .toast .toast-action:hover:not(:disabled) {
+  height: 32px;
+  transform: none;
+}
+
+/* ------------------------------------------------------ tabs, tables */
+
+[data-ui="next"] .tabs {
+  gap: 24px;
+}
+[data-ui="next"] .tabs button,
+[data-ui="next"] .tabs a {
+  min-height: var(--control-h);
+  padding: 10px 0 12px;
+  font-size: var(--step-0);
+  font-weight: 500;
+  color: var(--ink-3);
+  transition: color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .tabs button:hover,
+[data-ui="next"] .tabs a:hover {
+  color: var(--ink);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .tabs [aria-selected="true"],
+[data-ui="next"] .tabs a.active {
+  color: var(--ink);
+}
+[data-ui="next"] .tabs [aria-selected="true"]::after,
+[data-ui="next"] .tabs a.active::after {
+  background: var(--ink);
+  border-radius: 2px;
+}
+[data-ui="next"] .tabs .count {
+  font-size: var(--step--2);
+}
+
+[data-ui="next"] .table {
+  font-size: var(--step-0);
+}
+[data-ui="next"] .table th {
+  padding: 10px 12px;
+}
+[data-ui="next"] .table td {
+  padding: 14px 12px;
+}
+
+[data-ui="next"] .kbd {
+  font-size: var(--step--2);
+  border-radius: 6px;
+}
+[data-ui="next"] .copy-field {
+  border-radius: var(--radius-s);
+}
+[data-ui="next"] .copy-field code {
+  font-size: var(--step--1);
+}
+
+[data-ui="next"] .empty {
+  padding: 64px 24px;
+}
+[data-ui="next"] .empty p {
+  font-size: var(--step-0);
+  line-height: 1.6;
+}
+
+/* ----------------------------------------------------------- masthead */
+
+/* Opaque, with a 1px hairline: no blur, no shadow, no shrinking, no red top rule. */
+[data-ui="next"] .masthead {
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+[data-ui="next"] .masthead::before {
+  display: none;
+}
+[data-ui="next"] .masthead-inner {
+  gap: 32px;
+}
+[data-ui="next"] .masthead-nav {
+  gap: 4px;
+  align-items: center;
+}
+[data-ui="next"] .masthead-nav a {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--radius-s);
+  font-size: var(--step-0);
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-2);
+  transition:
+    background-color var(--dur-out) var(--ease-out),
+    color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .masthead-nav a:hover {
+  color: var(--ink);
+  background: color-mix(in oklab, var(--bg) 93%, var(--ink));
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .masthead-nav a.active {
+  color: var(--ink);
+  background: color-mix(in oklab, var(--bg) 90%, var(--ink));
+}
+[data-ui="next"] .masthead-nav a.active::after {
+  display: none;
+}
+[data-ui="next"] .masthead-context-title {
+  font-weight: 550;
+}
+[data-ui="next"] .user-chip {
+  min-height: 40px;
+  border-radius: 999px;
+  border-color: var(--rule);
+  background: var(--surface);
+  transition: border-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .user-chip:hover {
+  border-color: var(--rule-strong);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .user-chip-name {
+  font-size: var(--step--1);
+  font-weight: 500;
+}
+
+/* -------------------------------------------------------------- pages */
+
+[data-ui="next"] .page {
+  padding-top: 48px;
+  animation: none;
+}
+[data-ui="next"] .page-head {
+  padding-bottom: 24px;
+}
+[data-ui="next"] .page-head p.lede {
+  font-size: var(--step-1);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+@media (max-width: 760px) {
+  [data-ui="next"] .masthead-inner {
+    gap: 12px;
+  }
+  [data-ui="next"] .masthead-new {
+    width: var(--control-h);
+  }
+  [data-ui="next"] .page {
+    padding-top: 28px;
+  }
+}
+
+/* ------------------------------------------------------ reduced motion */
+
+/* Only colours change: no rise, lift, press or scale. */
+@media (prefers-reduced-motion: reduce) {
+  [data-ui="next"] .btn:hover:not(:disabled),
+  [data-ui="next"] .btn:active:not(:disabled),
+  [data-ui="next"] .icon-btn:active:not(:disabled),
+  [data-ui="next"] a.card:hover,
+  [data-ui="next"] .card.is-link:hover {
+    transform: none;
+  }
+}
+
+/* One hairline under a page title, not the ledger's double rule. */
+[data-ui="next"] .rule-double {
+  height: 0;
+  border-top: 1px solid var(--rule-strong);
+  border-bottom: 0;
+  opacity: 1;
+}

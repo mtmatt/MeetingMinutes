@@ -138,6 +138,15 @@ export function SettingsPage() {
     setUser(u);
   };
 
+  const changeNewUi = async (on: boolean) => {
+    try {
+      const { user: u } = await api.updateMe({ newUi: on });
+      setUser(u);
+    } catch (err) {
+      toast.error(err);
+    }
+  };
+
   const changePassword = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -223,6 +232,15 @@ export function SettingsPage() {
                 </button>
               ))}
             </div>
+          </div>
+          <div className="field">
+            <span className="field-label">{t("settings.newUi")}</span>
+            <label className="switch">
+              <input type="checkbox" checked={!!user?.newUi} onChange={(e) => void changeNewUi(e.target.checked)} />
+              <span className="switch-track" />
+              <span className="switch-label">{t("settings.newUiSwitch")}</span>
+            </label>
+            <p className="faint">{t("settings.newUiHint")}</p>
           </div>
         </div>
       </Section>

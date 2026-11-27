@@ -108,14 +108,34 @@ authRoutes.get("/state", (c) => {
   });
 });
 
-/** The terms of sale written on the admin page; public, for buyers and payment providers to read. */
 /** Announcements for everyone, in effect now: shown on the sign-in page too (maintenance, outages). */
 authRoutes.get("/announcements", (c) => c.json({ announcements: publicAnnouncements() }));
 
+/** The terms of sale written on the admin page; public, for buyers and payment providers to read. */
 authRoutes.get("/terms", (c) => {
   const markdown = termsText();
   if (!markdown.trim()) httpError(404, "This site has no terms of sale.", "not_found");
   return c.json({ markdown, updatedAt: termsUpdatedAt() });
+});
+
+/**
+ * What is sold and for how much, in New Taiwan dollars: public, so visitors and
+ * payment providers can read the prices without an account. Packages show once
+ * the administrator has added them, even before the sale opens (onSale says
+ * whether they can be bought now).
+ */
+authRoutes.get("/pricing", (c) => {
+  const s = billingSettings();
+  return c.json({
+    onSale: s.enabled && s.packages.length > 0,
+    currency: "TWD",
+    packages: s.packages.map((p) => ({ id: p.id, points: p.points, price: p.price })),
+    rates: s.rates,
+    methods: s.methods,
+    noExpiry: s.noExpiry,
+    termsUrl: termsLink(),
+    contact: config.adminContact || null,
+  });
 });
 
 /** The address for links in mail, or 503 when the site does not know its own (PUBLIC_URL). */
@@ -359,12 +379,15 @@ meRoutes.patch("/", async (c) => {
       locale: z.enum(["en", "zh-TW"]).nullable().optional(),
       // Kept with the account, so it follows the person to another browser or address.
       theme: z.enum(["system", "light", "dark"]).nullable().optional(),
+      // The new interface, as a preview the person opts into.
+      newUi: z.boolean().optional(),
     }),
   );
   const user = c.get("user");
   db.query(
     `UPDATE users SET display_name = COALESCE($dn, display_name), locale = CASE WHEN $setLocale THEN $locale ELSE locale END,
-       theme = CASE WHEN $setTheme THEN $theme ELSE theme END, updated_at = $t WHERE id = $id`,
+       theme = CASE WHEN $setTheme THEN $theme ELSE theme END,
+       new_ui = CASE WHEN $newUi IS NULL THEN new_ui ELSE $newUi END, updated_at = $t WHERE id = $id`,
   ).run({
     id: user.id,
     dn: input.displayName ?? null,
@@ -372,6 +395,7 @@ meRoutes.patch("/", async (c) => {
     locale: input.locale ?? null,
     setTheme: input.theme !== undefined ? 1 : 0,
     theme: input.theme ?? null,
+    newUi: input.newUi === undefined ? null : input.newUi ? 1 : 0,
     t: now(),
   });
   return c.json({ user: publicUser(findUserById(user.id)!) });

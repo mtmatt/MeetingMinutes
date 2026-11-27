@@ -38,7 +38,7 @@ import type {
   TranscribeOptions,
   User,
   VoiceOutcome,
-  VoicesState, UsageRange, UsageReport, WorkerWake, Announcement, AnnouncementList, AdminAnnouncement, AnnouncementInput } from "./types";
+  VoicesState, UsageRange, UsageReport, WorkerWake, Announcement, AnnouncementList, AdminAnnouncement, AnnouncementInput, PublicPricing } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -130,6 +130,7 @@ export const api = {
       termsUrl?: string | null;
     }>("/auth/state"),
   terms: () => get<{ markdown: string; updatedAt: number | null }>("/auth/terms"),
+  pricing: () => get<PublicPricing>("/auth/pricing"),
   adminTerms: () => get<{ markdown: string; updatedAt: number | null }>("/admin/terms"),
   adminSaveTerms: (markdown: string) => put<{ markdown: string; updatedAt: number | null }>("/admin/terms", { markdown }),
   register: (b: { username: string; displayName: string; email: string; password: string; locale: string }) =>
@@ -182,7 +183,7 @@ export const api = {
     post<{ user: User }>(`/auth/invites/${encodeURIComponent(token)}/accept`, b),
 
   // me
-  updateMe: (b: { displayName?: string; locale?: string | null; theme?: "system" | "light" | "dark" | null }) => patch<{ user: User }>("/me", b),
+  updateMe: (b: { displayName?: string; locale?: string | null; theme?: "system" | "light" | "dark" | null; newUi?: boolean }) => patch<{ user: User }>("/me", b),
   changePassword: (current: string, next: string) => post<{ ok: true }>("/me/password", { current, next }),
   sessions: () => get<{ sessions: SessionInfo[] }>("/me/sessions"),
   revokeSession: (id: string) => del<{ ok: true }>(`/me/sessions/${id}`),
