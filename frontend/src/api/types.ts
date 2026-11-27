@@ -508,6 +508,20 @@ export interface CreditPackage {
   price: number;
 }
 
+/** The public price list: what is sold and for how much, readable without an account. */
+export interface PublicPricing {
+  /** Packages can be bought now (otherwise they are shown as coming). */
+  onSale: boolean;
+  currency: "TWD";
+  packages: CreditPackage[];
+  rates: Rates;
+  methods: PaymentMethod[];
+  noExpiry: boolean;
+  termsUrl: string | null;
+  /** How to reach the site's administrator. */
+  contact: string | null;
+}
+
 export interface Order {
   id: string;
   packageId: string;

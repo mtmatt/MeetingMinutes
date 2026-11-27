@@ -108,14 +108,34 @@ authRoutes.get("/state", (c) => {
   });
 });
 
-/** The terms of sale written on the admin page; public, for buyers and payment providers to read. */
 /** Announcements for everyone, in effect now: shown on the sign-in page too (maintenance, outages). */
 authRoutes.get("/announcements", (c) => c.json({ announcements: publicAnnouncements() }));
 
+/** The terms of sale written on the admin page; public, for buyers and payment providers to read. */
 authRoutes.get("/terms", (c) => {
   const markdown = termsText();
   if (!markdown.trim()) httpError(404, "This site has no terms of sale.", "not_found");
   return c.json({ markdown, updatedAt: termsUpdatedAt() });
+});
+
+/**
+ * What is sold and for how much, in New Taiwan dollars: public, so visitors and
+ * payment providers can read the prices without an account. Packages show once
+ * the administrator has added them, even before the sale opens (onSale says
+ * whether they can be bought now).
+ */
+authRoutes.get("/pricing", (c) => {
+  const s = billingSettings();
+  return c.json({
+    onSale: s.enabled && s.packages.length > 0,
+    currency: "TWD",
+    packages: s.packages.map((p) => ({ id: p.id, points: p.points, price: p.price })),
+    rates: s.rates,
+    methods: s.methods,
+    noExpiry: s.noExpiry,
+    termsUrl: termsLink(),
+    contact: config.adminContact || null,
+  });
 });
 
 /** The address for links in mail, or 503 when the site does not know its own (PUBLIC_URL). */

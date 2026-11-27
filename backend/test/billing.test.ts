@@ -195,6 +195,32 @@ describe("signing up", () => {
   });
 });
 
+describe("the public price list", () => {
+  test("anyone can read the packages and rates in NT$, without signing in, and nothing private comes with them", async () => {
+    await openSignUp({ noExpiry: true });
+    const res = await new Client().get("/api/auth/pricing");
+    expect(res.status).toBe(200);
+    const p = (await res.json()) as Record<string, unknown>;
+    expect(p.onSale).toBe(true);
+    expect(p.currency).toBe("TWD");
+    expect(p.packages).toEqual([
+      { id: "m60", points: 60, price: 150 },
+      { id: "m300", points: 300, price: 600 },
+    ]);
+    expect(p.rates).toEqual({ perMinute: 1, perKInput: 0.1, perKOutput: 0.5 });
+    expect(p.noExpiry).toBe(true);
+    expect(Object.keys(p).sort()).toEqual(["contact", "currency", "methods", "noExpiry", "onSale", "packages", "rates", "termsUrl"]);
+  });
+
+  test("packages show before the sale opens, marked as not on sale", async () => {
+    await openSignUp({ enabled: false });
+    const p = (await (await new Client().get("/api/auth/pricing")).json()) as { onSale: boolean; packages: unknown[] };
+    expect(p.onSale).toBe(false);
+    expect(p.packages.length).toBe(2);
+    await openSignUp();
+  });
+});
+
 describe("buying minutes", () => {
   test("an order is a signed form for ECPay's test shop, and a paid notification adds its minutes once", async () => {
     const c = await signedUp("buyer");

@@ -38,7 +38,7 @@ import type {
   TranscribeOptions,
   User,
   VoiceOutcome,
-  VoicesState, UsageRange, UsageReport, WorkerWake, Announcement, AnnouncementList, AdminAnnouncement, AnnouncementInput } from "./types";
+  VoicesState, UsageRange, UsageReport, WorkerWake, Announcement, AnnouncementList, AdminAnnouncement, AnnouncementInput, PublicPricing } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -130,6 +130,7 @@ export const api = {
       termsUrl?: string | null;
     }>("/auth/state"),
   terms: () => get<{ markdown: string; updatedAt: number | null }>("/auth/terms"),
+  pricing: () => get<PublicPricing>("/auth/pricing"),
   adminTerms: () => get<{ markdown: string; updatedAt: number | null }>("/admin/terms"),
   adminSaveTerms: (markdown: string) => put<{ markdown: string; updatedAt: number | null }>("/admin/terms", { markdown }),
   register: (b: { username: string; displayName: string; email: string; password: string; locale: string }) =>
