@@ -46,8 +46,11 @@ from pathlib import Path
 
 import modal
 
-ROOT = Path(__file__).resolve().parents[2]
-WORKER = ROOT / "worker"
+# The worker's code and dependencies, from this checkout (<repo>/deploy/modal/app.py). Only the
+# computer running `modal deploy` / `modal run` reads them, to build the images. In a Modal
+# container this file is /root/app.py, the images are already built, and the path is never used.
+_HERE = Path(__file__).resolve()
+WORKER = _HERE.parents[2] / "worker" if len(_HERE.parents) > 2 else Path("/opt/mm")
 
 APP_NAME = os.environ.get("MM_MODAL_APP", "meetingminutes-worker")
 GPU = os.environ.get("MM_MODAL_GPU", "T4")
