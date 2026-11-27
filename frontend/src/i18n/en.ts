@@ -1181,7 +1181,7 @@ export const en = {
     byModel: "By summary model",
     byModelHint: "The model that wrote each summary, and the tokens it read and wrote.",
     pointsWhere: "Where points went",
-    pointsWhereHint: "Points charged in this period, transcription and summaries.",
+    pointsWhereHint: "Points in this period, transcription and summaries.",
     customPrompt: "Custom prompt",
     unknown: "Unknown",
     noSummaries: "No summaries in this period.",
