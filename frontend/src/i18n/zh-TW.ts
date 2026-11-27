@@ -765,7 +765,7 @@ export const zhTW: Dict = {
     standby: "待命",
     standbyHint: "按需啟動：有工作時網站會叫醒它，平常不執行。",
     modalAlt: "改用 Modal 雲端 GPU（按需啟動，不需要自己的電腦）",
-    modalAltIntro: "在裝了 Modal CLI（pip install modal，並執行過 modal setup）的電腦上，於本專案資料夾執行：",
+    modalAltIntro: "在裝了 Modal CLI（pip install modal，並執行過 modal setup）的電腦上，於本專案資料夾依序執行。Secret 要先建立：註冊時就需要它，HF_TOKEN 也要用來下載 pyannote 模型。只放你的設定會用到的金鑰。",
     modalAltNext: "部署完成後，Modal 會印出一個以 -wake 結尾的網址；到這台的「設定」填入「喚醒網址」。完整步驟見 README 的「Modal」一節。",
     title: "其他電腦上的 worker",
     lede: "讓其他電腦（NVIDIA 顯示卡的 Linux、Apple 晶片的 Mac）幫忙轉錄。那些電腦只會主動連到這個網站，不需要開任何 port；每台各有自己的憑證，可以單獨撤銷，而且只能下載自己正在處理的錄音，處理完就刪除。",

@@ -6,18 +6,20 @@ queued, the server calls this app's `wake` address, which starts `worker` on a
 GPU; the worker claims and processes jobs like any other, and exits once the
 queue has been empty for a minute, so Modal bills only for the work.
 
-Setup (in this project's folder, with the Modal CLI: `pip install modal`, `modal setup`):
+Setup (in this project's folder, with the Modal CLI: `pip install modal`, `modal setup`),
+in this order (the full guide is in the README, "A cloud GPU started on demand"):
 
-  1. Admin -> System -> Workers on other machines -> Add: copy the one-time code, then
+  1. Keys the worker needs, as a Modal secret, first: every command loads the whole
+     app, whose GPU functions use it, and HF_TOKEN downloads the pyannote model
+     (accept its terms on Hugging Face first). Only the keys your settings use:
+       modal secret create meetingminutes-worker HF_TOKEN=hf_... OPENROUTER_API_KEY=sk-or-...
+  2. Admin -> System -> Workers on other machines -> Add: copy the one-time code, then
        modal run deploy/modal/app.py::enroll --server-url https://minutes.example.com --code mme_...
      The credential is kept in the Modal volume "meetingminutes-worker-data", never in this repo.
-  2. Keys the worker needs, as a Modal secret (only those you use):
-       modal secret create meetingminutes-worker HF_TOKEN=hf_... OPENROUTER_API_KEY=sk-or-...
-     HF_TOKEN: for pyannote on the GPU (accept the model's terms on Hugging Face first).
   3. Deploy, and enter the printed `...-wake.modal.run` address as the worker's
      wake-up address (its settings in Admin -> System):
        modal deploy deploy/modal/app.py
-  4. Optional: download the models now rather than during the first recording:
+  4. Download the models now rather than during the first recording (recommended):
        modal run deploy/modal/app.py::prepare
 
 The wake-up endpoint is public, so it holds as little as possible: not the token
@@ -31,6 +33,7 @@ Settings at deploy time (environment variables of `modal deploy`):
   MM_MODAL_GPU      GPU type: T4 (16 GB, the default), L4 (24 GB), A10G, ...
   MM_MODAL_IDLE_SEC seconds without work before the worker exits (default 60)
   MM_MODAL_SECRET   name of the Modal secret with the keys (default meetingminutes-worker)
+  MM_MODAL_TIMEOUT_SEC  longest one run may take (default 21600, 6 hours)
 """
 
 from __future__ import annotations
@@ -43,8 +46,11 @@ from pathlib import Path
 
 import modal
 
-ROOT = Path(__file__).resolve().parents[2]
-WORKER = ROOT / "worker"
+# The worker's code and dependencies, from this checkout (<repo>/deploy/modal/app.py). Only the
+# computer running `modal deploy` / `modal run` reads them, to build the images. In a Modal
+# container this file is /root/app.py, the images are already built, and the path is never used.
+_HERE = Path(__file__).resolve()
+WORKER = _HERE.parents[2] / "worker" if len(_HERE.parents) > 2 else Path("/opt/mm")
 
 APP_NAME = os.environ.get("MM_MODAL_APP", "meetingminutes-worker")
 GPU = os.environ.get("MM_MODAL_GPU", "T4")
