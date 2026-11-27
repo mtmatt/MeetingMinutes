@@ -762,6 +762,8 @@ export const en = {
   workers: {
     standby: "Standby",
     standbyHint: "Starts on demand: the site wakes it when there is work; otherwise it is not running.",
+    rank: "Choice {n}",
+    rankHint: "The order in which machines take recordings: not a fallback first, then fallbacks by how long they wait. Machines that wait the same share a place.",
     modalAlt: "Use a Modal cloud GPU instead (started on demand, no machine of your own)",
     modalAltIntro: "On a computer with the Modal CLI (pip install modal, then modal setup), in this project's folder, in this order. The secret comes first: enrolling needs it, and HF_TOKEN downloads the pyannote model. Keep only the keys your settings use.",
     modalAltNext: "When it is deployed, Modal prints an address ending in -wake; enter it as the wake-up address in this machine's settings. The full steps are in the README's Modal section.",
