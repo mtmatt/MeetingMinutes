@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { siteRetentionDays } from "../services/mediaRetention";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import { config } from "../config";
@@ -86,6 +87,8 @@ authRoutes.get("/state", (c) => {
     needsSetup: countUsers() === 0,
     user: resolved ? publicUser(resolved.user) : null,
     helpContact: config.adminContact || null,
+    // How long the site keeps recordings after transcription (days; null: kept). People may choose shorter.
+    mediaRetentionDays: siteRetentionDays(),
     // Lets the upload page reject an oversized file before sending anything.
     uploadLimitBytes: config.maxUploadBytes,
     // Public by design: Google shows it on its consent screen.
@@ -381,13 +384,16 @@ meRoutes.patch("/", async (c) => {
       theme: z.enum(["system", "light", "dark"]).nullable().optional(),
       // The new interface, as a preview the person opts into.
       newUi: z.boolean().optional(),
+      // How long to keep their recordings after transcription: 7 or 30 days; null: as long as the site does.
+      mediaRetentionDays: z.union([z.literal(7), z.literal(30)]).nullable().optional(),
     }),
   );
   const user = c.get("user");
   db.query(
     `UPDATE users SET display_name = COALESCE($dn, display_name), locale = CASE WHEN $setLocale THEN $locale ELSE locale END,
        theme = CASE WHEN $setTheme THEN $theme ELSE theme END,
-       new_ui = CASE WHEN $newUi IS NULL THEN new_ui ELSE $newUi END, updated_at = $t WHERE id = $id`,
+       new_ui = CASE WHEN $newUi IS NULL THEN new_ui ELSE $newUi END,
+       media_retention_days = CASE WHEN $setRetention THEN $retention ELSE media_retention_days END, updated_at = $t WHERE id = $id`,
   ).run({
     id: user.id,
     dn: input.displayName ?? null,
@@ -396,6 +402,8 @@ meRoutes.patch("/", async (c) => {
     setTheme: input.theme !== undefined ? 1 : 0,
     theme: input.theme ?? null,
     newUi: input.newUi === undefined ? null : input.newUi ? 1 : 0,
+    setRetention: input.mediaRetentionDays !== undefined ? 1 : 0,
+    retention: input.mediaRetentionDays ?? null,
     t: now(),
   });
   return c.json({ user: publicUser(findUserById(user.id)!) });

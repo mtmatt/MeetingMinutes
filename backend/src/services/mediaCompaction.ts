@@ -26,6 +26,8 @@ export const mediaSettingsSchema = z.object({
   compact: z.boolean(),
   /** Days after transcription before the original is compacted (0: at once). */
   afterDays: z.number().int().min(0).max(3650),
+  /** Recordings are deleted this many days after transcription (0: kept). Each person may choose shorter. */
+  retentionDays: z.union([z.literal(0), z.literal(7), z.literal(30)]),
 });
 
 export type MediaSettings = z.infer<typeof mediaSettingsSchema>;
@@ -36,7 +38,7 @@ const DAY_MS = 86_400_000;
 const SWEEP_LIMIT = 50;
 
 export function defaultMediaSettings(): MediaSettings {
-  return { compact: config.media.compact, afterDays: config.media.compactAfterDays };
+  return { compact: config.media.compact, afterDays: config.media.compactAfterDays, retentionDays: config.media.retentionDays };
 }
 
 export function mediaSettings(): MediaSettings {

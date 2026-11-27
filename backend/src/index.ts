@@ -6,6 +6,7 @@ import { purgeExpiredSessions } from "./auth/service";
 import { purgeUnverifiedAccounts } from "./auth/accounts";
 import { purgeSecurityEvents } from "./services/security";
 import { enqueueCompactions } from "./services/mediaCompaction";
+import { sweepMediaRetention } from "./services/mediaRetention";
 import { sweepTransfers } from "./services/mediaTransfer";
 import { purgeAbandonedUploads, reapStaleJobs } from "./services/meetings";
 import { billingSettings } from "./services/billingSettings";
@@ -114,6 +115,14 @@ const sweepCompactions = () => {
   }
 };
 setInterval(sweepCompactions, 10 * 60 * 1000);
+// Recordings past their retention period (the site's, or the shorter one their owner chose): the transcript stays.
+const sweepRetention = () => {
+  sweepMediaRetention()
+    .then((n) => n && console.log(`[media] deleted ${n} recording(s) past their retention period`))
+    .catch((e) => console.error("[media] could not delete recordings past their retention period:", e));
+};
+setInterval(sweepRetention, 10 * 60 * 1000);
+setTimeout(sweepRetention, 30_000);
 // Uploads left unfinished for a day: their partial files.
 setInterval(() => {
   purgeAbandonedUploads()

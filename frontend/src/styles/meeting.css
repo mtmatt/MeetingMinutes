@@ -1459,3 +1459,13 @@
     margin-left: 30px;
   }
 }
+
+/* The recording was deleted after its retention period: a note in place of the player. */
+.retention-note {
+  margin: 0 0 18px;
+}
+.retention-note strong {
+  display: block;
+  color: var(--ink);
+  margin-bottom: 2px;
+}

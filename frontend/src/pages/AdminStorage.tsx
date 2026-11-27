@@ -41,6 +41,17 @@ export function StoragePolicy({ compactions }: { compactions?: { queued: number;
   };
 
   const save = async () => {
+    // Deleting recordings cannot be undone: a shorter (or a first) period deletes what is past it at once.
+    const keep = (d: number | undefined) => (d ? d : Number.POSITIVE_INFINITY);
+    if (keep(form.retentionDays) < keep(data.settings.retentionDays)) {
+      const ok = await confirm({
+        title: t("retention.confirmTitle"),
+        body: t("retention.confirmBody", { n: form.retentionDays ?? 0 }),
+        confirmLabel: t("retention.confirm"),
+        danger: true,
+      });
+      if (!ok) return;
+    }
     // Compacting cannot be undone: say what will happen to what is due now.
     const startsNow = form.compact && (!data.settings.compact || form.afterDays < data.settings.afterDays);
     if (startsNow) {
@@ -102,6 +113,17 @@ export function StoragePolicy({ compactions }: { compactions?: { queued: number;
           />
           <span className="field-hint">{t("storage.afterDaysHint")}</span>
         </div>
+        <div className="field storage-retention">
+          <span className="field-label">{t("retention.adminLabel")}</span>
+          <div className="segmented" role="group" aria-label={t("retention.adminLabel")}>
+            {([0, 30, 7] as const).map((d) => (
+              <button key={d} aria-pressed={(form.retentionDays ?? 0) === d} onClick={() => setForm({ ...form, retentionDays: d })}>
+                {d === 0 ? t("retention.keep") : t("retention.days", { n: d })}
+              </button>
+            ))}
+          </div>
+          <span className="field-hint">{t("retention.adminHint")}</span>
+        </div>
       </div>
 
       <dl className="kv storage-stats">
@@ -117,6 +139,18 @@ export function StoragePolicy({ compactions }: { compactions?: { queued: number;
               })
             : t("storage.none")}
         </dd>
+        {data.retention && (
+          <>
+            <dt>{t("retention.statDeleted")}</dt>
+            <dd>{data.retention.deleted ? t("retention.statDeletedValue", { n: data.retention.deleted }) : t("storage.none")}</dd>
+            {data.retention.dueWithinWeek > 0 && (
+              <>
+                <dt>{t("retention.statSoon")}</dt>
+                <dd>{t("retention.statSoonValue", { n: data.retention.dueWithinWeek, size: bytes(data.retention.dueWithinWeekBytes) })}</dd>
+              </>
+            )}
+          </>
+        )}
         {working > 0 && (
           <>
             <dt>{t("storage.working")}</dt>

@@ -12,6 +12,8 @@ export interface User {
   theme: "system" | "light" | "dark" | null;
   /** The person uses the new interface (a preview turned on in Settings). */
   newUi?: boolean;
+  /** How long they keep recordings after transcription (7 or 30 days); null: as long as the site does. */
+  mediaRetentionDays?: 7 | 30 | null;
   email: string | null;
   emailVerified: boolean;
   /** "prepaid": transcription and summaries are paid for with points; "exempt": free. */
@@ -75,6 +77,10 @@ export interface MeetingSummary {
     hasPeaks: boolean;
     /** The original was replaced by an audio-only Opus copy; any video is gone. */
     compacted?: boolean;
+    /** The recording was deleted after its retention period (the transcript stays). */
+    deletedAt?: number | null;
+    /** When the recording will be deleted; null when it is kept. */
+    deletesAt?: number | null;
   };
   durationSec: number | null;
   language: string | null;
@@ -394,6 +400,8 @@ export interface MediaPolicy {
   compact: boolean;
   /** Days after transcription. */
   afterDays: number;
+  /** Recordings are deleted this many days after transcription (0: kept). People may choose shorter. */
+  retentionDays?: 0 | 7 | 30;
 }
 
 export interface MediaState {
@@ -412,6 +420,13 @@ export interface MediaState {
     dueSavingBytes: number;
     failed: number;
     bitrateKbps: number;
+  };
+  retention?: {
+    /** Recordings deleted so far. */
+    deleted: number;
+    /** Recordings that will be deleted within seven days, and their size. */
+    dueWithinWeek: number;
+    dueWithinWeekBytes: number;
   };
 }
 

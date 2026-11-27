@@ -12,6 +12,8 @@ interface AuthValue {
   loading: boolean;
   /** Administrator contact configured on the server (ADMIN_CONTACT), if any. */
   helpContact: string | null;
+  /** How long the site keeps recordings after transcription (days); null: kept. People may choose shorter. */
+  siteRetentionDays: number | null;
   /** Largest file the server accepts (MAX_UPLOAD_MB); null until known. */
   uploadLimitBytes: number | null;
   /** Google OAuth client ID (GOOGLE_CLIENT_ID) for exporting straight to Google Docs; null when not set up. */
@@ -90,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     needsSetup: q.data?.needsSetup ?? false,
     loading: q.isLoading,
     helpContact: q.data?.helpContact ?? null,
+    siteRetentionDays: q.data?.mediaRetentionDays ?? null,
     uploadLimitBytes: q.data?.uploadLimitBytes ?? null,
     googleClientId: q.data?.googleClientId ?? null,
     summarizer: q.data?.summarizer ?? null,

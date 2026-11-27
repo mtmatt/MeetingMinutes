@@ -438,6 +438,8 @@ function SpeakerClips({
 }
 
 function SpeakerLegend({ meeting, turns, onScroll }: { meeting: MeetingDetail; turns: Map<string, Turn[]>; onScroll: () => void }) {
+  // Without the recording (deleted after its retention period) there is nothing to listen to.
+  const mediaGone = meeting.media.deletedAt != null;
   const { t } = useI18n();
   const toast = useToast();
   const qc = useQueryClient();
@@ -545,10 +547,10 @@ function SpeakerLegend({ meeting, turns, onScroll }: { meeting: MeetingDetail; t
                   meeting={meeting}
                   sp={sp}
                   run={(s, a) => void voice.run(s, a)}
-                  onListen={spTurns.length ? () => listen(sp.key) : undefined}
+                  onListen={spTurns.length && !mediaGone ? () => listen(sp.key) : undefined}
                 />
               )}
-              {editing !== sp.key && spTurns.length > 0 && (
+              {editing !== sp.key && spTurns.length > 0 && !mediaGone && (
                 <button
                   type="button"
                   className="legend-listen"

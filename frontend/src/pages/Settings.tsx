@@ -245,6 +245,8 @@ export function SettingsPage() {
         </div>
       </Section>
 
+      <RetentionSection />
+
       <Section title={t("presets.title")} lede={t("presets.lede")}>
         <PresetManager />
       </Section>
@@ -320,5 +322,62 @@ export function SettingsPage() {
         )}
       </Section>
     </div>
+  );
+}
+
+/**
+ * How long this person's recordings are kept after transcription: as long as
+ * the site keeps them, or a shorter period (7 or 30 days). The transcript and
+ * summaries are never deleted with them.
+ */
+function RetentionSection() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { user, setUser, siteRetentionDays: site } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const own = user?.mediaRetentionDays ?? null;
+  // A choice no shorter than the site's is the same as the site's.
+  const current = own != null && (site == null || own < site) ? own : null;
+  const choices: (7 | 30 | null)[] = site == null ? [null, 30, 7] : site > 7 ? [null, 7] : [];
+
+  const choose = async (days: 7 | 30 | null) => {
+    if (days === current) return;
+    setBusy(true);
+    try {
+      const { user: u } = await api.updateMe({ mediaRetentionDays: days });
+      setUser(u);
+      toast.show(t("common.saved"));
+    } catch (err) {
+      toast.error(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const label = (d: 7 | 30 | null) =>
+    d != null ? t("retention.days", { n: d }) : site == null ? t("retention.keep") : t("retention.siteDefault", { n: site });
+  const effective = current ?? site;
+
+  return (
+    <Section title={t("retention.title")} lede={t("retention.lede")}>
+      <div className="settings-form">
+        {choices.length > 0 ? (
+          <div className="field">
+            <span className="field-label">{t("retention.label")}</span>
+            <div className="segmented" role="group" aria-label={t("retention.label")}>
+              {choices.map((d) => (
+                <button key={String(d)} aria-pressed={current === d} disabled={busy} onClick={() => void choose(d)}>
+                  {label(d)}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <p className="faint">
+          {effective == null ? t("retention.hintKeep") : t("retention.hintDelete", { n: effective })}
+          {site != null && choices.length > 0 ? ` ${t("retention.hintSite", { n: site })}` : ""}
+        </p>
+      </div>
+    </Section>
   );
 }

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { retentionStats, sweepMediaRetention } from "../services/mediaRetention";
 import { statfsSync } from "node:fs";
 import { z } from "zod";
 import { config } from "../config";
@@ -400,16 +401,24 @@ adminRoutes.delete("/transcriber", (c) => {
 // ------------------------------------------------------- storage
 
 function mediaState() {
-  return { settings: mediaSettings(), defaults: defaultMediaSettings(), ...mediaSettingsMeta(), stats: compactionStats() };
+  return {
+    settings: mediaSettings(),
+    defaults: defaultMediaSettings(),
+    ...mediaSettingsMeta(),
+    stats: compactionStats(),
+    retention: retentionStats(),
+  };
 }
 
 adminRoutes.get("/media", (c) => c.json(mediaState()));
 
 adminRoutes.put("/media", async (c) => {
-  const input = await body(c, mediaSettingsSchema);
-  saveMediaSettings(input, c.get("user").id);
+  // The retention period may be left out (an older page): it keeps what is saved.
+  const input = await body(c, mediaSettingsSchema.partial({ retentionDays: true }));
+  saveMediaSettings({ ...mediaSettings(), ...input }, c.get("user").id);
   // Start on what is already due rather than at the next sweep.
   enqueueCompactions();
+  await sweepMediaRetention();
   return c.json(mediaState());
 });
 

@@ -468,4 +468,10 @@ export const migrations: string[] = [
   `ALTER TABLE jobs ADD COLUMN max_sec REAL;`,
   // 17: the person tries the new interface (a preview, off until they turn it on in Settings).
   `ALTER TABLE users ADD COLUMN new_ui INTEGER NOT NULL DEFAULT 0;`,
+  // 18: recordings deleted after a while (the transcript and summaries stay): when a meeting's
+  // were, and how long a person wants theirs kept (NULL: as long as the site keeps them; 7 or 30 days).
+  `
+  ALTER TABLE meetings ADD COLUMN media_deleted_at INTEGER;
+  ALTER TABLE users ADD COLUMN media_retention_days INTEGER;
+  `,
 ];

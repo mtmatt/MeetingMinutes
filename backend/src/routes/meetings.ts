@@ -278,6 +278,7 @@ meetingRoutes.delete("/:id", async (c) => {
 meetingRoutes.post("/:id/retranscribe", async (c) => {
   const m = owned(c, c.req.param("id"));
   if (m.status === "uploading") httpError(409, "The upload has not finished.", "not_ready");
+  noMediaDeleted(m);
   const input = await body(c, z.object({ options: optionsSchema.optional(), resetSpeakerNames: z.boolean().default(false) }));
   // Transcribing again runs again, so it is paid for again; the length is known from the first time.
   const hold = requireTranscriptionCredits(c.get("user"), m.duration_sec ?? m.declared_sec, m.id);
@@ -299,8 +300,14 @@ meetingRoutes.post("/:id/retranscribe", async (c) => {
 
 // ------------------------------------------------------------------ media
 
+/** The recording was deleted under the retention period: the transcript stays, the media is gone for good. */
+function noMediaDeleted(m: MeetingRow) {
+  if (m.media_deleted_at != null) httpError(410, "The recording was deleted after its retention period.", "media_deleted");
+}
+
 meetingRoutes.get("/:id/media/audio", (c) => {
   const m = owned(c, c.req.param("id"));
+  noMediaDeleted(m);
   if (m.has_playback) return serveFile(c, join(meetingDir(m.id), PLAYBACK_FILE), "audio/mp4");
   if (m.status === "uploading") httpError(404, "Media not available yet.", "not_found");
   return serveFile(c, originalPath(m), mediaTypeFor(m.media_ext));
@@ -308,6 +315,7 @@ meetingRoutes.get("/:id/media/audio", (c) => {
 
 meetingRoutes.get("/:id/media/original", (c) => {
   const m = owned(c, c.req.param("id"));
+  noMediaDeleted(m);
   if (m.status === "uploading") httpError(404, "Media not available yet.", "not_found");
   const download = c.req.query("download") === "1";
   return serveFile(c, originalPath(m), mediaTypeFor(m.media_ext), download ? m.media_name : undefined);
@@ -315,6 +323,7 @@ meetingRoutes.get("/:id/media/original", (c) => {
 
 meetingRoutes.get("/:id/peaks", async (c) => {
   const m = owned(c, c.req.param("id"));
+  noMediaDeleted(m);
   const path = join(meetingDir(m.id), PEAKS_FILE);
   if (!m.has_peaks || !existsSync(path)) httpError(404, "No waveform yet.", "not_found");
   return new Response(Bun.file(path), {

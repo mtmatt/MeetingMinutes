@@ -155,6 +155,7 @@ internalRoutes.get("/jobs/:id/media", (c) => {
   if (!job) httpError(409, "This job is not yours, or no longer running.", "not_running");
   const m = getMeeting(job!.meeting_id);
   if (!m) httpError(404, "The meeting is gone.", "not_found");
+  if (m!.media_deleted_at != null) httpError(410, "The recording was deleted after its retention period.", "media_deleted");
   if (c.req.query("variant") === "audio" && job!.kind !== "compact") {
     const transfer = transferFor(m!);
     if (transfer.kind === "pending") {

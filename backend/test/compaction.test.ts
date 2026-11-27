@@ -60,7 +60,7 @@ describe("compacting originals to audio only", () => {
   test("off by default; only administrators can turn it on", async () => {
     const admin = await adminClient();
     const state = (await (await admin.get("/api/admin/media")).json()) as any;
-    expect(state.settings).toEqual({ compact: false, afterDays: 7 });
+    expect(state.settings).toEqual({ compact: false, afterDays: 7, retentionDays: 0 });
     expect(state.stats.bitrateKbps).toBe(32);
     const member = await memberClient("compact-member");
     expect((await member.get("/api/admin/media")).status).toBe(403);
