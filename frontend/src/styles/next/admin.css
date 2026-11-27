@@ -1,1 +1,819 @@
-/* New interface (preview): admin pages. Scoped to [data-ui="next"]; see base.css. */
+/* New interface (preview): admin pages. Scoped to [data-ui="next"]; see base.css.
+ *
+ * /admin and its tabs (members, invites, announcements, transcription, summary
+ * model, sales, security, system). One layout throughout: every section is a
+ * hairline-separated row with its title and description on the left and its
+ * controls, lists and tables on the right, the same as Settings; one column on
+ * phones. No boxes around sections; tables sit on hairlines with 13px heads,
+ * tabular figures, and scroll inside their own container on narrow screens.
+ */
+
+[data-ui="next"] .admin {
+  --admin-head-w: 240px;
+  --admin-col-gap: 48px;
+  --admin-body-x: calc(var(--admin-head-w) + var(--admin-col-gap));
+}
+
+/* ------------------------------------------------------------ page head */
+
+/* One filled action per view: the page's "Invite" is primary only on the
+   members tab; elsewhere the section's own action is the primary one. */
+[data-ui="next"] .admin:not(:has(.admin-tabs > [aria-selected="true"]:first-child)) > .page-head .btn-primary {
+  --btn-bg: var(--bg);
+  --btn-fg: var(--ink);
+  --btn-border: var(--rule-strong);
+}
+[data-ui="next"] .admin:not(:has(.admin-tabs > [aria-selected="true"]:first-child)) > .page-head .btn-primary:hover:not(:disabled) {
+  --btn-bg: color-mix(in oklab, var(--bg) 94%, var(--ink));
+  --btn-border: color-mix(in oklab, var(--ink) 35%, transparent);
+}
+
+/* The tabs scroll sideways on a phone instead of wrapping into a pile. */
+[data-ui="next"] .admin .admin-tabs {
+  margin-bottom: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-wrap: nowrap;
+}
+[data-ui="next"] .admin .admin-tabs::-webkit-scrollbar {
+  display: none;
+}
+[data-ui="next"] .admin .admin-tabs button {
+  flex: none;
+  white-space: nowrap;
+}
+[data-ui="next"] .admin .admin-body {
+  padding-top: 8px;
+}
+
+/* ---------------------------------------------------- figures, labels */
+
+[data-ui="next"] .admin .mono,
+[data-ui="next"] .admin .num,
+[data-ui="next"] .admin .kv dd,
+[data-ui="next"] .admin .mono-nums {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+[data-ui="next"] .admin .system-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+  line-height: var(--h3-leading);
+  letter-spacing: 0;
+}
+[data-ui="next"] .admin .system-h svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--ink-3);
+}
+[data-ui="next"] .admin .muted,
+[data-ui="next"] .admin .admin-hint {
+  color: var(--ink-2);
+}
+
+/* -------------------------------------------- the two-column section */
+
+/* The head (and its description) floats in the left column; every other child
+   is pushed into the right-hand column by its left margin. Floats rather than
+   grid rows, so a long description never stretches the gaps on the right. */
+[data-ui="next"] .admin-body .system-card,
+[data-ui="next"] .admin-body .invite-form,
+[data-ui="next"] .admin-body .model-section:not(.model-card),
+[data-ui="next"] .admin-body .system > section:not([class]) {
+  display: flow-root;
+  margin: 0;
+  padding: 40px 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  box-shadow: none;
+}
+[data-ui="next"] .admin-body .system-card > *,
+[data-ui="next"] .admin-body .invite-form > *,
+[data-ui="next"] .admin-body .model-section:not(.model-card) > *,
+[data-ui="next"] .admin-body .system > section:not([class]) > * {
+  min-width: 0;
+  margin: 0 0 20px var(--admin-body-x);
+}
+[data-ui="next"] .admin-body .system-card > :last-child,
+[data-ui="next"] .admin-body .invite-form > :last-child,
+[data-ui="next"] .admin-body .model-section:not(.model-card) > :last-child,
+[data-ui="next"] .admin-body .system > section:not([class]) > :last-child {
+  margin-bottom: 0;
+}
+/* Heads with an action or a filter: the title goes left, the control to the
+   top right of the section, above what it acts on. */
+[data-ui="next"] .admin-body .system-card > .admin-announce-head,
+[data-ui="next"] .admin-body .system-card > .worker-keys-head,
+[data-ui="next"] .admin-body .system-card > .security-events-head {
+  display: contents;
+}
+[data-ui="next"] .admin-body .system-card > .admin-announce-head > .btn,
+[data-ui="next"] .admin-body .system-card > .worker-keys-head > .btn,
+[data-ui="next"] .admin-body .system-card > .security-events-head > .select {
+  float: right;
+  margin: 0 0 20px 16px;
+}
+[data-ui="next"] .admin-body .system-card > .security-events-head > .select {
+  width: 240px;
+}
+[data-ui="next"] .admin-body .system-card > * {
+  clear: right;
+}
+/* Inline children (a switch, a checkbox) become blocks so their left margin
+   is measured from the section's edge, not from the floated head. */
+[data-ui="next"] .admin-body .system-card > label,
+[data-ui="next"] .admin-body .model-section:not(.model-card) > label {
+  display: flex;
+  width: fit-content;
+}
+/* Grid children may shrink below their content, so a wide table scrolls in
+   its own container instead of widening the page. */
+[data-ui="next"] .admin-body > *,
+[data-ui="next"] .admin-body .admin-security > *,
+[data-ui="next"] .admin-body .admin-billing > *,
+[data-ui="next"] .admin-body .system > *,
+[data-ui="next"] .admin-body .system-row > *,
+[data-ui="next"] .admin-body .invites > *,
+[data-ui="next"] .admin-body .model-admin > * {
+  min-width: 0;
+}
+[data-ui="next"] .admin-body .table-wrap {
+  max-width: 100%;
+}
+
+/* The last section of a tab needs no closing hairline. */
+[data-ui="next"] .admin-body .admin-security > :last-child,
+[data-ui="next"] .admin-body .admin-billing > :last-child,
+[data-ui="next"] .admin-body > .system-card:last-child,
+[data-ui="next"] .admin-body .system > :last-child {
+  border-bottom: 0;
+}
+
+/* The left column. */
+[data-ui="next"] .admin-body .system-card > .system-h,
+[data-ui="next"] .admin-body .system-card > .admin-announce-head > .system-h,
+[data-ui="next"] .admin-body .system-card > .worker-keys-head > .system-h,
+[data-ui="next"] .admin-body .system-card > .security-events-head > .system-h,
+[data-ui="next"] .admin-body .invite-form > h3,
+[data-ui="next"] .admin-body .model-section:not(.model-card) > .model-section-head,
+[data-ui="next"] .admin-body .system > section:not([class]) > .system-h,
+[data-ui="next"] .admin-body .system-card > .admin-announce-lede,
+[data-ui="next"] .admin-body .system-card > .worker-keys-lede,
+[data-ui="next"] .admin-body .system-card > .storage-lede {
+  float: left;
+  clear: left;
+  width: var(--admin-head-w);
+  margin: 0;
+}
+[data-ui="next"] .admin-body .system-card > .admin-announce-lede,
+[data-ui="next"] .admin-body .system-card > .worker-keys-lede,
+[data-ui="next"] .admin-body .system-card > .storage-lede {
+  margin-top: 8px;
+}
+[data-ui="next"] .admin-body .admin-announce-lede,
+[data-ui="next"] .admin-body .worker-keys-lede,
+[data-ui="next"] .admin-body .storage-lede,
+[data-ui="next"] .admin-body .model-section-head p {
+  max-width: none;
+  font-size: var(--step--1);
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+[data-ui="next"] .admin-body .model-section-head {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+[data-ui="next"] .admin-body .model-section-head .system-h {
+  margin: 0;
+}
+
+/* Sections and blocks that follow a section on its own line (a settings card,
+   the save row, a note) line up with the right-hand column. */
+[data-ui="next"] .admin-body .model-admin {
+  max-width: none;
+  gap: 0;
+}
+[data-ui="next"] .admin-body .model-admin > .model-card,
+[data-ui="next"] .admin-body .model-admin > .model-actions,
+[data-ui="next"] .admin-body .model-admin > .model-switch-note,
+[data-ui="next"] .admin-body .model-admin > .asr-callout,
+[data-ui="next"] .admin-body .model-admin > .callout {
+  margin: 0 0 0 var(--admin-body-x);
+}
+/* A settings card that belongs to the section above it: no hairline between them. */
+[data-ui="next"] .admin-body .model-admin > .model-section:not(.model-card):has(+ .model-card) {
+  padding-bottom: 20px;
+  border-bottom: 0;
+}
+[data-ui="next"] .admin-body .model-admin > .model-section:not(.model-card) + .model-card {
+  margin-bottom: 40px;
+}
+[data-ui="next"] .admin-body .model-admin > .model-card + .model-section {
+  border-top: 1px solid var(--rule);
+}
+[data-ui="next"] .admin-body .model-admin > .model-actions {
+  padding: 32px 0 8px;
+}
+[data-ui="next"] .admin-body .model-admin > .model-switch-note {
+  margin-top: 4px;
+}
+[data-ui="next"] .admin-body .model-admin > .asr-callout {
+  margin-top: 24px;
+}
+
+/* A settings panel inside a section: the one card, with room inside. */
+[data-ui="next"] .admin-body .model-card {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+  border-radius: var(--radius-l);
+}
+[data-ui="next"] .admin-body .model-card .system-h {
+  font-size: var(--step-0);
+  font-weight: 550;
+}
+[data-ui="next"] .admin-body .model-grid {
+  gap: 24px 24px;
+}
+[data-ui="next"] .admin-body .model-status {
+  padding-top: 20px;
+}
+[data-ui="next"] .admin-body .model-actions {
+  gap: 12px 16px;
+}
+[data-ui="next"] .admin-body .model-saved {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+}
+[data-ui="next"] .admin-body .model-error {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .admin-body .field-hint {
+  line-height: 1.55;
+}
+
+/* The choice cards (who transcribes, who summarises): flat, the accent only when chosen. */
+[data-ui="next"] .admin-body .source-grid {
+  gap: 12px;
+}
+[data-ui="next"] .admin-body .source-option {
+  padding: 20px;
+  gap: 6px 12px;
+  background: var(--surface);
+  border-color: var(--rule);
+  border-radius: var(--radius-m);
+  transition:
+    border-color var(--dur-out) var(--ease-out),
+    box-shadow var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .admin-body .source-option:hover:not(:disabled) {
+  border-color: var(--rule-strong);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .admin-body .source-option[aria-checked="true"],
+[data-ui="next"] .admin-body .source-option[aria-checked="true"]:hover {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+[data-ui="next"] .admin-body .source-option-name {
+  font-family: var(--font-sans);
+  font-size: var(--step-0);
+  font-weight: 550;
+}
+[data-ui="next"] .admin-body .source-option-desc {
+  font-size: var(--step--1);
+  line-height: 1.6;
+}
+
+/* ---------------------------------------------------------------- tables */
+
+/* Tables sit on hairlines, without a box, and scroll inside their own container. */
+[data-ui="next"] .admin-body .table-wrap,
+[data-ui="next"] .admin-body .table-wrap.card {
+  overflow-x: auto;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-overflow-scrolling: touch;
+}
+[data-ui="next"] .admin-body .table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+[data-ui="next"] .admin-body .table th {
+  padding: 0 16px 10px 0;
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-3);
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--rule-strong);
+  background: none;
+}
+[data-ui="next"] .admin-body .table td {
+  padding: 14px 16px 14px 0;
+  font-size: var(--step-0);
+  border-bottom: 1px solid var(--rule);
+  vertical-align: middle;
+}
+[data-ui="next"] .admin-body .table th:last-child,
+[data-ui="next"] .admin-body .table td:last-child {
+  padding-right: 0;
+}
+[data-ui="next"] .admin-body .table tbody tr {
+  transition: background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .admin-body .table tbody tr:hover {
+  background: color-mix(in oklab, var(--bg) 96%, var(--ink));
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .admin-body .table th.num,
+[data-ui="next"] .admin-body .table td.num {
+  text-align: right;
+}
+
+/* Dense tables (security events, addresses, orders): 14px cells, 36px rows. */
+[data-ui="next"] .admin-body .security-table td,
+[data-ui="next"] .admin-billing .table td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  font-size: var(--step--1);
+  vertical-align: top;
+}
+[data-ui="next"] .admin-body .security-table .pill,
+[data-ui="next"] .admin-billing .table .pill {
+  height: 24px;
+}
+[data-ui="next"] .admin-body .security-detail {
+  font-size: var(--step--1);
+}
+[data-ui="next"] .admin-body .security-detail .mono {
+  font-size: var(--step--1);
+}
+
+/* Members: name and handle, the menu at the right edge. */
+[data-ui="next"] .admin-body .user-cell {
+  gap: 12px;
+}
+[data-ui="next"] .admin-body .user-cell .avatar {
+  flex: none;
+}
+[data-ui="next"] .admin-body .user-cell > div > div:first-child {
+  font-weight: 550 !important; /* inline style: weight 600 */
+  white-space: nowrap;
+}
+[data-ui="next"] .admin-body .user-cell .mono {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .admin-body .table td .icon-btn {
+  margin: -8px 0;
+}
+[data-ui="next"] .admin-body .admin-hint {
+  max-width: 62ch;
+  margin: 24px 0 24px;
+  font-size: var(--step--1);
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+[data-ui="next"] .admin-body .row-disabled td {
+  color: var(--ink-3);
+}
+[data-ui="next"] .admin-body .row-disabled {
+  opacity: 1;
+}
+[data-ui="next"] .admin-body .admin-user-email {
+  font-size: var(--step--2);
+}
+
+/* ---------------------------------------------------------------- invites */
+
+[data-ui="next"] .admin-body .invites {
+  gap: 0;
+}
+[data-ui="next"] .admin-body .invite-form > h3 {
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+  margin: 0;
+}
+[data-ui="next"] .admin-body .invite-grid {
+  grid-template-columns: minmax(0, 1fr) auto 96px 140px;
+  gap: 20px 16px;
+}
+[data-ui="next"] .admin-body .invite-grid > .btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+[data-ui="next"] .admin-body .invite-grid .segmented {
+  height: var(--control-h);
+  align-items: center;
+}
+[data-ui="next"] .admin-body .invite-created {
+  padding-top: 20px;
+  animation: none;
+}
+[data-ui="next"] .admin-body .invite-list {
+  margin-top: 8px;
+}
+[data-ui="next"] .admin-body .invite-list li {
+  padding: 14px 0;
+  gap: 8px 16px;
+  font-size: var(--step--1);
+}
+[data-ui="next"] .admin-body .invite-list li.faint {
+  display: block;
+  padding: 32px 0;
+  font-size: var(--step-0);
+  color: var(--ink-3);
+  border-bottom: 0;
+}
+[data-ui="next"] .admin-body .invite-note {
+  font-size: var(--step-0);
+  color: var(--ink);
+}
+
+/* ----------------------------------------------------------- announcements */
+
+[data-ui="next"] .admin-body .admin-announce-list {
+  gap: 0;
+}
+[data-ui="next"] .admin-body .admin-announce-list li {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--rule);
+}
+[data-ui="next"] .admin-body .admin-announce-list li:first-child {
+  padding-top: 0;
+}
+[data-ui="next"] .admin-body .admin-announce-title {
+  font-weight: 550;
+}
+[data-ui="next"] .admin-body .admin-announce-meta,
+[data-ui="next"] .admin-body .admin-announce-seen {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .admin-body .admin-announce > p.faint {
+  color: var(--ink-3);
+}
+
+/* ---------------------------------------------------------------- sales */
+
+[data-ui="next"] .admin-body .field > label.check,
+[data-ui="next"] .admin-body .check {
+  justify-content: flex-start;
+  gap: 10px;
+  font-size: var(--step-0);
+  font-weight: 400;
+}
+[data-ui="next"] .admin-body .check input {
+  width: 18px;
+  height: 18px;
+}
+[data-ui="next"] .admin-body .sales-methods {
+  gap: 12px 24px;
+}
+
+[data-ui="next"] .admin-body .admin-billing,
+[data-ui="next"] .admin-body .admin-security {
+  gap: 0;
+}
+[data-ui="next"] .admin-body .sales-status-row {
+  padding: 16px 0;
+}
+[data-ui="next"] .admin-body .system-h + .sales-status-row,
+[data-ui="next"] .admin-body .system-card > .sales-status-row:nth-child(2) {
+  padding-top: 0;
+  border-top: 0;
+}
+[data-ui="next"] .admin-body .system-card > .sales-status-row {
+  margin-bottom: 0;
+}
+[data-ui="next"] .admin-body .sales-status-row strong {
+  font-size: var(--step-0);
+  font-weight: 550;
+}
+[data-ui="next"] .admin-body .sales-status-row p {
+  color: var(--ink-3);
+  line-height: 1.6;
+}
+[data-ui="next"] .admin-body .sales-hint {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+  line-height: 1.6;
+}
+[data-ui="next"] .admin-body .sales-packages {
+  gap: 8px;
+}
+[data-ui="next"] .admin-body .sales-package-unit {
+  font-size: var(--step--2);
+  line-height: 1.4;
+}
+[data-ui="next"] .admin-body .sales-package-unit small {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .admin-body .sales-terms-text {
+  min-height: 240px;
+}
+
+/* --------------------------------------------------------------- security */
+
+/* The last 24 hours: four figures on a hairline, no boxes. */
+[data-ui="next"] .admin-body .security-tiles {
+  gap: 0;
+  padding: 32px 0 0;
+  border-bottom: 1px solid var(--rule);
+}
+[data-ui="next"] .admin-body .security-tile {
+  gap: 6px;
+  padding: 0 24px 24px 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+[data-ui="next"] .admin-body .security-tile + .security-tile {
+  padding-left: 24px;
+  border-left: 1px solid var(--rule);
+}
+[data-ui="next"] .admin-body .security-tile-label {
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-3);
+}
+[data-ui="next"] .admin-body .security-tile-value {
+  font-family: var(--font-display);
+  font-size: var(--step-4);
+  font-weight: 450;
+  letter-spacing: -0.02em;
+}
+[data-ui="next"] .admin-body .security-tile-sub {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .admin-body .security-tile.is-serious .security-tile-value {
+  color: var(--danger);
+}
+[data-ui="next"] .admin-body .security-caption {
+  margin: 0;
+  padding: 16px 0 0;
+  max-width: 72ch;
+  color: var(--ink-3);
+  line-height: 1.6;
+}
+[data-ui="next"] .admin-body .security-bar-fill {
+  background: color-mix(in oklab, var(--ink) 35%, transparent);
+}
+[data-ui="next"] .admin-body .security-bar.is-hover .security-bar-fill,
+[data-ui="next"] .admin-body .security-bar:hover .security-bar-fill {
+  background: var(--ink);
+}
+[data-ui="next"] .admin-body .security-blocks li {
+  padding: 12px 0;
+}
+[data-ui="next"] .admin-body .security-block-form {
+  gap: 12px;
+  margin-top: 0;
+}
+[data-ui="next"] .admin-body .security-hint {
+  color: var(--ink-3);
+  line-height: 1.6;
+}
+[data-ui="next"] .admin-body .security-empty {
+  color: var(--ink-3);
+}
+
+/* ---------------------------------------------------------------- system */
+
+[data-ui="next"] .admin-body .system {
+  gap: 0;
+}
+[data-ui="next"] .admin-body .system-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+[data-ui="next"] .admin-body .system-card > .kv {
+  max-width: 560px;
+}
+[data-ui="next"] .admin-body .kv {
+  gap: 10px 24px;
+  font-size: var(--step-0);
+}
+[data-ui="next"] .admin-body .kv dt {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+  align-self: baseline;
+}
+[data-ui="next"] .admin-body .system-card > .kv dd {
+  text-align: left;
+}
+[data-ui="next"] .admin-body .model-status .kv,
+[data-ui="next"] .admin-body .system-card > .kv {
+  grid-template-columns: minmax(120px, max-content) 1fr;
+}
+[data-ui="next"] .admin-body .system-card > .progress {
+  max-width: 560px;
+  border-radius: 999px;
+}
+/* Disk in use: the ink; the danger colour comes inline only when it is nearly full. */
+[data-ui="next"] .admin-body .system-card > .progress > span {
+  background: var(--ink-2);
+}
+[data-ui="next"] .admin-body .system-detail,
+[data-ui="next"] .admin-body .system-help {
+  margin-bottom: 8px;
+  font-size: var(--step--1);
+  color: var(--ink-3);
+}
+[data-ui="next"] .admin-body .worker-grid {
+  gap: 12px;
+}
+[data-ui="next"] .admin-body .worker {
+  padding: 20px;
+  gap: 8px;
+  border-radius: var(--radius-m);
+}
+[data-ui="next"] .admin-body .worker-gpu {
+  font-family: var(--font-sans);
+  font-size: var(--step-1);
+  font-weight: 550;
+}
+[data-ui="next"] .admin-body .worker-key-list li {
+  padding: 16px 0;
+}
+[data-ui="next"] .admin-body .worker-key-name {
+  font-weight: 550;
+}
+[data-ui="next"] .admin-body .worker-key-seen,
+[data-ui="next"] .admin-body .worker-profile-summary {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .admin-body .storage-form {
+  gap: 20px 32px;
+}
+[data-ui="next"] .admin-body .storage-stats {
+  max-width: 560px;
+}
+
+/* --------------------------------------------------------- narrower screens */
+
+@media (max-width: 1080px) {
+  [data-ui="next"] .admin {
+    --admin-head-w: 200px;
+    --admin-col-gap: 32px;
+  }
+}
+
+@media (max-width: 860px) {
+  [data-ui="next"] .admin-body .system-card,
+  [data-ui="next"] .admin-body .invite-form,
+  [data-ui="next"] .admin-body .model-section:not(.model-card),
+  [data-ui="next"] .admin-body .system > section:not([class]) {
+    padding: 32px 0;
+  }
+  [data-ui="next"] .admin {
+    --admin-body-x: 0px;
+  }
+  [data-ui="next"] .admin-body .system-card > .system-h,
+  [data-ui="next"] .admin-body .system-card > .admin-announce-head > .system-h,
+  [data-ui="next"] .admin-body .system-card > .worker-keys-head > .system-h,
+  [data-ui="next"] .admin-body .system-card > .security-events-head > .system-h,
+  [data-ui="next"] .admin-body .invite-form > h3,
+  [data-ui="next"] .admin-body .model-section:not(.model-card) > .model-section-head,
+  [data-ui="next"] .admin-body .system > section:not([class]) > .system-h,
+  [data-ui="next"] .admin-body .system-card > .admin-announce-lede,
+  [data-ui="next"] .admin-body .system-card > .worker-keys-lede,
+  [data-ui="next"] .admin-body .system-card > .storage-lede {
+    float: none;
+    width: auto;
+    margin-bottom: 20px;
+  }
+  /* A title directly over its description sits close to it. */
+  [data-ui="next"] .admin-body .system-card > .system-h:has(+ .storage-lede),
+  [data-ui="next"] .admin-body .system-card > .admin-announce-head:has(+ .admin-announce-lede) > .system-h,
+  [data-ui="next"] .admin-body .system-card > .worker-keys-head:has(+ .worker-keys-lede) > .system-h {
+    margin-bottom: 8px;
+  }
+  /* The head's control comes after the description on a phone. */
+  [data-ui="next"] .admin-body .system-card:has(> .admin-announce-lede),
+  [data-ui="next"] .admin-body .system-card:has(> .worker-keys-lede) {
+    display: flex;
+    flex-direction: column;
+  }
+  [data-ui="next"] .admin-body .system-card > .admin-announce-head > .btn,
+  [data-ui="next"] .admin-body .system-card > .worker-keys-head > .btn {
+    order: 1;
+  }
+  [data-ui="next"] .admin-body .system-card > .admin-announce-head > .system-h,
+  [data-ui="next"] .admin-body .system-card > .worker-keys-head > .system-h,
+  [data-ui="next"] .admin-body .system-card > .admin-announce-lede,
+  [data-ui="next"] .admin-body .system-card > .worker-keys-lede {
+    order: 0;
+  }
+  [data-ui="next"] .admin-body .system-card:has(> .admin-announce-lede) > :not(.admin-announce-head, .admin-announce-lede),
+  [data-ui="next"] .admin-body .system-card:has(> .worker-keys-lede) > :not(.worker-keys-head, .worker-keys-lede) {
+    order: 2;
+  }
+  [data-ui="next"] .admin-body .system-card > .admin-announce-head > .btn,
+  [data-ui="next"] .admin-body .system-card > .worker-keys-head > .btn,
+  [data-ui="next"] .admin-body .system-card > .security-events-head > .select {
+    float: none;
+    margin: 0 0 20px;
+  }
+  [data-ui="next"] .admin-body .system-card > .admin-announce-head > .btn,
+  [data-ui="next"] .admin-body .system-card > .worker-keys-head > .btn {
+    width: fit-content;
+  }
+  [data-ui="next"] .admin-body .system-card > .security-events-head > .select {
+    width: 100%;
+  }
+  [data-ui="next"] .admin-body .model-admin > .model-card,
+  [data-ui="next"] .admin-body .model-admin > .model-actions,
+  [data-ui="next"] .admin-body .model-admin > .model-switch-note,
+  [data-ui="next"] .admin-body .model-admin > .asr-callout,
+  [data-ui="next"] .admin-body .model-admin > .callout {
+    margin-left: 0;
+  }
+  [data-ui="next"] .admin-body .invite-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  [data-ui="next"] .admin-body .invite-grid > .field:first-child {
+    grid-column: 1 / -1;
+  }
+  [data-ui="next"] .admin-body .security-tiles {
+    grid-template-columns: 1fr 1fr;
+  }
+  [data-ui="next"] .admin-body .security-tile:nth-child(3) {
+    padding-left: 0;
+    border-left: 0;
+  }
+  [data-ui="next"] .admin-body .security-tile:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 24px;
+  }
+}
+
+/* On narrow screens a table keeps its natural width and scrolls inside its
+   own container; only the free-text detail column wraps. */
+@media (max-width: 860px) {
+  [data-ui="next"] .admin-body .table {
+    width: max-content;
+    min-width: 100%;
+  }
+  [data-ui="next"] .admin-body .table th,
+  [data-ui="next"] .admin-body .table td {
+    white-space: nowrap;
+  }
+  [data-ui="next"] .admin-body .table td.security-detail {
+    white-space: normal;
+    min-width: 220px;
+    max-width: 280px;
+  }
+}
+
+@media (max-width: 560px) {
+  [data-ui="next"] .admin .page-head {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  [data-ui="next"] .admin-body .invite-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-ui="next"] .admin-body .invite-grid > .btn,
+  [data-ui="next"] .admin-body .model-admin > .model-actions > .btn-primary {
+    justify-self: stretch;
+  }
+  [data-ui="next"] .admin-body .model-card {
+    padding: 20px 16px;
+  }
+  [data-ui="next"] .admin-body .source-grid,
+  [data-ui="next"] .admin-body .source-grid-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-ui="next"] .admin-body .security-tile {
+    padding-right: 12px;
+  }
+  [data-ui="next"] .admin-body .security-tile + .security-tile {
+    padding-left: 12px;
+  }
+  [data-ui="next"] .admin-body .security-tile:nth-child(3) {
+    padding-left: 0;
+  }
+  [data-ui="next"] .admin-body .security-tile-value {
+    font-size: var(--step-3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-ui="next"] .admin-body .source-option,
+  [data-ui="next"] .admin-body .table tbody tr {
+    transition-property: background-color, border-color, color;
+  }
+}
