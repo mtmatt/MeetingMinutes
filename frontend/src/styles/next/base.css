@@ -736,3 +736,11 @@
   border-bottom: 0;
   opacity: 1;
 }
+
+/* A disabled ink button (a section's save with nothing to save) takes the outlined look, not a grey block. */
+[data-ui="next"] .btn-ink:disabled {
+  --btn-bg: transparent;
+  --btn-fg: var(--ink-3);
+  --btn-border: var(--rule-strong);
+  opacity: 1;
+}
