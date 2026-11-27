@@ -38,7 +38,7 @@ import type {
   TranscribeOptions,
   User,
   VoiceOutcome,
-  VoicesState, UsageRange, UsageReport, WorkerWake } from "./types";
+  VoicesState, UsageRange, UsageReport, WorkerWake, Announcement, AnnouncementList, AdminAnnouncement, AnnouncementInput } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -141,6 +141,13 @@ export const api = {
 
   // billing
   billing: () => get<BillingInfo>("/billing"),
+  announcements: () => get<AnnouncementList>("/announcements"),
+  markAnnouncementsSeen: (ids: string[]) => post<AnnouncementList>("/announcements/seen", { ids }),
+  publicAnnouncements: () => get<{ announcements: Announcement[] }>("/auth/announcements"),
+  adminAnnouncements: () => get<{ announcements: AdminAnnouncement[] }>("/admin/announcements"),
+  adminCreateAnnouncement: (a: AnnouncementInput) => post<{ id: string }>("/admin/announcements", a),
+  adminUpdateAnnouncement: (id: string, a: AnnouncementInput) => request<{ ok: true }>("PUT", `/admin/announcements/${encodeURIComponent(id)}`, a),
+  adminDeleteAnnouncement: (id: string) => del<{ ok: true }>(`/admin/announcements/${encodeURIComponent(id)}`),
   /** `user`: an administrator's choice of a person's id, or "all" for the whole site. */
   usage: (range: UsageRange, user = "") => get<UsageReport>(`/usage?range=${range}${user ? `&user=${encodeURIComponent(user)}` : ""}`),
   createOrder: (packageId: string, locale: string, acceptTerms = false) =>

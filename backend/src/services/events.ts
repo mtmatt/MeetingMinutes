@@ -5,7 +5,8 @@
 export type AppEvent =
   | { type: "meeting.updated"; meetingId: string }
   | { type: "meeting.deleted"; meetingId: string }
-  | { type: "summary.updated"; meetingId: string; summaryId: string };
+  | { type: "summary.updated"; meetingId: string; summaryId: string }
+  | { type: "announcements.updated" };
 
 type Listener = (event: AppEvent) => void;
 
@@ -34,6 +35,11 @@ export function publish(userId: string, event: AppEvent): void {
       // A broken listener must not affect the others.
     }
   }
+}
+
+/** To every signed-in browser (announcements). */
+export function publishAll(event: AppEvent): void {
+  for (const userId of [...listeners.keys()]) publish(userId, event);
 }
 
 export function listenerCount(): number {

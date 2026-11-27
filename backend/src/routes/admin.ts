@@ -57,6 +57,7 @@ import type { AppEnv, MeetingRow, UserRow } from "../types";
 import { MILLI, addCredits, ledger, publicLedgerEntry } from "../services/credits";
 import { billingSettings, billingSettingsMeta, billingSettingsSchema, saveBillingSettings } from "../services/billingSettings";
 import { listWakeState, setWakeUrl, wakeUrlSchema, wakeWorker } from "../services/workerWake";
+import { adminAnnouncements, announcementInput, createAnnouncement, deleteAnnouncement, updateAnnouncement } from "../services/announcements";
 import { TERMS_MAX, saveTerms, termsText, termsUpdatedAt } from "../services/terms";
 import { getOrder, publicEcpayInfo, publicOrder, queryOrder, type OrderRow } from "../services/ecpay";
 import { MailError, mailLocale, publicMailInfo, sendMail, testMail } from "../services/mail";
@@ -468,6 +469,27 @@ adminRoutes.put("/worker-profiles/:id", async (c) => {
   if (id !== LOCAL_PROFILE && !getWorkerKey(id)) httpError(404, "No such worker.", "not_found");
   const input = await body(c, workerProfileSchema);
   return c.json({ profile: saveWorkerProfile(id, input, c.get("user").id) });
+});
+
+// ---------------------------------------------------------------- announcements
+
+adminRoutes.get("/announcements", (c) => c.json({ announcements: adminAnnouncements() }));
+
+adminRoutes.post("/announcements", async (c) => {
+  const input = await body(c, announcementInput);
+  const id = createAnnouncement(input, c.get("user").id);
+  return c.json({ id }, 201);
+});
+
+adminRoutes.put("/announcements/:id", async (c) => {
+  const input = await body(c, announcementInput);
+  if (!updateAnnouncement(c.req.param("id"), input)) httpError(404, "No such announcement.", "not_found");
+  return c.json({ ok: true });
+});
+
+adminRoutes.delete("/announcements/:id", (c) => {
+  if (!deleteAnnouncement(c.req.param("id"))) httpError(404, "No such announcement.", "not_found");
+  return c.json({ ok: true });
 });
 
 // ---------------------------------------------------------------- billing

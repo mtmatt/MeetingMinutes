@@ -480,6 +480,12 @@ The worker side is ordinary: `python -m mm_worker run --exit-when-idle 60` (or `
 
 Settings people reuse can be kept as named presets: the language, the number of speakers, the vocabulary (names and terms the recogniser should spell your way, such as `NTU COOL、資工系`), the script, and whether and how to summarise. On **New recording**, choose a preset to fill all of them in; after changing settings, **Update** keeps them in that preset, or **Save as preset** makes a new one. The preset marked default is filled in whenever the page opens. **Settings → Presets** lists them, to change the default, rename or delete one. Presets are per person (up to 30), and changing one never touches recordings already added.
 
+## Announcements
+
+**Admin → Announcements** publishes notices to the people using the site: maintenance times, new features, price changes. Each has a title and a Markdown text (with a preview), an importance (normal, notice, urgent: blue, amber, red), who it is for (everyone signed in; everyone, which also shows it on the sign-in page; prepaid or free accounts; administrators only), and optionally a start and an end, so it can be scheduled ahead and expire on its own.
+
+It appears as a banner under the top bar, the most urgent first, at once in every open tab, until each person closes it. Closing is remembered on the server, so it stays closed on their other devices; one marked **cannot be closed** stays until it ends. Everything stays on the **Announcements** page (in the account menu, with a count of unread ones, and a dot on the avatar), with past ones for 180 days. The admin list shows each one's state (scheduled, showing, ended) and how many of the people it is for have read it; editing one can show it again to those who had closed it.
+
 ## Usage dashboard
 
 **Usage** (in the account menu, at `/usage`) shows what a person used over the last 30 or 90 days (by day), 12 months or all time (by month): hours of recording transcribed, summaries and the tokens they read and wrote, and, on a prepaid account, the points they cost. The work is sorted by language, recording length, weekday of the meeting, summary template and summary model, with the meetings that used the most. It counts finished work on recordings still in the library (transcribing again counts again; deleted recordings are left out; failures are noted but not counted), in Taiwan time; every charge stays listed on the purchase page.

@@ -1,6 +1,7 @@
-import { AudioLines, BarChart3, ChevronDown, Coins, FileText, Languages, Library, LogOut, Mic, Monitor, Moon, Plus, Settings, Shield, Sun, Upload } from "lucide-react";
+import { AudioLines, BarChart3, ChevronDown, Megaphone, Coins, FileText, Languages, Library, LogOut, Mic, Monitor, Moon, Plus, Settings, Shield, Sun, Upload } from "lucide-react";
 import { NavLink, useNavigate } from "react-router";
 import { api } from "../api/client";
+import { useAnnouncements } from "../lib/announcements";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { initials, pointsText } from "../lib/format";
@@ -19,6 +20,8 @@ export function Masthead() {
   const prepaid = user?.billing === "prepaid";
   const billing = useBilling(prepaid);
   const available = billing.data?.available ?? null;
+  const announcements = useAnnouncements(!!user);
+  const unseen = announcements.data?.unseen ?? 0;
 
   const switchLocale = async (l: "en" | "zh-TW") => {
     setLocale(l);
@@ -108,6 +111,7 @@ export function Masthead() {
               <button className="user-chip" onClick={toggle} aria-expanded={open} aria-haspopup="menu">
                 <span className="avatar" style={{ ["--size" as string]: "28px" }}>
                   {initials(user?.displayName ?? "?")}
+                  {unseen > 0 && <span className="avatar-dot" aria-label={t("announce.unseenN", { n: unseen })} />}
                 </span>
                 <span className="user-chip-name">{user?.displayName}</span>
                 <ChevronDown className="chev" />
@@ -158,6 +162,10 @@ export function Masthead() {
                 <div className="menu-sep" />
                 <NavLink className="menu-item" to="/settings" onClick={close}>
                   <Settings /> {t("nav.settings")}
+                </NavLink>
+                <NavLink className="menu-item" to="/announcements" onClick={close}>
+                  <Megaphone /> {t("nav.announcements")}
+                  {unseen > 0 && <span className="menu-count">{unseen}</span>}
                 </NavLink>
                 <NavLink className="menu-item" to="/usage" onClick={close}>
                   <BarChart3 /> {t("nav.usage")}

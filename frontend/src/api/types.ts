@@ -557,6 +557,55 @@ export interface BillingInfo {
   ledger: LedgerEntry[];
 }
 
+// ---------------------------------------------------------- announcements
+
+export type AnnouncementLevel = "info" | "warning" | "critical";
+export type AnnouncementAudience = "everyone" | "users" | "prepaid" | "exempt" | "admins";
+
+export interface Announcement {
+  id: string;
+  title: string;
+  /** Markdown. */
+  body: string;
+  level: AnnouncementLevel;
+  startsAt: number | null;
+  endsAt: number | null;
+  dismissible: boolean;
+  publishedAt: number;
+  updatedAt: number;
+  edited: boolean;
+  /** Signed-in lists: closed (or read on the announcements page). */
+  seen?: boolean;
+}
+
+export interface AnnouncementList {
+  active: Announcement[];
+  past: Announcement[];
+  unseen: number;
+}
+
+export interface AdminAnnouncement extends Omit<Announcement, "seen"> {
+  audience: AnnouncementAudience;
+  createdAt: number;
+  createdBy: string | null;
+  status: "scheduled" | "active" | "ended";
+  /** People who closed it (or read it on the announcements page). */
+  seenBy: number;
+  /** Active accounts it is for (all of them for "everyone"). */
+  audienceSize: number;
+}
+
+export interface AnnouncementInput {
+  title: string;
+  body: string;
+  level: AnnouncementLevel;
+  audience: AnnouncementAudience;
+  startsAt: number | null;
+  endsAt: number | null;
+  dismissible: boolean;
+  notifyAgain?: boolean;
+}
+
 // ------------------------------------------------------------------ usage
 
 export type UsageRange = "30d" | "90d" | "12m" | "all";

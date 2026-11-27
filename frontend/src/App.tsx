@@ -1,4 +1,5 @@
 import { Navigate, Outlet, createBrowserRouter, useLocation } from "react-router";
+import { AnnouncementBanners } from "./components/Announcements";
 import { Masthead } from "./components/Masthead";
 import { Seal } from "./components/Seal";
 import { useAuth } from "./lib/auth";
@@ -23,6 +24,7 @@ const pages = {
   billing: () => import("./pages/Billing"),
   terms: () => import("./pages/Terms"),
   usage: () => import("./pages/Usage"),
+  announcements: () => import("./pages/Announcements"),
 };
 
 /**
@@ -63,6 +65,7 @@ function Protected() {
   return (
     <>
       <Masthead />
+      <AnnouncementBanners />
       <main className="page">
         <Outlet />
       </main>
@@ -104,6 +107,7 @@ export const router = createBrowserRouter([
       { path: "/settings", lazy: async () => ({ Component: (await pages.settings()).SettingsPage }) },
       { path: "/billing", lazy: async () => ({ Component: (await pages.billing()).BillingPage }) },
       { path: "/usage", lazy: async () => ({ Component: (await pages.usage()).UsagePage }) },
+      { path: "/announcements", lazy: async () => ({ Component: (await pages.announcements()).AnnouncementsPage }) },
       { element: <AdminOnly />, children: [{ path: "/admin", lazy: async () => ({ Component: (await pages.admin()).AdminPage }) }] },
     ],
   },
