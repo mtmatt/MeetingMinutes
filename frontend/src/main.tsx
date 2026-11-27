@@ -12,7 +12,13 @@ import "./styles/prose.css";
 import "./styles/billing.css";
 import "./styles/usage.css";
 import "./styles/announcements.css";
+import "./styles/next/base.css";
+import "./styles/next/library.css";
+import "./styles/next/meeting.css";
+import "./styles/next/account.css";
+import "./styles/next/admin.css";
 import "./lib/theme";
+import "./lib/newUi";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";

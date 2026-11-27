@@ -4,6 +4,7 @@ import { api, setUnauthorizedHandler } from "../api/client";
 import type { MediaPolicy, SummarizerInfo, TranscriberInfo, User } from "../api/types";
 import { useI18n } from "../i18n";
 import { currentTheme, isThemePref, setTheme, setThemePersister } from "./theme";
+import { setNewUi } from "./newUi";
 
 interface AuthValue {
   user: User | null;
@@ -56,10 +57,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.locale, setLocale]);
 
   // The new interface is a preview a person turns on in Settings: its styles apply under <html data-ui="next">.
+  // It is also kept in this browser, so the page opens in it before the account has loaded.
+  const accountLoading = q.isLoading;
   useEffect(() => {
-    if (user?.newUi) document.documentElement.dataset.ui = "next";
-    else delete document.documentElement.dataset.ui;
-  }, [user?.newUi]);
+    if (accountLoading) return;
+    setNewUi(!!user?.newUi);
+  }, [accountLoading, user?.newUi]);
 
   // The theme follows the account: its saved choice applies here, and a choice made here is saved to it.
   const signedIn = !!user;
