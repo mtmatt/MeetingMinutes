@@ -2556,6 +2556,16 @@
   gap: 4px 10px;
   min-width: 0;
 }
+.worker-rank {
+  font-size: var(--step--2);
+  font-weight: 600;
+  color: var(--ink-3);
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+  align-self: center;
+}
 .worker-key-name {
   font-weight: 600;
   display: inline-flex;

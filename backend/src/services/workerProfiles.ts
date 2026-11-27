@@ -13,6 +13,7 @@ import {
   transcriberSettings,
 } from "./transcriberSettings";
 import { isLoopbackUrl } from "./summarySettings";
+import { listWakeState } from "./workerWake";
 
 /**
  * Settings per worker machine, over the site-wide ones (Admin → Transcription).
@@ -106,8 +107,14 @@ export function fallbackDelaySec(profileId: string): number {
   const online = db
     .query<{ id: string }, { since: number }>("SELECT id FROM workers WHERE last_seen_at > $since")
     .all({ since: now() - 60_000 });
-  const others = online.map((w) => profileOfWorkerId(w.id, keys)).filter((p) => p !== profileId && !workerProfile(p).fallbackSec);
-  return others.length ? fallback : 0;
+  // Machines ahead of this one: not a fallback, or a fallback that waits less. So fallbacks
+  // take turns by their wait (a Mac after 1 minute, the server after 10).
+  const ahead = (p: string) => p !== profileId && (workerProfile(p).fallbackSec ?? 0) < fallback;
+  if (online.some((w) => ahead(profileOfWorkerId(w.id, keys)))) return fallback;
+  // A worker started on demand (Modal) is offline until it is called, yet it is there to be
+  // called: it is ahead too, unless its last wake-up call failed.
+  const wakeable = Object.entries(listWakeState()).filter(([id, s]) => keys.includes(id) && s.ok !== false);
+  return wakeable.some(([id]) => ahead(id)) ? fallback : 0;
 }
 
 /** Machines whose settings matter for what people are told: this server's workers and every enrolled one. */

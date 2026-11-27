@@ -54,6 +54,97 @@ export function WorkerKeys() {
   const workersOf = (id: string) =>
     reported.filter((w) => (id === "local" ? !keyIds.some((k) => w.id === k || w.id.startsWith(`${k}-`)) : w.id === id || w.id.startsWith(`${id}-`)));
   const localOnline = workersOf("local").length > 0;
+
+  // In the order they take recordings: not a fallback first, then fallbacks by how long they wait.
+  // Machines with the same wait share a place. Codes not used yet, and revoked keys, come after.
+  const waitOf = (id: string) => profiles.data?.profiles[id]?.fallbackSec ?? 0;
+  const working = keys.filter((k) => !k.revokedAt && !k.pending);
+  const ranked: (WorkerKey | "local")[] = ["local" as const, ...working].sort((a, b) => {
+    const ia = a === "local" ? "local" : a.id;
+    const ib = b === "local" ? "local" : b.id;
+    return waitOf(ia) - waitOf(ib) || (a === "local" ? -1 : b === "local" ? 1 : a.name.localeCompare(b.name));
+  });
+  const ordered: (WorkerKey | "local")[] = [...ranked, ...keys.filter((k) => k.pending), ...keys.filter((k) => k.revokedAt)];
+  const waits = [...new Set(ranked.map((e) => waitOf(e === "local" ? "local" : e.id)))].sort((a, b) => a - b);
+  const rankOf = (id: string) => (ranked.length > 1 && profiles.data ? waits.indexOf(waitOf(id)) + 1 : 0);
+  const rankBadge = (n: number) =>
+    n > 0 ? (
+      <span className="worker-rank" title={t("workers.rankHint")}>
+        {t("workers.rank", { n })}
+      </span>
+    ) : null;
+
+  const localRow = () => (
+      <li key="local">
+        <div className="worker-key-main">
+          {rankBadge(rankOf("local"))}
+          <span className="worker-key-name">
+            <Server className="worker-key-icon" /> {t("workers.local")}
+          </span>
+          <ProfileSummary profile={profiles.data?.profiles.local} />
+        </div>
+        <div className="worker-key-state">
+          <span className={`pill ${localOnline ? "ok" : ""}`}>
+            <span className="dot" />
+            {localOnline ? t("workers.online") : t("workers.offline")}
+          </span>
+        </div>
+        <div className="worker-key-actions">
+          <button className="icon-btn" onClick={() => setEditing({ id: "local", name: t("workers.local") })} title={t("profile.edit")} aria-label={t("profile.edit")}>
+            <SlidersHorizontal />
+          </button>
+        </div>
+      </li>
+  );
+
+  const keyRow = (k: WorkerKey) => (
+      <li key={k.id} className={k.revokedAt ? "revoked" : ""}>
+        <div className="worker-key-main">
+          {!k.revokedAt && !k.pending && rankBadge(rankOf(k.id))}
+          <span className="worker-key-name">{k.name}</span>
+          <span className="mono faint">{k.id}</span>
+          {!k.revokedAt && <ProfileSummary profile={profiles.data?.profiles[k.id]} wake={profiles.data?.wake[k.id]} />}
+        </div>
+        <div className="worker-key-state">
+          {k.revokedAt ? (
+            <span className="pill">{t("workers.revokedAt", { when: relative(k.revokedAt, t, locale) })}</span>
+          ) : k.pending ? (
+            <span className="pill warn">
+              <span className="dot" />
+              {t("workers.pending", { left: k.enrollExpiresAt ? until(k.enrollExpiresAt, locale) : "" })}
+            </span>
+          ) : !k.online && profiles.data?.wake[k.id] ? (
+            // Started on demand: not running is its normal state.
+            <span className="pill" title={t("workers.standbyHint")}>
+              <Cloud className="pill-icon" />
+              {t("workers.standby")}
+            </span>
+          ) : (
+            <span className={`pill ${k.online ? "ok" : ""}`}>
+              <span className="dot" />
+              {k.online ? t("workers.online") : t("workers.offline")}
+            </span>
+          )}
+          {!k.revokedAt && !k.pending && k.lastUsedAt && (
+            <span className="faint worker-key-seen">
+              {t("workers.lastSeen", { when: relative(k.lastUsedAt, t, locale), ip: k.lastIp ?? "–" })}
+            </span>
+          )}
+        </div>
+        <div className="worker-key-actions">
+          {!k.revokedAt && !k.pending && (
+            <button className="icon-btn" onClick={() => setEditing({ id: k.id, name: k.name })} title={t("profile.edit")} aria-label={t("profile.edit")}>
+              <SlidersHorizontal />
+            </button>
+          )}
+          {!k.revokedAt && (
+            <button className="icon-btn" onClick={() => revoke(k)} title={k.pending ? t("workers.cancel") : t("workers.revoke")} aria-label={k.pending ? t("workers.cancel") : t("workers.revoke")}>
+              <Trash2 />
+            </button>
+          )}
+        </div>
+      </li>
+  );
   return (
     <section className="card system-card worker-keys">
       <div className="worker-keys-head">
@@ -66,79 +157,9 @@ export function WorkerKeys() {
       </div>
       <p className="muted worker-keys-lede">{t("workers.lede")}</p>
       <ul className="worker-key-list">
-        <li>
-          <div className="worker-key-main">
-            <span className="worker-key-name">
-              <Server className="worker-key-icon" /> {t("workers.local")}
-            </span>
-            <ProfileSummary profile={profiles.data?.profiles.local} />
-          </div>
-          <div className="worker-key-state">
-            <span className={`pill ${localOnline ? "ok" : ""}`}>
-              <span className="dot" />
-              {localOnline ? t("workers.online") : t("workers.offline")}
-            </span>
-          </div>
-          <div className="worker-key-actions">
-            <button className="icon-btn" onClick={() => setEditing({ id: "local", name: t("workers.local") })} title={t("profile.edit")} aria-label={t("profile.edit")}>
-              <SlidersHorizontal />
-            </button>
-          </div>
-        </li>
+        {ordered.map((e) => (e === "local" ? localRow() : keyRow(e)))}
       </ul>
-      {keys.length === 0 ? (
-        <p className="faint">{t("workers.none")}</p>
-      ) : (
-        <ul className="worker-key-list">
-          {keys.map((k) => (
-            <li key={k.id} className={k.revokedAt ? "revoked" : ""}>
-              <div className="worker-key-main">
-                <span className="worker-key-name">{k.name}</span>
-                <span className="mono faint">{k.id}</span>
-                {!k.revokedAt && <ProfileSummary profile={profiles.data?.profiles[k.id]} wake={profiles.data?.wake[k.id]} />}
-              </div>
-              <div className="worker-key-state">
-                {k.revokedAt ? (
-                  <span className="pill">{t("workers.revokedAt", { when: relative(k.revokedAt, t, locale) })}</span>
-                ) : k.pending ? (
-                  <span className="pill warn">
-                    <span className="dot" />
-                    {t("workers.pending", { left: k.enrollExpiresAt ? until(k.enrollExpiresAt, locale) : "" })}
-                  </span>
-                ) : !k.online && profiles.data?.wake[k.id] ? (
-                  // Started on demand: not running is its normal state.
-                  <span className="pill" title={t("workers.standbyHint")}>
-                    <Cloud className="pill-icon" />
-                    {t("workers.standby")}
-                  </span>
-                ) : (
-                  <span className={`pill ${k.online ? "ok" : ""}`}>
-                    <span className="dot" />
-                    {k.online ? t("workers.online") : t("workers.offline")}
-                  </span>
-                )}
-                {!k.revokedAt && !k.pending && k.lastUsedAt && (
-                  <span className="faint worker-key-seen">
-                    {t("workers.lastSeen", { when: relative(k.lastUsedAt, t, locale), ip: k.lastIp ?? "–" })}
-                  </span>
-                )}
-              </div>
-              <div className="worker-key-actions">
-                {!k.revokedAt && !k.pending && (
-                  <button className="icon-btn" onClick={() => setEditing({ id: k.id, name: k.name })} title={t("profile.edit")} aria-label={t("profile.edit")}>
-                    <SlidersHorizontal />
-                  </button>
-                )}
-                {!k.revokedAt && (
-                  <button className="icon-btn" onClick={() => revoke(k)} title={k.pending ? t("workers.cancel") : t("workers.revoke")} aria-label={k.pending ? t("workers.cancel") : t("workers.revoke")}>
-                    <Trash2 />
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      {keys.length === 0 && <p className="faint">{t("workers.none")}</p>}
       {adding && (
         <AddWorker
           onClose={() => setAdding(false)}
