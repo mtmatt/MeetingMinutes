@@ -3,7 +3,8 @@ import { z } from "zod";
 import { db, now } from "../db";
 import { parseJson } from "../lib/util";
 import { deleteSetting, readSetting, writeSetting } from "./settingsStore";
-import { isLoopbackUrl } from "./summarySettings";
+import { config } from "../config";
+import { isForbiddenHost, isLoopbackUrl } from "./summarySettings";
 import { type WorkerCapabilities, canRun } from "./transcriberSettings";
 import { effectiveSettings, fallbackDelaySec } from "./workerProfiles";
 
@@ -32,12 +33,27 @@ export const WAKE_TRIES_PER_JOB = 3;
 /** A worker seen this recently is running (it reports every 20 s). */
 const ONLINE_MS = 60_000;
 
+/**
+ * An https address on another machine, without a user name or password in it.
+ * Not this machine (http or https: the server's own ports and Ollama are not for
+ * this), nor the cloud metadata service. Plain http to this machine only in tests.
+ */
 export const wakeUrlSchema = z
   .string()
   .trim()
   .max(500)
   .url()
-  .refine((u) => u.startsWith("https://") || (u.startsWith("http://") && isLoopbackUrl(u)), "The wake-up address must use https://.");
+  .refine((u) => {
+    let url: URL;
+    try {
+      url = new URL(u);
+    } catch {
+      return false;
+    }
+    if (url.username || url.password || isForbiddenHost(u)) return false;
+    if (config.isTest && url.protocol === "http:" && isLoopbackUrl(u)) return true;
+    return url.protocol === "https:" && !isLoopbackUrl(u);
+  }, "The wake-up address must be https:// on another machine, such as https://…-wake.modal.run.");
 
 interface WakeState {
   /** Last call: when, and how it went. */
@@ -119,10 +135,11 @@ export async function wakeWorker(keyId: string, reason: "queued" | "test", jobId
       signal: AbortSignal.timeout(20_000),
       redirect: "error",
     });
-    const text = res.ok ? "" : (await res.text().catch(() => "")).slice(0, 200);
-    result = { ok: res.ok, status: res.status, error: res.ok ? null : `HTTP ${res.status}${text ? `: ${text}` : ""}` };
+    // Only the status: what the other side answers is not read, so it cannot be echoed to the page or the log.
+    await res.body?.cancel().catch(() => {});
+    result = { ok: res.ok, status: res.status, error: res.ok ? null : `HTTP ${res.status}` };
   } catch (e) {
-    result = { ok: false, status: null, error: e instanceof Error ? e.message.slice(0, 200) : String(e).slice(0, 200) };
+    result = { ok: false, status: null, error: (e instanceof Error ? e.message : String(e)).replace(/[^\x20-\x7e]/g, "?").slice(0, 200) };
   }
   Object.assign(state, result);
   if (result.ok) console.log(`[workers] woke ${keyId} (${reason})`);

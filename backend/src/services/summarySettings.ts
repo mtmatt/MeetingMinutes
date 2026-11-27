@@ -28,7 +28,7 @@ export const baseUrl = z
   .refine((s) => {
     try {
       const u = new URL(s);
-      return (u.protocol === "http:" || u.protocol === "https:") && !u.username && !u.password && !u.search && !u.hash;
+      return (u.protocol === "http:" || u.protocol === "https:") && !u.username && !u.password && !u.search && !u.hash && !isForbiddenHost(s);
     } catch {
       return false;
     }
@@ -115,6 +115,30 @@ export function saveSummarySettings(settings: SummarySettings, userId: string): 
 export function resetSummarySettings(): SummarySettings {
   deleteSetting(KEY);
   return summarySettings();
+}
+
+/**
+ * Addresses no setting may point at: the cloud metadata service (169.254.169.254
+ * and its names) and the rest of the link-local range, and "any address" (0.0.0.0).
+ * On a cloud machine they hand out the machine's own credentials.
+ */
+export function isForbiddenHost(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.$/, "");
+    return (
+      /^169\.254\./.test(host) ||
+      /^0+(\.0+){0,3}$/.test(host) ||
+      host === "::" ||
+      /^fe[89ab][0-9a-f]?:/.test(host) ||
+      /^::ffff:(169\.254\.|a9fe:)/.test(host) ||
+      host === "fd00:ec2::254" ||
+      host === "metadata" ||
+      host === "metadata.google.internal" ||
+      host.endsWith(".metadata.google.internal")
+    );
+  } catch {
+    return true;
+  }
 }
 
 /** True when the address is this machine, so transcripts sent to it stay on the server. */

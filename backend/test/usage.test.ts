@@ -90,6 +90,11 @@ describe("usage dashboard", () => {
     const admin = await adminClient();
     const one = (await (await admin.get(`/api/usage?user=${bobId}`)).json()) as any;
     expect(one.totals.sec).toBe(1200);
+    // How much, not what the meetings were called: those are the owner's.
+    expect(one.top.length).toBeGreaterThan(0);
+    expect(one.top.every((m: any) => m.title === null && m.id === null)).toBe(true);
+    const own = (await (await bob.get("/api/usage")).json()) as any;
+    expect(own.top[0].title).toEqual(expect.any(String));
     const site = (await (await admin.get("/api/usage?user=all&range=90d")).json()) as any;
     expect(site.byUser.find((u: any) => u.username === "usage-bob").sec).toBe(1200);
     expect((await admin.get("/api/usage?user=nobody")).status).toBe(404);

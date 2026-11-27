@@ -284,6 +284,15 @@ export const config = {
   internalPort: int("INTERNAL_PORT", 8788),
   /** Trust X-Forwarded-For / X-Forwarded-Proto (set when behind Caddy/nginx). */
   trustProxy: bool("TRUST_PROXY", false),
+  /**
+   * Addresses of the proxy, when it is on another machine with a public address.
+   * Forwarded headers are believed only from the proxy: from this machine, a
+   * private network, or one of these.
+   */
+  trustedProxies: str("TRUSTED_PROXIES", "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
   /** Shown on the sign-in page to people without an account or who forgot their password. */
   adminContact: str("ADMIN_CONTACT", "").trim(),
   /** Google OAuth client ID; empty turns direct export to Google Docs off (summaries can still be copied into one). */

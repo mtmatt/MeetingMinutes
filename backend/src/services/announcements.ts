@@ -115,11 +115,15 @@ export function publicAnnouncements(t = now()) {
     .map((a) => publicAnnouncement(a));
 }
 
-/** Closed (or read on the announcements page): it stops showing as a banner, where it may be closed. */
-export function markSeen(userId: string, ids: string[], t = now()) {
-  const insert = db.query("INSERT OR IGNORE INTO announcement_seen (announcement_id, user_id, seen_at) SELECT id, $u, $t FROM announcements WHERE id = $id");
+/** Closed (or read on the announcements page): it stops showing as a banner, where it may be closed. Only those the person can see. */
+export function markSeen(user: Pick<UserRow, "id" | "role" | "billing">, ids: string[], t = now()) {
+  const list = `(${audiencesOf(user).map((a) => `'${a}'`).join(",")})`;
+  const insert = db.query(
+    `INSERT OR IGNORE INTO announcement_seen (announcement_id, user_id, seen_at)
+     SELECT id, $u, $t FROM announcements WHERE id = $id AND audience IN ${list} AND (starts_at IS NULL OR starts_at <= $t)`,
+  );
   db.transaction(() => {
-    for (const id of ids) insert.run({ id, u: userId, t });
+    for (const id of ids) insert.run({ id, u: user.id, t });
   })();
 }
 

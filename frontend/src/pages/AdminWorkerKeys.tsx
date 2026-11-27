@@ -321,8 +321,8 @@ export function ProfileDialog({
   const [wakeUrl, setWakeUrl] = useState(wake?.url ?? "");
   const [testing, setTesting] = useState(false);
   const wakeChanged = wake !== undefined && wakeUrl.trim() !== (wake?.url ?? "");
-  // https, or plain http to this machine (a local stand-in while testing), as the server accepts.
-  const wakeOk = !wakeUrl.trim() || /^https:\/\/\S+$/.test(wakeUrl.trim()) || /^http:\/\/(localhost|127(\.\d{1,3}){3}|\[::1\])(:\d+)?(\/\S*)?$/.test(wakeUrl.trim());
+  // The server checks it fully (not this machine, no metadata service); this catches typing mistakes.
+  const wakeOk = !wakeUrl.trim() || /^https:\/\/[^\s/@]+(\/\S*)?$/.test(wakeUrl.trim());
 
   const engine = form.engine ?? global?.engine;
   const diarization = form.diarization ?? global?.diarization;

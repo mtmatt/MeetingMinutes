@@ -26,7 +26,9 @@ function hostOf(req: Request): string | null {
 /** Where a request on a redirecting port is sent: PUBLIC_URL with the same path and query. */
 export function redirectLocation(publicUrl: string, req: Request): string {
   const url = new URL(req.url);
-  return new URL(url.pathname + url.search, publicUrl.replace(/\/+$/, "") + "/").toString();
+  // One leading slash: "//evil.example/x" resolved as a URL would name another site.
+  const path = "/" + url.pathname.replace(/^[/\\]+/, "");
+  return new URL(publicUrl).origin + path + url.search;
 }
 
 export function redirectHandler(opts: {

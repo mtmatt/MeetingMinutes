@@ -20,6 +20,13 @@ Setup (in this project's folder, with the Modal CLI: `pip install modal`, `modal
   4. Optional: download the models now rather than during the first recording:
        modal run deploy/modal/app.py::prepare
 
+The wake-up endpoint is public, so it holds as little as possible: not the token
+(only its hash and the key ID, in the Modal Dict "<app>-state"), no secrets and
+no volume. It refuses calls more than a minute old and any call no newer than
+the last it accepted, and starts no second worker while one is starting or running.
+Enrolled with an earlier version of this file? Run once:
+       modal run deploy/modal/app.py::sync_wake_key
+
 Settings at deploy time (environment variables of `modal deploy`):
   MM_MODAL_GPU      GPU type: T4 (16 GB, the default), L4 (24 GB), A10G, ...
   MM_MODAL_IDLE_SEC seconds without work before the worker exits (default 60)
@@ -50,6 +57,10 @@ TIMEOUT_SEC = int(os.environ.get("MM_MODAL_TIMEOUT_SEC", str(6 * 3600)))
 DATA = "/data"
 CREDENTIAL = f"{DATA}/worker-credential.json"
 volume = modal.Volume.from_name("meetingminutes-worker-data", create_if_missing=True)
+# What the public wake-up endpoint needs, so that it never sees the token: the
+# key ID and the token's hash (what the server signs with), the last call it
+# accepted (no call is accepted twice), and the worker run it started.
+state = modal.Dict.from_name(f"{APP_NAME}-state", create_if_missing=True)
 
 WORKER_ENV = {
     "PYTHONPATH": "/opt/mm",
@@ -81,10 +92,7 @@ with light_image.imports():
 
 
 def _credential() -> dict:
-    """The enrolled worker's credential: from the volume (step 1), or WORKER_TOKEN in the secret."""
-    if os.environ.get("WORKER_TOKEN", "").startswith("mmw_"):
-        token = os.environ["WORKER_TOKEN"]
-        return {"token": token, "workerId": token[4:].split(".", 1)[0], "serverUrl": os.environ.get("MM_SERVER_URL", "")}
+    """The enrolled worker's credential, from the volume (step 1)."""
     volume.reload()
     try:
         return json.loads(Path(CREDENTIAL).read_text())
@@ -103,7 +111,14 @@ def enroll(server_url: str, code: str):
     got = trade_code(url, code)
     write_credential(Path(DATA), {"serverUrl": url, "workerId": got["workerId"], "name": got["name"], "token": got["token"]})
     volume.commit()
+    _publish_wake_key(got["workerId"], got["token"])
     print(f"Enrolled as {got['name']} ({got['workerId']}). Next: modal deploy deploy/modal/app.py")
+
+
+def _publish_wake_key(worker_id: str, token: str) -> None:
+    from mm_worker.wake import token_hash
+
+    state["wake_key"] = {"workerId": worker_id, "tokenHash": token_hash(token)}
 
 
 @app.function(
@@ -118,7 +133,10 @@ def enroll(server_url: str, code: str):
 )
 def worker():
     """Process the server's queue on this GPU, then exit once it has been empty for IDLE_SEC."""
-    _credential()  # fail early, with what to do, if the worker was never enrolled
+    cred = _credential()  # fail early, with what to do, if the worker was never enrolled
+    if state.get("wake_key") is None:
+        # Enrolled before the wake-up endpoint kept its own key.
+        _publish_wake_key(cred["workerId"], cred["token"])
     env = {**os.environ, **WORKER_ENV, "MM_EXIT_WHEN_IDLE_SEC": IDLE_SEC}
     # Keep the models loaded between recordings that arrive close together.
     env.setdefault("MODEL_KEEPALIVE_SEC", "60")
@@ -141,15 +159,43 @@ def prepare():
         volume.commit()
 
 
-@app.function(image=light_image, volumes={DATA: volume})
+@app.function(image=light_image, volumes={DATA: volume}, timeout=60)
+def sync_wake_key():
+    """Give the wake-up endpoint the enrolled worker's key ID and token hash (enroll does this; for older setups)."""
+    cred = _credential()
+    _publish_wake_key(cred["workerId"], cred["token"])
+    print(f"The wake-up endpoint now checks calls for {cred['workerId']}.")
+
+
+# Calls one at a time (so two cannot both start the GPU), on at most one small container.
+@app.function(image=light_image, max_containers=1, timeout=30)
 @modal.fastapi_endpoint(method="POST", label=f"{APP_NAME}-wake")
 def wake(request: Request):
-    """Called by the server when work waits for this worker: start it, if the call is the server's."""
-    from mm_worker.wake import HEADER, verify
+    """Called by the server when work waits for this worker: start it, if the call is the server's and new."""
+    from mm_worker.wake import HEADER, timestamp, verify_with_hash
 
-    cred = _credential()
-    why = verify(request.headers.get(HEADER), cred["token"], cred["workerId"])
+    key = state.get("wake_key")
+    if not key:
+        raise HTTPException(status_code=503, detail="Not enrolled: run the enroll step (or sync_wake_key after updating).")
+    header = request.headers.get(HEADER)
+    why = verify_with_hash(header, key["tokenHash"], key["workerId"], not_after_ms=state.get("last_wake_t"))
     if why:
         raise HTTPException(status_code=401, detail=why)
+    state["last_wake_t"] = timestamp(header)
+    # A run that is starting or working already takes whatever is queued: do not pay for a second.
+    running = state.get("worker_call")
+    if running and _still_running(running):
+        return {"ok": True, "call": running, "running": True}
     call = worker.spawn()
+    state["worker_call"] = call.object_id
     return {"ok": True, "call": call.object_id}
+
+
+def _still_running(call_id: str) -> bool:
+    try:
+        modal.FunctionCall.from_id(call_id).get(timeout=0)
+    except TimeoutError:
+        return True
+    except Exception as e:  # finished with an error, expired, or unknown: not running
+        return type(e).__name__ == "TimeoutError"
+    return False

@@ -348,12 +348,14 @@ function alert(key: string, msg: { subject: string; zh: string; body: string; bo
   if (lastAlert.size > 5000) lastAlert.clear();
   const to = alertRecipients();
   if (!to.length) return;
-  const link = config.publicUrl ? `\n\n${config.publicUrl}/admin?tab=security` : "";
+  const url = config.publicUrl ? `${config.publicUrl}/admin?tab=security` : null;
+  const link = url ? `\n\n${url}` : "";
   for (const addr of to) {
     sendMailLater({
       to: addr,
       subject: `[Minutes] ${msg.zh} / ${msg.subject}`,
       text: `${msg.bodyZh}\n\n${msg.body}${link}`,
+      links: url ? [url] : [],
     });
   }
   sentAlerts.push({ subject: msg.subject, to });

@@ -24,7 +24,9 @@ import {
   meetingDetail,
   meetingDir,
   meetingSummary,
+  MAX_PENDING_UPLOADS,
   originalPath,
+  pendingUploads,
   touchMeeting,
 } from "../services/meetings";
 import { currentSpeakerNames, parseNameMap, reconcileSpeakerNames, renameSpeaker } from "../services/speakerNames";
@@ -32,7 +34,7 @@ import { enqueueVoiceprint, recognitionEnabled, speakerNamed, speakerVoiceAction
 import { cancelSummary, enqueueSummary, renderTranscript, summaryInputTokens, summaryPublic } from "../services/summarizer";
 import { getTemplateFor } from "../services/templates";
 import type { AppEnv, MeetingRow, SegmentRow, SpeakerRow, SummaryRow, TranscribeOptions } from "../types";
-import { body } from "./validate";
+import { JSON_LIMIT_BYTES, TEXT_JSON_LIMIT_BYTES, body } from "./validate";
 import { serveFile } from "../lib/serveFile";
 
 export const meetingRoutes = new Hono<AppEnv>();
@@ -126,6 +128,7 @@ meetingRoutes.post("/", async (c) => {
       // The length the browser read from the file, if it could: a prepaid account's points are checked before uploading.
       durationSec: z.number().positive().max(7 * 24 * 3600).nullable().default(null),
     }),
+    TEXT_JSON_LIMIT_BYTES,
   );
   if (input.file.size > config.maxUploadBytes) {
     return c.json(
@@ -150,6 +153,9 @@ meetingRoutes.post("/", async (c) => {
   }
 
   requireTranscriptionCredits(user, input.durationSec);
+  if (pendingUploads(user.id) >= MAX_PENDING_UPLOADS) {
+    httpError(429, `You have ${MAX_PENDING_UPLOADS} uploads that did not finish. Resume or delete them in the library first.`, "too_many_uploads");
+  }
 
   const id = shortId();
   const t = now();
@@ -354,6 +360,7 @@ meetingRoutes.patch("/:id/segments/:segId", async (c) => {
       text: z.string().max(20000).optional(),
       speaker: z.string().max(64).nullable().optional(),
     }),
+    TEXT_JSON_LIMIT_BYTES,
   );
   const segId = Number(c.req.param("segId"));
   const seg = db
@@ -487,7 +494,7 @@ meetingRoutes.post("/:id/summaries", async (c) => {
   const user = c.get("user");
   const m = owned(c, c.req.param("id"));
   if (m.status !== "ready") httpError(409, "The transcript is not ready yet.", "not_ready");
-  const input = await body(c, summaryRequestSchema);
+  const input = await body(c, summaryRequestSchema, TEXT_JSON_LIMIT_BYTES);
   validateTemplate(user.id, input.templateId);
   // Summaries share the API quota or the local GPU: a few at a time per person.
   const active =
@@ -508,7 +515,7 @@ meetingRoutes.post("/:id/summaries/estimate", async (c) => {
   const user = c.get("user");
   const m = owned(c, c.req.param("id"));
   if (m.status !== "ready" || user.billing !== "prepaid") return c.json({ credits: null });
-  const input = await body(c, z.object({ prompt: z.string().max(20_000) }));
+  const input = await body(c, z.object({ prompt: z.string().max(20_000) }), TEXT_JSON_LIMIT_BYTES);
   const r = rates();
   if (r.perKInput <= 0 && r.perKOutput <= 0) return c.json({ credits: 0 });
   return c.json({ credits: summaryEstimate(summaryInputTokens(m, input.prompt), r), available: availableCredits(user.id) });
@@ -531,7 +538,7 @@ meetingRoutes.post("/:id/summaries/:sid/cancel", (c) => {
 
 meetingRoutes.patch("/:id/summaries/:sid", async (c) => {
   const m = owned(c, c.req.param("id"));
-  const input = await body(c, z.object({ content: z.string().max(500000) }));
+  const input = await body(c, z.object({ content: z.string().max(500000) }), JSON_LIMIT_BYTES);
   const r = db
     .query("UPDATE summaries SET content = $content WHERE id = $id AND meeting_id = $m AND status = 'done'")
     .run({ id: c.req.param("sid"), m: m.id, content: input.content });

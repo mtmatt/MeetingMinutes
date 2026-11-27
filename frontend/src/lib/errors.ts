@@ -29,6 +29,7 @@ const API_ERRORS: Record<string, TKey> = {
   too_large: "apiError.tooLarge",
   unsupported_type: "apiError.unsupportedType",
   too_many_summaries: "apiError.tooManySummaries",
+  too_many_uploads: "apiError.tooManyUploads",
   insufficient_credits: "apiError.insufficientCredits",
   registration_closed: "apiError.registrationClosed",
   email_unverified: "apiError.emailUnverified",

@@ -22,7 +22,7 @@ import {
 import { mailLocale } from "../services/mail";
 import { termsLink, termsUpdatedAt } from "../services/terms";
 import type { AppEnv } from "../types";
-import { SMALL_JSON_LIMIT_BYTES, body } from "./validate";
+import { SMALL_JSON_LIMIT_BYTES, body, readText } from "./validate";
 
 /** Orders started per person: a page cannot be used to fill the table. */
 const orderLimiter = new RateLimiter(20, 60 * 60 * 1000);
@@ -125,10 +125,9 @@ export const ecpayRoutes = new Hono<AppEnv>();
 const MAX_FORM_BYTES = 16 * 1024;
 
 async function signedForm(c: any): Promise<Record<string, string> | null> {
-  const length = Number(c.req.header("content-length") ?? 0);
-  if (length > MAX_FORM_BYTES) return null;
-  const text = await c.req.text();
-  if (text.length > MAX_FORM_BYTES) return null;
+  // Counted as it arrives: a chunked body declares no length.
+  const text = await readText(c, MAX_FORM_BYTES).catch(() => null);
+  if (text == null) return null;
   const fields = Object.fromEntries(new URLSearchParams(text));
   return verifyFields(fields) ? fields : null;
 }

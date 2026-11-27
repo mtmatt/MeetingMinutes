@@ -34,7 +34,11 @@ def test_the_signature_matches_the_servers():
     [
         (None, "missing"),
         ("t=abc,sig=00", "malformed"),
-        ("t=1,sig=00", "stale"),
+        ("t=1,sig=00", "malformed"),
+        ("t=1800000000000,sig=" + "\u00e9" * 64, "malformed"),
+        ("t=1," + "sig=" + "0" * 64, "stale"),
+        # A minute ahead is as suspect as a minute late.
+        ("t=1800000061000,sig=" + "0" * 64, "stale"),
     ],
 )
 def test_other_calls_are_refused(header, why):
@@ -47,6 +51,20 @@ def test_a_call_signed_with_another_token_or_for_another_worker_is_refused():
     assert wake.verify(other, TOKEN, "wkabcdefghjk", now) == "bad signature"
     elsewhere = wake.sign(wake.token_hash(TOKEN), "wkzzzzzzzzzz", now)
     assert wake.verify(elsewhere, TOKEN, "wkabcdefghjk", now) == "bad signature"
+
+
+def test_a_call_seen_once_cannot_be_sent_again():
+    now = 1_800_000_000_000
+    header = wake.sign(wake.token_hash(TOKEN), "wkabcdefghjk", now - 1000)
+    assert wake.timestamp(header) == now - 1000
+    assert wake.verify(header, TOKEN, "wkabcdefghjk", now, not_after_ms=now - 5000) is None
+    # The same call again, or an older one, after it was accepted.
+    assert wake.verify(header, TOKEN, "wkabcdefghjk", now, not_after_ms=now - 1000) == "repeated wake-up call"
+    newer = wake.sign(wake.token_hash(TOKEN), "wkabcdefghjk", now)
+    assert wake.verify(newer, TOKEN, "wkabcdefghjk", now, not_after_ms=now - 1000) is None
+    # More than a minute old.
+    old = wake.sign(wake.token_hash(TOKEN), "wkabcdefghjk", now - 61_000)
+    assert wake.verify(old, TOKEN, "wkabcdefghjk", now) == "stale wake-up call"
 
 
 def test_the_key_id_comes_from_the_token():

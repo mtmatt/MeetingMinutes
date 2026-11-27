@@ -11,6 +11,7 @@ import {
   createVerification,
   findUserByEmail,
   linkBase,
+  mailLinksAvailable,
   normalizeEmail,
   validateEmail,
 } from "../auth/accounts";
@@ -101,7 +102,7 @@ authRoutes.get("/state", (c) => {
     externalWorkers: resolved ? hasExternalWorkers() : null,
     // Whether the sign-in page offers "Create an account" and "Forgot password".
     registration: registrationOpen(),
-    passwordReset: mailConfigured(),
+    passwordReset: mailConfigured() && mailLinksAvailable(),
     // The terms of sale, on this site or elsewhere, for the sign-up page to link.
     termsUrl: termsLink(),
   });
@@ -117,9 +118,16 @@ authRoutes.get("/terms", (c) => {
   return c.json({ markdown, updatedAt: termsUpdatedAt() });
 });
 
+/** The address for links in mail, or 503 when the site does not know its own (PUBLIC_URL). */
+function mailBase(c: { req: { url: string } }): string {
+  const base = linkBase(c.req.url);
+  if (!base) httpError(503, "Set PUBLIC_URL (or ALLOWED_HOSTS) before this site can email links.", "mail_unavailable");
+  return base;
+}
+
 /** People may create their own accounts: the admin opened sign-up and email can be sent to confirm addresses. */
 function registrationOpen(): boolean {
-  return billingSettings().registrationOpen && mailConfigured();
+  return billingSettings().registrationOpen && mailConfigured() && mailLinksAvailable();
 }
 
 /** Rate limits for anything that sends mail: per client and per address. Throws 429. */
@@ -150,10 +158,11 @@ authRoutes.post("/register", async (c) => {
   const email = normalizeEmail(input.email);
   const bad = validateEmail(email);
   if (bad) httpError(422, bad, "invalid_email");
-  assertNewAccount(input);
+  // Counted before the name is checked: otherwise "taken" answers would let anyone list accounts without limit.
   registerLimiter.hit(ip);
+  assertNewAccount(input);
   checkMailLimits(c, email);
-  const base = linkBase(c.req.url);
+  const base = linkBase(c.req.url)!;
   const locale = mailLocale(input.locale);
   const existing = findUserByEmail(email);
   if (existing) {
@@ -170,7 +179,7 @@ authRoutes.post("/register", async (c) => {
   })();
   const token = createVerification(user.id, email);
   try {
-    await sendMail(verifyMail(email, `${base}/verify-email/${token}`, locale, input.displayName));
+    await sendMail(verifyMail(email, `${base}/verify-email/${token}`, locale));
   } catch (e) {
     // Nobody could confirm it: take the account back, so the name and address are free to try again.
     db.query("DELETE FROM users WHERE id = $id").run({ id: user.id });
@@ -197,6 +206,7 @@ authRoutes.post("/verify-email", async (c) => {
 
 /** A new confirmation link for an account that signed up and has not confirmed yet. Always "ok". */
 authRoutes.post("/verify-email/resend", async (c) => {
+  const base = mailBase(c);
   const input = await body(c, z.object({ email: z.string().trim().max(254), locale: localeField }), SMALL_JSON_LIMIT_BYTES);
   const email = normalizeEmail(input.email);
   if (validateEmail(email)) httpError(422, "Enter a valid email address.", "invalid_email");
@@ -204,7 +214,7 @@ authRoutes.post("/verify-email/resend", async (c) => {
   const user = findUserByEmail(email);
   if (user && awaitingVerification(user) && !user.disabled) {
     const token = createVerification(user.id, email);
-    await sendMail(verifyMail(email, `${linkBase(c.req.url)}/verify-email/${token}`, mailLocale(input.locale ?? user.locale), user.display_name)).catch(() => {});
+    await sendMail(verifyMail(email, `${base}/verify-email/${token}`, mailLocale(input.locale ?? user.locale))).catch(() => {});
   }
   return c.json({ ok: true });
 });
@@ -212,6 +222,7 @@ authRoutes.post("/verify-email/resend", async (c) => {
 /** Email a link to choose a new password, to an account with this confirmed address. Always "ok". */
 authRoutes.post("/forgot-password", async (c) => {
   if (!mailConfigured()) httpError(503, "Email is not set up on this site; ask its administrator for a reset link.", "mail_unavailable");
+  const base = mailBase(c);
   const input = await body(c, z.object({ email: z.string().trim().max(254), locale: localeField }), SMALL_JSON_LIMIT_BYTES);
   const email = normalizeEmail(input.email);
   if (validateEmail(email)) httpError(422, "Enter a valid email address.", "invalid_email");
@@ -219,7 +230,7 @@ authRoutes.post("/forgot-password", async (c) => {
   const user = findUserByEmail(email);
   if (user && user.email_verified_at && !user.disabled) {
     const { token } = createInvite({ kind: "reset", role: user.role, targetUserId: user.id, createdBy: user.id, ttlHours: 1, note: "Forgot password" });
-    await sendMail(resetMail(email, `${linkBase(c.req.url)}/invite/${token}`, mailLocale(input.locale ?? user.locale), user.username)).catch(() => {});
+    await sendMail(resetMail(email, `${base}/invite/${token}`, mailLocale(input.locale ?? user.locale), user.username)).catch(() => {});
   }
   return c.json({ ok: true });
 });
@@ -369,6 +380,7 @@ meRoutes.patch("/", async (c) => {
 /** Change (or add) the account's email address: a link goes to the new one, which takes effect when it is opened. */
 meRoutes.post("/email", async (c) => {
   if (!mailConfigured()) httpError(503, "Email is not set up on this site.", "mail_unavailable");
+  const base = mailBase(c);
   const input = await body(c, z.object({ email: z.string().trim().max(254), password: z.string().max(1024) }), SMALL_JSON_LIMIT_BYTES);
   const user = c.get("user");
   if (!(await verifyPassword(input.password, user.password_hash))) httpError(403, "Current password is incorrect.", "bad_credentials");
@@ -381,7 +393,7 @@ meRoutes.post("/email", async (c) => {
   checkMailLimits(c, email);
   const token = createVerification(user.id, email);
   try {
-    await sendMail(verifyMail(email, `${linkBase(c.req.url)}/verify-email/${token}`, mailLocale(user.locale), user.display_name));
+    await sendMail(verifyMail(email, `${base}/verify-email/${token}`, mailLocale(user.locale)));
   } catch (e) {
     if (e instanceof MailError) httpError(503, "The confirmation email could not be sent. Try again later.", "mail_failed");
     throw e;

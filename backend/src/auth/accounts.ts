@@ -14,7 +14,13 @@ export const VERIFY_TTL_MS = 24 * 3600 * 1000;
 /** Unconfirmed sign-ups are removed after this, freeing the name and the address. */
 export const UNVERIFIED_TTL_MS = 7 * 24 * 3600 * 1000;
 
-const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{2,63}$/;
+/**
+ * A plain mailbox address: letters, digits and the usual symbols before the @,
+ * and a domain name after it. Not the full RFC 5322 syntax: forms such as
+ * "Name <a@b>" or quoted parts would let one mailbox pass as many different
+ * addresses (and around the one-account-per-address rule).
+ */
+const EMAIL_RE = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9-]{2,63}$/i;
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -88,7 +94,18 @@ export function purgeUnverifiedAccounts(): number {
   return res.changes;
 }
 
-/** The site's address for links in email: PUBLIC_URL, else the address the request came to. */
-export function linkBase(requestUrl: string): string {
-  return config.publicUrl || new URL(requestUrl).origin;
+/**
+ * The site's address for links in email: PUBLIC_URL, else the address the
+ * request came to, but only where the site answers to its own names alone
+ * (ALLOWED_HOSTS). Otherwise the Host header is the sender's choice, and a
+ * password-reset link mailed to someone else could point at the sender's site.
+ */
+export function linkBase(requestUrl: string): string | null {
+  if (config.publicUrl) return config.publicUrl;
+  return config.allowedHosts.length ? new URL(requestUrl).origin : null;
+}
+
+/** Whether links can be mailed at all (see linkBase). */
+export function mailLinksAvailable(): boolean {
+  return !!config.publicUrl || config.allowedHosts.length > 0;
 }

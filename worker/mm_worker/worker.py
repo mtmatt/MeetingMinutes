@@ -448,7 +448,8 @@ class _JobRunner:
         job_id = job["jobId"]
         report = report or self.report
         kind = job_kind(job)
-        log.info("job %s (%s): meeting %s (%s), attempt %s", job_id, kind, job["meetingId"], job.get("title"), job.get("attempt"))
+        # No title: on a hosted worker (Modal) the log is kept by the platform, and the title can be confidential.
+        log.info("job %s (%s): meeting %s, attempt %s", job_id, kind, job["meetingId"], job.get("attempt"))
         started = time.monotonic()
         transcriber = None
         diarizer, diarizer_unavailable = None, None

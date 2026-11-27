@@ -3,7 +3,7 @@ import { config } from "../config";
 import { db, now } from "../db";
 import { parseJson } from "../lib/util";
 import { deleteSetting, readSetting, settingMeta, writeSetting } from "./settingsStore";
-import { isLoopbackUrl, MODEL_NAME } from "./summarySettings";
+import { isForbiddenHost, isLoopbackUrl, MODEL_NAME } from "./summarySettings";
 
 /**
  * Where speech is recognised, as chosen by an administrator.
@@ -53,7 +53,7 @@ const apiBaseUrl = z
     if (s === "") return true;
     try {
       const u = new URL(s);
-      return (u.protocol === "http:" || u.protocol === "https:") && !u.username && !u.password && !u.search && !u.hash;
+      return (u.protocol === "http:" || u.protocol === "https:") && !u.username && !u.password && !u.search && !u.hash && !isForbiddenHost(s);
     } catch {
       return false;
     }
