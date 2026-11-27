@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import type { ApiProvider, OutputLanguage, SummaryRequest, Template } from "../api/types";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
-import { useSummaryEngine } from "../lib/summaryEngine";
+import { VENDOR_NAMES, useSummaryEngine } from "../lib/summaryEngine";
 
 export function useTemplates() {
   return useQuery({ queryKey: ["templates"], queryFn: api.templates, staleTime: 60_000 });
@@ -35,7 +35,7 @@ export function normalizeRequest(req: SummaryRequest, templates: Template[]): Su
 }
 
 /** Hosted providers by name, for the privacy note. */
-export const VENDOR_NAMES: Record<ApiProvider, string> = { anthropic: "Anthropic", openai: "OpenAI", openrouter: "OpenRouter", gemini: "Google Gemini" };
+export { VENDOR_NAMES };
 
 /** Where meeting data goes: shown wherever a summary can be started. */
 export function DataFlowNote() {

@@ -495,7 +495,7 @@ function System() {
             <dd className="mono">{t("admin.runningQueued", { running: data.summaries.running, queued: data.summaries.queued })}</dd>
             <dt>{t("admin.summaryModel")}</dt>
             <dd>
-              {engine.name}
+              {engine.model}
               {data.summaries.provider === "local" ? (
                 <span className="faint"> · {t("admin.summaryModelLocal")}</span>
               ) : (

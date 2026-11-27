@@ -540,7 +540,6 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
             <ChevronDown style={{ transform: showPrompt ? "rotate(180deg)" : undefined }} /> {t("summary.promptUsed")}
           </button>
           <span className="faint mono">
-            {current.model && <>{current.model} · </>}
             {current.usage?.input_tokens != null &&
               t("summary.tokens", {
                 input: current.usage.input_tokens.toLocaleString(),

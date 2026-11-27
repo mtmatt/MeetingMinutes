@@ -131,18 +131,18 @@ export function UsagePage() {
               <OverTime r={r} />
               <div className="usage-grid">
                 <Breakdown title={t("usage.byLanguage")} hint={t("usage.byRecordingHint")}>
-                  <Bars rows={r.languages.map((g) => ({ label: languageLabel(g.key, i18n), value: g.sec, text: hoursText(g.sec, locale), sub: t("usage.times", { n: g.count }) }))} />
+                  <Bars rows={r.languages.map((g) => ({ label: languageLabel(g.key, i18n), value: g.points, text: pointsText(g.points, locale), sub: `${hoursText(g.sec, locale)} · ${t("usage.times", { n: g.count })}` }))} />
                 </Breakdown>
                 <Breakdown title={t("usage.byLength")} hint={t("usage.byLengthHint")}>
-                  <Bars rows={r.lengths.map((g) => ({ label: t(`usage.len.${g.key}` as TKey), value: g.count, text: t("usage.times", { n: g.count }), sub: g.sec ? hoursText(g.sec, locale) : "" }))} />
+                  <Bars rows={r.lengths.map((g) => ({ label: t(`usage.len.${g.key}` as TKey), value: g.points, text: pointsText(g.points, locale), sub: g.count ? `${t("usage.times", { n: g.count })} · ${hoursText(g.sec, locale)}` : t("usage.times", { n: 0 }) }))} />
                 </Breakdown>
                 <Breakdown title={t("usage.byWeekday")} hint={t("usage.byWeekdayHint")}>
-                  <Bars rows={r.weekdays.map((g) => ({ label: t(`usage.wd.${g.key}` as TKey), value: g.sec, text: hoursText(g.sec, locale), sub: t("usage.times", { n: g.count }) }))} />
+                  <Bars rows={r.weekdays.map((g) => ({ label: t(`usage.wd.${g.key}` as TKey), value: g.points, text: pointsText(g.points, locale), sub: `${hoursText(g.sec, locale)} · ${t("usage.times", { n: g.count })}` }))} />
                 </Breakdown>
                 <Breakdown title={t("usage.byTemplate")} hint={t("usage.byTemplateHint")}>
                   {r.templates.length ? <Bars rows={tokenRows(r.templates, (k) => k || t("usage.customPrompt"), t, locale)} /> : <p className="faint usage-none">{t("usage.noSummaries")}</p>}
                 </Breakdown>
-                {r.models.length > 0 && (
+                {r.models.length > 0 && user?.role === "admin" && (
                   <Breakdown title={t("usage.byModel")} hint={t("usage.byModelHint")}>
                     <Bars rows={tokenRows(r.models, (k) => k || t("usage.unknown"), t, locale)} />
                   </Breakdown>
@@ -163,6 +163,15 @@ export function UsagePage() {
             </>
           )}
           <p className="faint usage-note">
+            {(r.totals.estimatedItems ?? 0) > 0 && r.rates && (
+              <>
+                {t(r.prepaid ? "usage.estimatedSome" : "usage.estimatedAll", {
+                  perMinute: r.rates.perMinute,
+                  perKInput: r.rates.perKInput,
+                  perKOutput: r.rates.perKOutput,
+                })}{" "}
+              </>
+            )}
             {t("usage.note")}
             {user?.billing === "prepaid" && !who && (
               <>
@@ -188,9 +197,11 @@ function languageLabel(key: string, i18n: ReturnType<typeof useI18n>): string {
 function tokenRows(groups: UsageTokenGroup[], label: (k: string) => string, t: ReturnType<typeof useI18n>["t"], locale: Locale) {
   return groups.map((g) => ({
     label: label(g.key),
-    value: g.count,
-    text: t("usage.summariesN", { n: g.count }),
-    sub: g.input + g.output ? t("usage.tokensShort", { input: compact(g.input, locale), output: compact(g.output, locale) }) : "",
+    value: g.points,
+    text: pointsText(g.points, locale),
+    sub: [t("usage.summariesN", { n: g.count }), g.input + g.output ? t("usage.tokensShort", { input: compact(g.input, locale), output: compact(g.output, locale) }) : ""]
+      .filter(Boolean)
+      .join(" · "),
   }));
 }
 
@@ -198,8 +209,13 @@ function Tiles({ r }: { r: UsageReport }) {
   const { t, locale } = useI18n();
   const x = r.totals;
   const retranscribed = x.transcriptions - x.meetings;
+  // Nothing here was charged (a free account): the figure is what the work comes to at the rates.
+  const estimated = !r.prepaid && (x.estimatedItems ?? 0) > 0;
   return (
     <div className="usage-tiles">
+      <Tile icon={<Coins />} label={estimated ? t("usage.pointsEstimated") : t("usage.points")} value={pointsText(x.pointsTranscription + x.pointsSummary, locale)}>
+        {t("usage.pointsSplit", { transcription: pointsText(x.pointsTranscription, locale), summary: pointsText(x.pointsSummary, locale) })}
+      </Tile>
       <Tile icon={<Clock />} label={t("usage.recorded")} value={hoursText(x.sec, locale)}>
         {t("usage.meetingsN", { n: x.meetings })}
         {retranscribed > 0 && ` · ${t("usage.retranscribedN", { n: retranscribed })}`}
@@ -207,11 +223,6 @@ function Tiles({ r }: { r: UsageReport }) {
       <Tile icon={<FileText />} label={t("usage.summaries")} value={x.summaries.toLocaleString()}>
         {x.inputTokens + x.outputTokens > 0 ? t("usage.tokensShort", { input: compact(x.inputTokens, locale), output: compact(x.outputTokens, locale) }) : t("usage.noTokens")}
       </Tile>
-      {r.showPoints && (
-        <Tile icon={<Coins />} label={t("usage.points")} value={pointsText(x.pointsTranscription + x.pointsSummary, locale)}>
-          {t("usage.pointsSplit", { transcription: pointsText(x.pointsTranscription, locale), summary: pointsText(x.pointsSummary, locale) })}
-        </Tile>
-      )}
       <Tile icon={<Library />} label={t("usage.library")} value={t("usage.meetingsN", { n: r.library.meetings })}>
         {t("usage.librarySub", { time: hoursText(r.library.sec, locale), size: bytes(r.library.bytes) })}
       </Tile>
@@ -234,7 +245,7 @@ function Tile({ icon, label, value, children }: { icon: ReactNode; label: string
 /** One measure at a time over the period, a bar a day or a month; hovering a bar shows all of them. */
 function OverTime({ r }: { r: UsageReport }) {
   const { t, locale } = useI18n();
-  const [metric, setMetric] = useState<Metric>("sec");
+  const [metric, setMetric] = useState<Metric>("points");
   const [hover, setHover] = useState<number | null>(null);
   const m: Metric = metric === "points" && !r.showPoints ? "sec" : metric;
   const value = (b: UsageReport["series"][number]) => (m === "sec" ? b.sec : m === "summaries" ? b.summaries : b.points);
@@ -256,9 +267,9 @@ function OverTime({ r }: { r: UsageReport }) {
   const active = hover != null ? r.series[hover] : null;
   const n = r.series.length;
   const metrics: { id: Metric; label: TKey }[] = [
+    { id: "points", label: "usage.points" },
     { id: "sec", label: "usage.recorded" },
     { id: "summaries", label: "usage.summaries" },
-    ...(r.showPoints ? [{ id: "points" as const, label: "usage.points" as const }] : []),
   ];
 
   return (

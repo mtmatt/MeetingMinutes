@@ -63,15 +63,22 @@ describe("usage dashboard", () => {
       inputTokens: 20_000,
       outputTokens: 3_000,
       unknownTokens: 1,
-      pointsTranscription: 10_000,
+      // Charged 10 points; the 90-minute one was not charged and counts at today's 1 point a minute.
+      pointsTranscription: 100_000,
       pointsSummary: 3_500,
+      // The uncharged transcription and the uncharged summary.
+      estimatedItems: 2,
     });
+    expect(r.showPoints).toBe(true);
+    expect(r.prepaid).toBe(false);
+    expect(r.rates.perMinute).toBe(1);
     expect(r.series.reduce((a: number, b: any) => a + b.sec, 0)).toBe(6000);
     expect(r.languages.map((g: any) => g.key)).toEqual(["English", "Chinese"]);
     expect(r.lengths.find((g: any) => g.key === "lt15").count).toBe(1);
     expect(r.lengths.find((g: any) => g.key === "lt120").count).toBe(1);
     expect(r.templates.map((g: any) => [g.key, g.count])).toEqual(expect.arrayContaining([["Standard", 1], ["", 1]]));
-    expect(r.top[0].points).toBe(13_500);
+    expect(r.top[0].points).toBe(90_000);
+    expect(r.top[1].points).toBe(13_500);
     expect(r.byUser).toBeNull();
 
     const all = (await (await c.get("/api/usage?range=all")).json()) as any;

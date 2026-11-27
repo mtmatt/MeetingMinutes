@@ -663,6 +663,10 @@ export interface UsageReport {
   from: number;
   to: number;
   showPoints: boolean;
+  /** The account pays with points (what it shows was charged; otherwise counted at the rates). */
+  prepaid?: boolean;
+  /** The rates uncharged work is counted at. */
+  rates?: { perMinute: number; perKInput: number; perKOutput: number };
   totals: {
     sec: number;
     transcriptions: number;
@@ -675,6 +679,8 @@ export interface UsageReport {
     pointsSummary: number;
     failedTranscriptions: number;
     failedSummaries: number;
+    /** Work that was not charged, counted at the current rates. */
+    estimatedItems?: number;
   };
   series: { key: string; sec: number; transcriptions: number; summaries: number; points: number }[];
   languages: UsageGroup[];

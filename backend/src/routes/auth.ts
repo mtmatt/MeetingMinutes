@@ -80,6 +80,11 @@ function assertNewAccount(input: { username: string; password: string }) {
   if (findUserByUsername(input.username)) httpError(409, "That username is taken.", "username_taken");
 }
 
+/** Public info about a model, with the model's name kept for administrators only. */
+function withoutModel<T extends { model: string | null }>(info: T, admin: boolean): T {
+  return admin ? info : { ...info, model: null };
+}
+
 authRoutes.get("/state", (c) => {
   const token = getCookie(c, SESSION_COOKIE);
   const resolved = token ? resolveSession(token) : null;
@@ -95,10 +100,11 @@ authRoutes.get("/state", (c) => {
     googleClientId: config.googleClientId || null,
     // The site's address: a page opened at an earlier one (another port) moves there.
     siteOrigin: config.publicUrl ? new URL(config.publicUrl).origin : null,
-    // Which model writes summaries, so people are told where a transcript goes.
-    summarizer: resolved ? publicSummarizerInfo() : null,
+    // Who writes summaries, so people are told where a transcript goes. Which model is the
+    // administrators' business: others are told the company (or this server), not the model.
+    summarizer: resolved ? withoutModel(publicSummarizerInfo(), resolved.user.role === "admin") : null,
     // Where recordings are transcribed, for the same reason.
-    transcriber: resolved ? publicTranscriberInfo() : null,
+    transcriber: resolved ? withoutModel(publicTranscriberInfo(), resolved.user.role === "admin") : null,
     // Whether originals are later kept as audio only, so a video's uploader is told.
     mediaPolicy: resolved ? publicMediaPolicy() : null,
     // Recordings may be processed on other machines an administrator connected.

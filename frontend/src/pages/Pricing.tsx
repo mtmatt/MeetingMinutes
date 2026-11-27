@@ -56,7 +56,6 @@ export function PricingPage() {
         )}
       </header>
       <main className="terms-body pricing">
-        <p className="smallcaps pricing-kicker">{t("pricing.kicker")}</p>
         <h1 className="pricing-title">{t("pricing.title")}</h1>
         <p className="pricing-intro">{t("pricing.intro")}</p>
 

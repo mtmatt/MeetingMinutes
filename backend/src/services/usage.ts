@@ -1,11 +1,14 @@
 import { db, now } from "../db";
 import { parseJson } from "../lib/util";
+import { rates, summaryCost, transcriptionCost } from "./credits";
 
 /**
  * What someone used, for their usage dashboard: recording transcribed and summaries
  * written over a period, by day or month (Taiwan time), and sorted into kinds — the
  * recording's language and length, the weekday of the meeting, the summary template
- * and model — with the points they cost on a prepaid account. An administrator can
+ * and model — with the points they cost: what was charged on a prepaid account, and
+ * otherwise (a free account, or work from before points) what it comes to at the
+ * current rates. An administrator can
  * ask for one person or the whole site (then also by person).
  *
  * It counts finished work on recordings still in the library: transcribing again
@@ -186,6 +189,8 @@ export function usageReport(userId: string | null, range: UsageRange, at = now()
     unknownTokens: 0,
     pointsTranscription: 0,
     pointsSummary: 0,
+    /** Work that was not charged, counted at the current rates instead. */
+    estimatedItems: 0,
     failedTranscriptions: failed.jobs,
     failedSummaries: failed.summaries,
   };
@@ -206,9 +211,12 @@ export function usageReport(userId: string | null, range: UsageRange, at = now()
     return m;
   };
 
+  const r0 = rates();
   for (const r of transcriptions) {
     const sec = r.duration_sec ?? 0;
-    const pts = r.charged ?? 0;
+    // What it cost, or (not charged) what it comes to at today's rates.
+    if (r.charged == null) totals.estimatedItems += 1;
+    const pts = r.charged ?? (sec > 0 ? transcriptionCost(sec, r0) : 0);
     totals.sec += sec;
     totals.pointsTranscription += pts;
     const b = bucket(r.finished_at);
@@ -243,8 +251,9 @@ export function usageReport(userId: string | null, range: UsageRange, at = now()
     map.set(key, g);
   };
   for (const s of summaries) {
-    const pts = s.charged ?? 0;
     const tk = tokens(s.usage);
+    if (s.charged == null) totals.estimatedItems += 1;
+    const pts = s.charged ?? (tk ? summaryCost(tk.input, tk.output, r0) : 0);
     totals.pointsSummary += pts;
     if (tk) {
       totals.inputTokens += tk.input;
@@ -301,8 +310,12 @@ export function usageReport(userId: string | null, range: UsageRange, at = now()
     by: byMonth ? ("month" as const) : ("day" as const),
     from,
     to: at,
-    /** Show points: the account pays with them, or something in the period was charged. */
-    showPoints: prepaid || totals.pointsTranscription + totals.pointsSummary > 0,
+    /** Usage is shown in points, always (charged, or at the current rates). */
+    showPoints: true,
+    /** The account pays with points. */
+    prepaid,
+    /** The rates the uncharged work was counted at (points per minute, per thousand tokens). */
+    rates: r0,
     totals,
     series,
     languages: sortGroups(languages),
