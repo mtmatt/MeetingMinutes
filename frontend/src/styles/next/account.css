@@ -1,1 +1,1164 @@
-/* New interface (preview): account pages. Scoped to [data-ui="next"]; see base.css. */
+/*
+ * New interface (preview): account pages. Scoped to [data-ui="next"]; see base.css.
+ *
+ *   /settings, /voices   settings sections: title and short description left, controls right
+ *   /billing             the same two columns; package cards in the one card style
+ *   /usage               an open dashboard: figures on hairlines, neutral bars, accent on the highlighted bar
+ *   /templates           a quiet list beside the one card
+ *   /announcements       hairline rows at a reading measure
+ *
+ * Section rhythm everywhere: 48px top and bottom (32 on a phone), a 1px hairline between sections,
+ * a 280px head column and a 48px gutter on desktop; one column under 860px.
+ */
+
+/* ---------------------------------------------------------- page heads */
+
+/* The lede under the title: 18px in the second ink, 12px under the h1, at a reading measure. */
+[data-ui="next"] :is(.settings, .billing, .usage, .templates, .announcements) > .page-head p:is(.muted, .lede) {
+  margin-top: 12px;
+  max-width: 62ch;
+  font-size: var(--step-1);
+  line-height: 1.6;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+[data-ui="next"] :is(.settings, .billing, .usage, .templates, .announcements) > .page-head {
+  margin-bottom: 0;
+}
+[data-ui="next"] :is(.settings, .billing, .usage, .templates, .announcements) > .rule-double {
+  margin: 0;
+}
+
+/* The billing page used to stop at 980px; it now uses the page's width like Settings. */
+[data-ui="next"] .billing {
+  max-width: none;
+}
+
+/* ------------------------------------------------------ settings sections */
+
+[data-ui="next"] .settings-section {
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px 48px;
+  padding: 48px 0;
+  border-bottom: 1px solid var(--rule);
+}
+[data-ui="next"] .settings-section:last-child {
+  border-bottom: 0;
+}
+[data-ui="next"] .settings-section-head h2 {
+  font-size: var(--h2-size);
+  font-weight: var(--h2-weight);
+  line-height: var(--h2-leading);
+}
+[data-ui="next"] .settings-section-head p {
+  margin-top: 8px;
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-3);
+  text-wrap: pretty;
+}
+[data-ui="next"] .settings-form {
+  gap: 24px;
+  max-width: 600px;
+}
+
+/* Labels 13px at 500; hints and notes are sentences, so they read at 16px in the quieter ink. */
+[data-ui="next"] .settings .field > label,
+[data-ui="next"] .settings .field-label {
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+[data-ui="next"] .settings .field > label .faint {
+  font-weight: 400;
+}
+[data-ui="next"] .settings .field-hint,
+[data-ui="next"] .settings .settings-form p.faint {
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+[data-ui="next"] .settings .settings-section-body > p.muted {
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+[data-ui="next"] .settings .switch-label {
+  font-size: var(--step-0);
+}
+[data-ui="next"] .settings .grid-2.even {
+  gap: 16px;
+}
+
+/* Appearance: three equal choices; the chosen one takes a 2px ink outline, no colour wash. */
+[data-ui="next"] .theme-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 480px;
+}
+[data-ui="next"] .theme-card {
+  width: auto;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: none;
+  transition: border-color var(--dur-out) var(--ease-out), box-shadow var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .theme-card:hover {
+  border-color: var(--rule-strong);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .theme-card[aria-pressed="true"] {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+[data-ui="next"] .theme-card-preview {
+  height: 64px;
+  border-radius: var(--radius-s);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ink) 8%, transparent);
+}
+[data-ui="next"] .theme-card-label {
+  gap: 8px;
+  padding: 0 4px 4px;
+  font-size: var(--step--1);
+  font-weight: 500;
+}
+[data-ui="next"] .theme-card-label svg {
+  width: 16px;
+  height: 16px;
+  color: var(--ink-3);
+}
+
+/* Signed-in devices and presets: hairline rows, no boxes. */
+[data-ui="next"] .session-list {
+  gap: 0;
+  max-width: 600px;
+  border-top: 1px solid var(--rule);
+}
+[data-ui="next"] .session-list li {
+  gap: 16px;
+  min-height: 72px;
+  padding: 14px 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+}
+[data-ui="next"] .session-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+[data-ui="next"] .session-icon svg {
+  width: 18px;
+  height: 18px;
+}
+[data-ui="next"] .session-name {
+  font-size: var(--step-0);
+  font-weight: 500;
+  flex-wrap: wrap;
+}
+[data-ui="next"] .session-main .mono {
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .session-list + .btn {
+  margin-top: 24px !important; /* the markup sets 12px inline */
+}
+
+[data-ui="next"] .settings .preset-list {
+  max-width: 600px;
+  border-top: 1px solid var(--rule);
+}
+[data-ui="next"] .settings .preset-item,
+[data-ui="next"] .settings .preset-item:first-child {
+  padding: 14px 0;
+}
+[data-ui="next"] .settings .preset-item-name {
+  font-weight: 500;
+}
+[data-ui="next"] .settings .preset-item-line {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+}
+
+[data-ui="next"] .settings-email-current {
+  gap: 12px;
+  font-size: var(--step-0);
+}
+[data-ui="next"] .settings-actions {
+  gap: 12px;
+}
+
+@media (max-width: 860px) {
+  [data-ui="next"] .settings-section {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    padding: 32px 0;
+  }
+}
+@media (max-width: 560px) {
+  [data-ui="next"] .settings .grid-2.even {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  [data-ui="next"] .theme-cards {
+    gap: 8px;
+  }
+  [data-ui="next"] .theme-card-preview {
+    height: 52px;
+    padding: 10px;
+  }
+}
+
+/* ---------------------------------------------------------------- voices */
+
+/* "How it works": plain text under a 13px label, not a tinted box. */
+[data-ui="next"] .voices-how {
+  gap: 8px;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+[data-ui="next"] .voices-how .smallcaps {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .voices-how ol {
+  gap: 8px;
+  padding-left: 1.4em;
+}
+[data-ui="next"] .voices-how li::marker {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .voices-scan {
+  gap: 12px;
+}
+[data-ui="next"] .voices-empty {
+  padding: 0;
+  gap: 8px;
+}
+[data-ui="next"] .voices-empty h3 {
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+}
+[data-ui="next"] .voices-empty p {
+  max-width: 46ch;
+  color: var(--ink-3);
+}
+
+[data-ui="next"] .voice-people {
+  gap: 0;
+  max-width: 600px;
+  border-top: 1px solid var(--rule);
+}
+[data-ui="next"] .voice-person {
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+}
+[data-ui="next"] .voice-person-head {
+  gap: 12px;
+  min-height: 72px;
+  padding: 14px 0;
+}
+[data-ui="next"] .voice-person-head .avatar {
+  --size: 40px !important; /* the markup sets 36px inline */
+}
+[data-ui="next"] .voice-person-main {
+  gap: 2px;
+  border-radius: var(--radius-s);
+}
+[data-ui="next"] .voice-person-name {
+  font-size: var(--step-0);
+  font-weight: 500;
+}
+[data-ui="next"] .voice-person-facts {
+  font-size: var(--step--2);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .voice-person-toggle svg {
+  transition: transform var(--dur-in) var(--ease-out);
+}
+[data-ui="next"] .voice-person-callout {
+  margin: 0 0 14px 52px;
+}
+/* The recordings sit under the name, indented past the avatar. */
+[data-ui="next"] .voice-samples {
+  padding: 0 0 12px 52px;
+  border-top: 0;
+}
+[data-ui="next"] .voice-samples li {
+  gap: 12px;
+  min-height: 44px;
+  font-size: var(--step--1);
+}
+[data-ui="next"] .voice-samples li + li {
+  border-top: 1px solid var(--rule);
+}
+[data-ui="next"] .voice-sample-main a {
+  font-weight: 500;
+  font-size: var(--step-0);
+}
+[data-ui="next"] .voice-sample-meta {
+  font-size: var(--step--2);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 560px) {
+  [data-ui="next"] .voice-samples {
+    padding-left: 0;
+  }
+  [data-ui="next"] .voice-person-callout {
+    margin-left: 0;
+  }
+  [data-ui="next"] .voice-samples li {
+    padding: 8px 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-ui="next"] .voice-person-toggle svg {
+    transition: none;
+  }
+}
+
+/* --------------------------------------------------------------- billing */
+
+/* Balance, buying and history share the settings columns: the head left, the content right. */
+[data-ui="next"] .billing-balance,
+[data-ui="next"] .billing-section {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  column-gap: 48px;
+  row-gap: 0;
+  align-items: start;
+  padding: 48px 0;
+  border-top: 0;
+  border-bottom: 1px solid var(--rule);
+}
+[data-ui="next"] .billing > :last-child {
+  border-bottom: 0;
+}
+/* Every child goes to the right column; the head spans the left one. */
+[data-ui="next"] .billing-section > * {
+  grid-column: 2;
+  min-width: 0;
+}
+[data-ui="next"] .billing-section > :is(.billing-section-head, h2) {
+  grid-column: 1;
+  grid-row: 1 / span 12;
+  align-self: start;
+  margin: 0;
+}
+[data-ui="next"] .billing-section > :not(.billing-section-head, h2) + :not(.billing-section-head, h2) {
+  margin-top: 24px;
+}
+[data-ui="next"] .billing-section > .billing-pay-note + .billing-pay-note {
+  margin-top: 8px;
+}
+[data-ui="next"] .billing-section h2 {
+  font-size: var(--h2-size);
+  font-weight: var(--h2-weight);
+  line-height: var(--h2-leading);
+}
+[data-ui="next"] .billing-section-head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0;
+}
+[data-ui="next"] .billing-section > p.muted {
+  margin: 0;
+  color: var(--ink-3);
+}
+[data-ui="next"] .billing-usage-link {
+  font-size: var(--step-0);
+  color: var(--ink-2);
+}
+
+/* The balance: a 13px label over the figure, in the ink; nothing larger than the page's h1. */
+[data-ui="next"] .billing-balance-main {
+  gap: 8px;
+}
+[data-ui="next"] .billing-balance-main .smallcaps {
+  color: var(--ink-3);
+}
+[data-ui="next"] .billing-balance-value {
+  font-size: var(--step-4);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+[data-ui="next"] .billing-balance-value.is-empty {
+  color: var(--ink-3);
+}
+[data-ui="next"] .billing-balance-hours {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+}
+[data-ui="next"] .billing-balance-side {
+  gap: 12px;
+  max-width: 600px;
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+[data-ui="next"] .billing-balance-side > .faint {
+  color: var(--ink-3);
+}
+[data-ui="next"] .billing-balance-side svg {
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+}
+[data-ui="next"] .billing-rates {
+  gap: 4px 24px;
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .billing-rates dt {
+  font-size: var(--step--1);
+  font-weight: 500;
+  color: var(--ink-3);
+  align-self: baseline;
+}
+
+/* Why prepaid, and the lowest hourly price: reading text, then one firmer line. */
+[data-ui="next"] .billing-pitch {
+  gap: 4px;
+  margin: 0;
+}
+[data-ui="next"] .billing-pitch-points {
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+[data-ui="next"] .billing-pitch-price {
+  font-family: var(--font-sans);
+  font-size: var(--step-1);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .billing-agree {
+  max-width: 720px;
+  margin: 0;
+  padding: 0;
+  gap: 12px;
+  background: transparent;
+  border-radius: 0;
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+[data-ui="next"] .billing-agree input {
+  width: 18px;
+  height: 18px;
+  margin-top: 4px;
+}
+[data-ui="next"] .billing-agree a {
+  font-weight: 500;
+}
+
+/* Package cards: the one card. The points name the card, the price is the figure (in the ink),
+   the facts follow in 14px, and the buy button is the card's single filled action at its foot. */
+[data-ui="next"] .billing-packages {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+[data-ui="next"] .billing-package {
+  gap: 4px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-l);
+  box-shadow: none;
+}
+[data-ui="next"] .billing-package-minutes {
+  order: 1;
+  gap: 4px;
+}
+[data-ui="next"] .billing-package-number {
+  font-family: var(--font-sans);
+  font-size: var(--step-1);
+  font-weight: 550;
+  line-height: 1.35;
+}
+[data-ui="next"] .billing-package-unit {
+  font-size: var(--step-1);
+  font-weight: 550;
+  color: var(--ink);
+}
+[data-ui="next"] .billing-package-price {
+  order: 2;
+  margin: 12px 0 8px;
+  font-family: var(--font-display);
+  font-size: var(--step-4);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .billing-package-hours {
+  order: 3;
+  font-size: var(--step--1);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+[data-ui="next"] .billing-package-each {
+  order: 4;
+  gap: 8px;
+  min-height: 26px;
+  font-size: var(--step--1);
+}
+[data-ui="next"] .billing-package-hourly {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+[data-ui="next"] .billing-package-point {
+  order: 5;
+  margin: 0;
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+[data-ui="next"] .billing-package > .btn {
+  order: 6;
+  width: 100%;
+  margin-top: auto;
+}
+/* The button sits 24px under the facts, however tall the card. */
+[data-ui="next"] .billing-package-point {
+  margin-bottom: 24px;
+}
+
+[data-ui="next"] .billing-pay-note {
+  margin: 0;
+  max-width: 62ch;
+  font-size: var(--step--1);
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+/* Banners: neutral by default, colour only for the paid / failed states. */
+[data-ui="next"] .billing-banner {
+  gap: 16px;
+  margin: 32px 0 0;
+  padding: 16px 20px;
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+}
+[data-ui="next"] .billing-banner.info {
+  background: var(--surface);
+  border-color: var(--rule);
+}
+[data-ui="next"] .billing-banner.info > svg,
+[data-ui="next"] .billing-banner > svg {
+  color: var(--ink-2);
+}
+[data-ui="next"] .billing-banner.ok > svg {
+  color: var(--ok);
+}
+[data-ui="next"] .billing-banner.danger > svg {
+  color: var(--danger);
+}
+[data-ui="next"] .billing-banner strong {
+  font-weight: 550;
+}
+[data-ui="next"] .billing-banner p {
+  margin-top: 4px;
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+[data-ui="next"] .billing-preview p {
+  margin-top: 2px;
+}
+[data-ui="next"] .billing-exempt {
+  gap: 16px;
+  margin-top: 32px;
+  padding: 16px 20px;
+  font-size: var(--step-0);
+  border-radius: var(--radius-m);
+}
+[data-ui="next"] .billing-codes {
+  gap: 4px 16px;
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .billing-codes dt {
+  font-size: var(--step--2);
+  font-weight: 500;
+}
+[data-ui="next"] .billing-codes dd {
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* History: tabular figures in the sans, 13px meta under each line. */
+[data-ui="next"] .billing-history td.mono,
+[data-ui="next"] .billing-history td.num {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .billing-history td.nowrap {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .billing-history-what {
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+[data-ui="next"] .billing-history-kind svg {
+  margin-top: 4px;
+  width: 16px;
+  height: 16px;
+}
+[data-ui="next"] .billing-section .table-wrap {
+  padding: 0;
+}
+
+@media (max-width: 860px) {
+  [data-ui="next"] .billing-balance,
+  [data-ui="next"] .billing-section {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 32px 0;
+  }
+  [data-ui="next"] .billing-section > *,
+  [data-ui="next"] .billing-section > :is(.billing-section-head, h2) {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  [data-ui="next"] .billing-section > :is(.billing-section-head, h2) {
+    margin-bottom: 16px;
+  }
+  [data-ui="next"] .billing-section-head {
+    flex-direction: row;
+    align-items: baseline;
+    flex-wrap: wrap;
+  }
+  [data-ui="next"] .billing-balance {
+    row-gap: 24px;
+  }
+  [data-ui="next"] .billing-section > :not(.billing-section-head, h2) + :not(.billing-section-head, h2) {
+    margin-top: 16px;
+  }
+}
+@media (max-width: 640px) {
+  [data-ui="next"] .billing-packages {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  [data-ui="next"] .billing-banner {
+    margin-top: 24px;
+  }
+  [data-ui="next"] .billing-banner > .btn {
+    margin-left: 36px;
+  }
+}
+
+/* ------------------------------------------------------------------ usage */
+
+[data-ui="next"] .usage-controls {
+  gap: 12px 16px;
+  margin: 32px 0;
+}
+[data-ui="next"] .usage-who {
+  min-width: 200px;
+}
+[data-ui="next"] .usage-body {
+  gap: 48px;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+/* The figures: open tiles on one hairline, no boxes; 13px label, tabular figure, 13px note. */
+[data-ui="next"] .usage-tiles {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 24px 48px;
+}
+[data-ui="next"] .usage-tile {
+  gap: 8px;
+  padding: 16px 0 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--rule-strong);
+  border-radius: 0;
+  box-shadow: none;
+}
+[data-ui="next"] .usage-tile-label {
+  gap: 8px;
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-3);
+}
+[data-ui="next"] .usage-tile-label svg {
+  width: 16px;
+  height: 16px;
+}
+[data-ui="next"] .usage-tile-value {
+  font-size: var(--step-3);
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .usage-tile-sub {
+  font-size: var(--step--2);
+  line-height: 1.5;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .usage-failed {
+  margin: -24px 0 0;
+  font-size: var(--step--1);
+}
+
+/* Sections, not boxes: a hairline above each, its title and a one-line note. */
+[data-ui="next"] .card.usage-card {
+  padding: 24px 0 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  border-radius: 0;
+}
+[data-ui="next"] .usage-card .system-h {
+  margin: 0 0 4px;
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+  line-height: var(--h3-leading);
+}
+[data-ui="next"] .usage-card-head {
+  gap: 12px;
+  margin-bottom: 24px;
+}
+[data-ui="next"] .usage-hint {
+  margin: 0 0 20px;
+  font-size: var(--step--1);
+  color: var(--ink-3);
+}
+[data-ui="next"] .usage-none {
+  font-size: var(--step-0);
+}
+
+/* The chart: one series in a neutral ink tone; the bar under the pointer or focus takes the accent. */
+[data-ui="next"] .usage-chart {
+  grid-template-rows: 200px auto;
+  column-gap: 12px;
+  row-gap: 8px;
+}
+[data-ui="next"] .usage-chart-axis,
+[data-ui="next"] .usage-chart-x {
+  font-size: var(--step--2);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .usage-chart-plot {
+  border-bottom-color: var(--rule-strong);
+}
+[data-ui="next"] .usage-chart-grid {
+  border-top: 1px solid var(--rule);
+}
+[data-ui="next"] .usage-bar-fill {
+  border-radius: 3px 3px 0 0;
+  background: color-mix(in oklab, var(--ink) 30%, var(--bg));
+  opacity: 1;
+  transition: background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .usage-bar.is-hover .usage-bar-fill,
+[data-ui="next"] .usage-bar:focus-visible .usage-bar-fill {
+  background: var(--accent);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .usage-bar.is-hover {
+  background: color-mix(in oklab, var(--ink) 5%, transparent);
+  border-radius: 3px 3px 0 0;
+}
+[data-ui="next"] .usage-bar:focus-visible {
+  outline: 2px solid var(--accent);
+  border-radius: 3px;
+}
+[data-ui="next"] .usage-tip {
+  gap: 4px;
+  min-width: 200px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-2);
+  font-size: var(--step--1);
+}
+[data-ui="next"] .usage-tip strong {
+  font-weight: 550;
+}
+
+[data-ui="next"] .usage-grid {
+  gap: 48px;
+}
+
+/* Ranked rows: 16px label and tabular figures, a thin neutral bar under each. */
+[data-ui="next"] .usage-bars {
+  gap: 16px;
+}
+[data-ui="next"] .usage-bars-line {
+  gap: 16px;
+  font-size: var(--step-0);
+}
+[data-ui="next"] .usage-bars-value {
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .usage-bars-value .faint {
+  color: var(--ink-3);
+}
+[data-ui="next"] .usage-bars-track {
+  height: 4px;
+  margin-top: 8px;
+  background: var(--surface-3);
+}
+[data-ui="next"] .usage-bars-fill {
+  background: color-mix(in oklab, var(--ink) 55%, var(--bg));
+  opacity: 1;
+}
+
+/* Tables: figures in the sans with tabular numerals (the mono zero read as a slashed glyph). */
+[data-ui="next"] .usage-table td.num,
+[data-ui="next"] .usage-table td.mono {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .usage-card .table-wrap {
+  padding: 0;
+}
+[data-ui="next"] .usage-plan {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .card.usage-empty {
+  padding: 64px 24px;
+  gap: 12px;
+  border-radius: var(--radius-l);
+}
+[data-ui="next"] .usage-empty p {
+  font-size: var(--step-0);
+}
+[data-ui="next"] .usage-note {
+  max-width: 62ch;
+  font-size: var(--step--1);
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+@media (max-width: 760px) {
+  [data-ui="next"] .usage-body {
+    gap: 32px;
+  }
+  [data-ui="next"] .usage-grid {
+    gap: 32px;
+  }
+  [data-ui="next"] .usage-controls {
+    margin: 24px 0;
+  }
+  [data-ui="next"] .usage-failed {
+    margin-top: -16px;
+  }
+}
+@media (max-width: 480px) {
+  [data-ui="next"] .usage-tiles {
+    grid-template-columns: 1fr 1fr;
+    gap: 24px 16px;
+  }
+  [data-ui="next"] .usage-tile {
+    padding: 12px 0 0;
+  }
+  [data-ui="next"] .usage-tile-value {
+    font-size: var(--step-2);
+  }
+  [data-ui="next"] .card.usage-card {
+    padding: 20px 0 0;
+  }
+  [data-ui="next"] .usage-chart {
+    grid-template-rows: 160px auto;
+  }
+  [data-ui="next"] .usage-who {
+    min-width: 0;
+    width: 100%;
+  }
+  [data-ui="next"] .usage-controls .segmented {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  [data-ui="next"] .usage-controls .segmented button {
+    padding: 0 6px;
+  }
+  [data-ui="next"] .usage-bars-line {
+    gap: 2px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-ui="next"] .usage-body {
+    transition: none;
+  }
+}
+
+/* -------------------------------------------------------------- templates */
+
+[data-ui="next"] .tpl-layout {
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 48px;
+  margin-top: 48px;
+}
+[data-ui="next"] .tpl-list {
+  gap: 2px;
+  top: calc(var(--masthead-h) + 32px);
+}
+[data-ui="next"] .tpl-list-label {
+  padding: 24px 12px 8px;
+}
+[data-ui="next"] .tpl-list-label:first-child {
+  padding-top: 0;
+}
+/* Rows on the page's ground; the chosen one is a step darker, like the masthead's current page. */
+[data-ui="next"] .tpl-item {
+  gap: 4px;
+  padding: 12px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--ink);
+  transition: background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .tpl-item:hover {
+  background: color-mix(in oklab, var(--bg) 94%, var(--ink));
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .tpl-item.selected {
+  background: color-mix(in oklab, var(--bg) 90%, var(--ink));
+  border: 0;
+  box-shadow: none;
+}
+[data-ui="next"] .tpl-item-name {
+  gap: 8px;
+  font-size: var(--step-0);
+  font-weight: 500;
+}
+[data-ui="next"] .tpl-item-name svg {
+  width: 14px;
+  height: 14px;
+}
+[data-ui="next"] .tpl-item-desc {
+  font-size: var(--step--1);
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+[data-ui="next"] .tpl-empty {
+  padding: 4px 12px;
+  font-size: var(--step-0);
+  color: var(--ink-3);
+}
+
+/* The editor: the one card, 32px inside. */
+[data-ui="next"] .tpl-editor {
+  gap: 24px;
+  padding: 32px;
+}
+[data-ui="next"] .tpl-editor .field > label {
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+[data-ui="next"] .tpl-editor .field > label .faint {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .tpl-editor .input-title {
+  font-family: var(--font-sans);
+  font-size: var(--step-1);
+  font-weight: 500;
+}
+[data-ui="next"] .tpl-editor .textarea.code {
+  font-size: var(--step--1);
+  line-height: 1.7;
+}
+[data-ui="next"] .tpl-editor .field-hint {
+  font-size: var(--step--1);
+  line-height: 1.6;
+}
+[data-ui="next"] .tpl-actions {
+  gap: 12px;
+  padding-top: 24px;
+  border-top: 1px solid var(--rule);
+}
+[data-ui="next"] .tpl-readonly-head {
+  gap: 24px;
+}
+[data-ui="next"] .tpl-readonly-head .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+[data-ui="next"] .tpl-readonly-head h2 {
+  margin: 8px 0 8px;
+  font-size: var(--h2-size);
+  font-weight: var(--h2-weight);
+}
+[data-ui="next"] .tpl-readonly-head p {
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+[data-ui="next"] .tpl-body {
+  padding: 24px;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  font-size: var(--step--1);
+  line-height: 1.75;
+}
+[data-ui="next"] .tpl-editor > p.faint {
+  color: var(--ink-3);
+}
+
+@media (max-width: 860px) {
+  [data-ui="next"] .tpl-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+    margin-top: 32px;
+  }
+  [data-ui="next"] .tpl-editor {
+    padding: 20px;
+  }
+}
+@media (max-width: 560px) {
+  [data-ui="next"] .tpl-readonly-head {
+    flex-direction: column;
+    gap: 16px;
+  }
+  [data-ui="next"] .tpl-actions {
+    flex-wrap: wrap;
+  }
+}
+
+/* --------------------------------------------------------- announcements */
+
+/* Each announcement is a row between hairlines at a reading measure; its level shows only in the icon. */
+[data-ui="next"] .announce-section {
+  gap: 0;
+  max-width: 760px;
+  margin: 0;
+  padding: 16px 0 32px;
+}
+[data-ui="next"] .announce-section + .announce-section {
+  padding-top: 48px;
+}
+[data-ui="next"] .announce-past-h {
+  margin: 0 0 8px;
+  font-size: var(--h2-size);
+  font-weight: var(--h2-weight);
+  color: var(--ink);
+}
+[data-ui="next"] .announce-item {
+  padding: 32px 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  box-shadow: none;
+  scroll-margin-top: calc(var(--masthead-h) + 24px);
+}
+[data-ui="next"] .announce-item:last-child {
+  border-bottom: 0;
+}
+[data-ui="next"] .announce-item.is-past {
+  background: transparent;
+}
+[data-ui="next"] .announce-item header {
+  gap: 12px;
+}
+[data-ui="next"] .announce-item h2 {
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+  line-height: var(--h3-leading);
+}
+[data-ui="next"] .announce-item.is-past h2 {
+  color: var(--ink-2);
+}
+[data-ui="next"] .announce-item .announce-icon {
+  width: 20px;
+  height: 20px;
+}
+[data-ui="next"] .announce-item.is-past .announce-icon {
+  color: var(--ink-4);
+}
+[data-ui="next"] .announce-when {
+  margin: 8px 0 16px 32px;
+  font-size: var(--step--2);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .announce-item .announce-body {
+  margin-left: 32px;
+  max-width: 62ch;
+  font-size: var(--step-0);
+  line-height: 1.7;
+  color: var(--ink);
+}
+[data-ui="next"] .announce-item.is-past .announce-body {
+  color: var(--ink-2);
+}
+[data-ui="next"] .announce-item .announce-body p,
+[data-ui="next"] .announce-item .announce-body ul,
+[data-ui="next"] .announce-item .announce-body ol {
+  margin: 8px 0;
+}
+[data-ui="next"] .announce-empty {
+  gap: 12px;
+  padding: 96px 24px;
+  color: var(--ink-3);
+}
+[data-ui="next"] .announce-empty p {
+  font-size: var(--step-0);
+}
+@media (max-width: 560px) {
+  [data-ui="next"] .announce-item {
+    padding: 24px 0;
+  }
+  [data-ui="next"] .announce-when,
+  [data-ui="next"] .announce-item .announce-body {
+    margin-left: 0;
+  }
+}
+
+/* ------------------------------------------------------------- refinements */
+
+/* Tables in open sections: the first and last columns sit on the section's edges. */
+[data-ui="next"] :is(.usage-card, .billing-section) .table :is(th, td):first-child {
+  padding-left: 0;
+}
+[data-ui="next"] :is(.usage-card, .billing-section) .table :is(th, td):last-child {
+  padding-right: 0;
+}
+/* Counts in the sans with tabular numerals, like the rest of the figures. */
+[data-ui="next"] .tpl-editor .field > label .mono,
+[data-ui="next"] .voice-sample-meta.mono {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+/* People are initials on a quiet disc; the accent stays for actions. */
+[data-ui="next"] .voice-person .avatar {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+/* Past announcements under their own hairline. */
+[data-ui="next"] .announce-section + .announce-section {
+  margin-top: 16px;
+  border-top: 1px solid var(--rule);
+}

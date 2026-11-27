@@ -1,1 +1,1047 @@
-/* New interface (preview): library pages. Scoped to [data-ui="next"]; see base.css. */
+/* New interface (preview): library pages. Scoped to [data-ui="next"]; see base.css.
+ *
+ *   - the library (/): month heads, meeting rows, search, empty state, drop overlay;
+ *   - the new-recording page (/new): presets, steps, drop zone, options, recorder,
+ *     the submit bar;
+ *   - the masthead's 新增錄音 and user menus as they open;
+ *   - the announcements banner above pages.
+ *
+ * Shared pieces (SummaryComposer's template cards, disclosure, data-flow note)
+ * are also used in the meeting page's dialogs, so they are styled here only
+ * inside .upload.
+ */
+
+/* ============================================================ library */
+
+/* Search: the same field as every input (8px radius, 44px, accent focus). */
+[data-ui="next"] .search-field {
+  height: var(--control-h);
+  gap: 10px;
+  padding: 0 6px 0 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  transition:
+    border-color var(--dur-out) var(--ease-out),
+    box-shadow var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .search-field:hover {
+  border-color: color-mix(in oklab, var(--ink) 35%, transparent);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .search-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent);
+}
+[data-ui="next"] .search-field svg {
+  width: 18px;
+  height: 18px;
+  color: var(--ink-3);
+}
+[data-ui="next"] .search-field input {
+  font-size: var(--step-0);
+  color: var(--ink);
+}
+[data-ui="next"] .search-field input::placeholder {
+  color: var(--ink-3);
+}
+[data-ui="next"] .library-search {
+  width: min(360px, 100%);
+}
+
+/* Month heads: a quiet heading on a hairline, not the ledger's ink rule. */
+[data-ui="next"] .ledger-group {
+  margin-top: 48px;
+}
+[data-ui="next"] .ledger-group:first-child {
+  margin-top: 32px;
+}
+[data-ui="next"] .ledger-month {
+  font-family: var(--font-sans);
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+  line-height: var(--h3-leading);
+  letter-spacing: 0;
+  color: var(--ink);
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+
+/* A row is a link: on hover its ground steps one shade toward the ink (no lift).
+   The hairline between rows is drawn inset, so the hover ground can be rounded. */
+[data-ui="next"] .ledger-row {
+  --ledger-line: 24px;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 24px;
+  margin: 0 -12px;
+  padding: 20px 12px;
+  border-bottom: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+  transition: background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .ledger-row::before {
+  left: 12px;
+  right: 12px;
+  top: auto;
+  bottom: 0;
+  width: auto;
+  height: 1px;
+  border-radius: 0;
+  background: var(--rule);
+  transform: none;
+  transition: opacity var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .ledger-row:hover::before {
+  transform: none;
+}
+[data-ui="next"] .ledger-row:hover .ledger-title {
+  color: var(--ink);
+}
+@media (hover: hover) and (pointer: fine) {
+  [data-ui="next"] a.ledger-row:hover {
+    background: color-mix(in oklab, var(--bg) 95.5%, var(--ink));
+    transition-duration: var(--dur-in);
+  }
+  /* The hovered row's own line and the line above it give way to the ground. */
+  [data-ui="next"] a.ledger-row:hover::before,
+  [data-ui="next"] .ledger-row:has(+ a.ledger-row:hover)::before {
+    opacity: 0;
+  }
+}
+[data-ui="next"] a.ledger-row:focus-visible {
+  outline-offset: 0;
+}
+[data-ui="next"] a.ledger-row:focus-visible::before {
+  opacity: 0;
+}
+
+/* The date: a quiet index in tabular figures. */
+[data-ui="next"] .ledger-date {
+  gap: 2px;
+}
+[data-ui="next"] .ledger-day {
+  font-family: var(--font-display);
+  font-size: var(--step-2);
+  font-weight: 450;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--ink-2);
+  font-variation-settings: normal;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+[data-ui="next"] .ledger-weekday {
+  margin-top: 2px;
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+[data-ui="next"] .ledger-main {
+  gap: 4px;
+}
+[data-ui="next"] .ledger-head {
+  gap: 4px 24px;
+}
+[data-ui="next"] .ledger-title {
+  font-family: var(--font-sans);
+  font-size: var(--step-0);
+  font-weight: 550;
+  line-height: 1.5;
+  letter-spacing: 0;
+  color: var(--ink);
+  transition: none;
+}
+
+/* The facts: 13px labels in the muted ink, numbers in tabular figures. */
+[data-ui="next"] .ledger-meta {
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-3);
+  column-gap: 16px;
+}
+[data-ui="next"] .ledger-meta li {
+  gap: 6px;
+}
+[data-ui="next"] .ledger-meta svg {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-4);
+}
+@media (min-width: 761px) {
+  [data-ui="next"] .ledger-meta {
+    grid-template-columns: 14px 6.6em 5.6em 2.6em 7em;
+    column-gap: 16px;
+  }
+}
+
+/* The excerpt: reading size, two lines at most. */
+[data-ui="next"] .ledger-preview {
+  margin-top: 2px;
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-2);
+  max-width: 72ch;
+}
+[data-ui="next"] .ledger-preview.muted-preview {
+  color: var(--ink-3);
+}
+/* "Found at 12:03": a plain label before the hit, no box. */
+[data-ui="next"] .ledger-preview-label {
+  margin-right: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: var(--step--2);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+  vertical-align: 0.05em;
+}
+[data-ui="next"] .ledger-preview mark {
+  border-radius: 3px;
+}
+
+/* A failed row: the reason in the danger ink, its actions on one line. */
+[data-ui="next"] .ledger-failure {
+  gap: 12px;
+  margin-top: 4px;
+}
+[data-ui="next"] .ledger-failure p {
+  font-size: var(--step-0);
+  font-weight: 500;
+  line-height: 1.5;
+  align-items: flex-start;
+}
+[data-ui="next"] .ledger-failure p svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 4px;
+}
+[data-ui="next"] .ledger-failure-actions {
+  gap: 8px;
+}
+[data-ui="next"] .ledger-failure-actions .btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+[data-ui="next"] .ledger-status {
+  min-width: 8rem;
+}
+
+/* Status pills: the token colours on their soft grounds, no border. */
+[data-ui="next"] .ledger-status .pill,
+[data-ui="next"] .upload .pill {
+  gap: 6px;
+}
+[data-ui="next"] .ledger-status .pill.neutral {
+  background: transparent;
+  color: var(--ink-3);
+  border-color: var(--rule-strong);
+}
+[data-ui="next"] .ledger-status .pill .dot {
+  width: 6px;
+  height: 6px;
+}
+[data-ui="next"] .ledger-status .pill.info .ring {
+  flex: none;
+}
+
+/* Empty library: the seal, one sentence, the one primary action. */
+[data-ui="next"] .library-empty {
+  gap: 16px;
+  padding: 96px 24px;
+}
+[data-ui="next"] .library-empty h2 {
+  margin-top: 16px;
+  font-family: var(--font-display);
+  font-size: var(--step-3);
+  font-weight: 450;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+[data-ui="next"] .library-empty p {
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-2);
+  max-width: 44ch;
+  margin-bottom: 16px;
+}
+[data-ui="next"] .library-empty-actions {
+  gap: 12px;
+}
+[data-ui="next"] .library .empty p {
+  color: var(--ink-2);
+}
+
+/* Drop a file on the library: an opaque wash, no blur. */
+[data-ui="next"] .drop-overlay {
+  background: color-mix(in oklab, var(--bg) 88%, transparent);
+  backdrop-filter: none;
+  animation: none;
+}
+[data-ui="next"] .drop-overlay-card {
+  gap: 12px;
+  padding: 48px 64px;
+  border: 1.5px dashed var(--accent);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  font-family: var(--font-sans);
+  font-size: var(--step-1);
+  font-weight: 500;
+  box-shadow: var(--shadow-2);
+}
+[data-ui="next"] .drop-overlay-card svg {
+  width: 28px;
+  height: 28px;
+}
+
+@media (max-width: 760px) {
+  [data-ui="next"] .ledger-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 8px 16px;
+    padding: 16px 12px;
+  }
+  [data-ui="next"] .ledger-day {
+    font-size: var(--step-1);
+  }
+  [data-ui="next"] .ledger-meta {
+    column-gap: 14px;
+  }
+  [data-ui="next"] .ledger-status {
+    min-width: 0;
+  }
+  [data-ui="next"] .library-search {
+    width: 100%;
+  }
+  [data-ui="next"] .library-empty {
+    padding: 64px 8px;
+  }
+}
+
+/* ============================================================= upload */
+
+[data-ui="next"] .upload {
+  padding-bottom: 96px;
+}
+
+/* Presets: a quiet line above the form, not a box of its own. */
+[data-ui="next"] .upload .preset-bar {
+  gap: 8px;
+  padding: 24px 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  background: none;
+}
+[data-ui="next"] .preset-bar-row {
+  gap: 8px 16px;
+}
+[data-ui="next"] .preset-bar-label {
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-3);
+  gap: 6px;
+}
+[data-ui="next"] .preset-bar-label svg {
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+}
+[data-ui="next"] .preset-select {
+  max-width: 320px;
+}
+[data-ui="next"] .preset-bar-actions {
+  gap: 8px;
+}
+/* The form has one filled button (the submit); "update preset" is the outlined one. */
+[data-ui="next"] .preset-bar .btn-ink {
+  --btn-bg: var(--bg);
+  --btn-fg: var(--ink);
+  --btn-border: var(--rule-strong);
+}
+[data-ui="next"] .preset-bar .btn-ink:hover:not(:disabled) {
+  --btn-bg: color-mix(in oklab, var(--bg) 94%, var(--ink));
+  --btn-border: color-mix(in oklab, var(--ink) 35%, transparent);
+}
+[data-ui="next"] .preset-bar-actions .btn svg {
+  width: 16px;
+  height: 16px;
+}
+[data-ui="next"] .preset-bar .preset-bar-hint {
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+
+/* Steps: a label column and a content column, hairlines between. */
+[data-ui="next"] .form-step {
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 48px;
+  padding: 40px 0;
+  border-bottom: 1px solid var(--rule);
+}
+[data-ui="next"] .form-step-head {
+  gap: 12px;
+}
+[data-ui="next"] .form-step-n {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--rule-strong);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: var(--step--2);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .form-step-head h2 {
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+  line-height: var(--h3-leading);
+  letter-spacing: 0;
+}
+[data-ui="next"] .form-step-body {
+  gap: 32px;
+}
+[data-ui="next"] .upload .switch-label {
+  font-size: var(--step-0);
+  color: var(--ink);
+}
+[data-ui="next"] .upload .grid-2 {
+  gap: 24px;
+}
+[data-ui="next"] .input-title {
+  font-family: var(--font-sans);
+  font-size: var(--step-0);
+}
+
+/* Upload or record: the segmented control's look. */
+[data-ui="next"] .mode-tabs {
+  gap: 2px;
+  padding: 3px;
+  border-radius: calc(var(--radius-s) + 3px);
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+}
+[data-ui="next"] .mode-tabs button {
+  min-height: 36px;
+  gap: 8px;
+  padding: 0 14px;
+  border-radius: var(--radius-s);
+  font-size: var(--step--1);
+  font-weight: 500;
+  color: var(--ink-2);
+  transition:
+    background-color var(--dur-out) var(--ease-out),
+    color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .mode-tabs button:hover:not(:disabled) {
+  color: var(--ink);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .mode-tabs button[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--rule-strong);
+}
+
+/* The drop zone: a plain panel with a dashed hairline; the hover steps the ground. */
+[data-ui="next"] .dropzone {
+  gap: 8px;
+  padding: 48px 24px;
+  border: 1px dashed var(--rule-strong);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  transition:
+    border-color var(--dur-out) var(--ease-out),
+    background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .dropzone:hover {
+  border-color: color-mix(in oklab, var(--ink) 35%, transparent);
+  background: color-mix(in oklab, var(--surface) 96%, var(--ink));
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .dropzone.dragging {
+  transform: none;
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+[data-ui="next"] .dropzone:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+[data-ui="next"] .dropzone-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 8px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+[data-ui="next"] .dropzone-icon svg {
+  width: 22px;
+  height: 22px;
+}
+[data-ui="next"] .dropzone-title {
+  font-family: var(--font-sans);
+  font-size: var(--step-1);
+  font-weight: 550;
+  line-height: 1.4;
+}
+[data-ui="next"] .dropzone-sub {
+  font-size: var(--step-0);
+  color: var(--ink-2);
+}
+[data-ui="next"] .dropzone-sub u {
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 4px;
+}
+[data-ui="next"] .dropzone:hover .dropzone-sub u {
+  text-decoration-color: currentColor;
+}
+[data-ui="next"] .dropzone-formats {
+  margin-top: 8px;
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+
+/* The chosen file. */
+[data-ui="next"] .file-card {
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: none;
+  animation: none;
+}
+[data-ui="next"] .file-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+[data-ui="next"] .file-card-icon svg {
+  width: 20px;
+  height: 20px;
+}
+[data-ui="next"] .file-card-name {
+  font-weight: 550;
+}
+[data-ui="next"] .file-card-meta {
+  font-size: var(--step--2);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Speaker count. */
+[data-ui="next"] .speaker-mode {
+  gap: 12px 16px;
+}
+[data-ui="next"] .stepper {
+  min-height: var(--control-h);
+  gap: 2px;
+  padding: 3px;
+  border-radius: calc(var(--radius-s) + 3px);
+  border-color: var(--rule-strong);
+}
+[data-ui="next"] .stepper .icon-btn.sm {
+  width: 36px;
+  height: 36px;
+}
+[data-ui="next"] .stepper .mono {
+  min-width: 28px;
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Templates: one card each, the choice marked by the accent border. */
+[data-ui="next"] .upload .composer {
+  gap: 32px;
+}
+[data-ui="next"] .upload .template-grid {
+  gap: 12px;
+}
+[data-ui="next"] .upload .template-option {
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: none;
+  transition:
+    border-color var(--dur-out) var(--ease-out),
+    background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .upload .template-option:hover {
+  border-color: var(--rule-strong);
+  background: color-mix(in oklab, var(--surface) 96%, var(--ink));
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .upload .template-option[aria-checked="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: var(--surface);
+}
+[data-ui="next"] .upload .template-option[aria-checked="true"]::after {
+  top: 16px;
+  right: 16px;
+  width: 8px;
+  height: 8px;
+}
+[data-ui="next"] .upload .template-option-name {
+  font-family: var(--font-sans);
+  font-size: var(--step-0);
+  font-weight: 550;
+  line-height: 1.5;
+  padding-right: 20px;
+}
+[data-ui="next"] .upload .template-option-desc {
+  font-size: var(--step--1);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+/* Custom prompt and data-flow note: hairline panels at the panel radius. */
+[data-ui="next"] .upload .disclosure {
+  border-color: var(--rule);
+  border-radius: var(--radius-m);
+}
+[data-ui="next"] .upload .disclosure-toggle {
+  min-height: var(--control-h);
+  gap: 10px;
+  padding: 10px 16px;
+  font-size: var(--step--1);
+  font-weight: 500;
+  border-radius: var(--radius-m);
+}
+[data-ui="next"] .upload .disclosure-toggle:hover {
+  background: color-mix(in oklab, var(--surface) 96%, var(--ink));
+}
+[data-ui="next"] .upload .disclosure-hint {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+}
+[data-ui="next"] .upload .disclosure-body {
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+[data-ui="next"] .upload .dataflow {
+  gap: 12px;
+  padding: 16px;
+  border-color: var(--rule);
+  border-radius: var(--radius-m);
+  font-size: var(--step--1);
+  line-height: 1.6;
+}
+[data-ui="next"] .upload .dataflow strong {
+  font-weight: 550;
+  margin-bottom: 4px;
+}
+[data-ui="next"] .upload .dataflow summary {
+  text-underline-offset: 4px;
+}
+
+/* Transcription settings: the same two columns as the steps. */
+[data-ui="next"] .advanced {
+  border-bottom: 1px solid var(--rule);
+}
+[data-ui="next"] .advanced-toggle {
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 8px 48px;
+  min-height: 72px;
+  padding: 24px 0;
+}
+[data-ui="next"] .advanced-toggle svg {
+  width: 18px;
+  height: 18px;
+  color: var(--ink-3);
+  transition: transform var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .advanced-title {
+  font-family: var(--font-sans);
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+  line-height: var(--h3-leading);
+}
+[data-ui="next"] .advanced-summary {
+  font-size: var(--step--1);
+  color: var(--ink-3);
+}
+[data-ui="next"] .advanced-toggle:hover .advanced-title {
+  text-decoration: none;
+}
+[data-ui="next"] .advanced-toggle:hover .advanced-summary,
+[data-ui="next"] .advanced-toggle:hover svg {
+  color: var(--ink);
+}
+[data-ui="next"] .advanced-body {
+  gap: 32px;
+  padding: 8px 0 40px 248px;
+  animation: none;
+}
+
+/* The submit bar: opaque paper with a hairline, no shadow; the one primary action. */
+[data-ui="next"] .submit-bar {
+  background: var(--bg);
+  border-top: 1px solid var(--rule);
+  box-shadow: none;
+}
+[data-ui="next"] .submit-bar-inner {
+  padding: 12px 28px calc(12px + env(safe-area-inset-bottom));
+  gap: 16px;
+}
+[data-ui="next"] .submit-bar-info {
+  font-size: var(--step--1);
+  color: var(--ink-2);
+  gap: 2px;
+}
+[data-ui="next"] .submit-bar-info strong {
+  font-weight: 550;
+  color: var(--ink);
+}
+[data-ui="next"] .submit-bar .btn-lg {
+  height: var(--control-h);
+  padding: 0 24px;
+  font-size: var(--step-0);
+}
+
+/* Upload progress dialog. */
+[data-ui="next"] .upload-progress {
+  gap: 16px;
+  padding: 40px 32px 32px;
+  border-color: var(--rule);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-3);
+  animation: none;
+}
+[data-ui="next"] .upload-progress-num {
+  font-size: 3.5rem;
+  font-weight: 450;
+  font-variation-settings: normal;
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .upload-progress-name {
+  font-weight: 550;
+}
+[data-ui="next"] .upload-progress-detail {
+  font-size: var(--step--2);
+}
+
+@media (max-width: 860px) {
+  [data-ui="next"] .form-step {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 32px 0;
+  }
+  [data-ui="next"] .form-step-head {
+    flex-direction: row;
+    align-items: center;
+  }
+  [data-ui="next"] .advanced-toggle {
+    grid-template-columns: 1fr;
+  }
+  [data-ui="next"] .advanced-body {
+    padding-left: 0;
+  }
+  [data-ui="next"] .submit-bar-inner {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+}
+@media (max-width: 560px) {
+  [data-ui="next"] .dropzone {
+    padding: 32px 16px;
+  }
+  [data-ui="next"] .preset-select {
+    max-width: none;
+  }
+  /* The prompt toggle: title on its line, the hint under it, never squeezed. */
+  [data-ui="next"] .upload .disclosure-toggle {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  [data-ui="next"] .upload .disclosure-toggle > span:first-of-type {
+    white-space: nowrap;
+  }
+  [data-ui="next"] .upload .disclosure-hint {
+    flex: 1 1 100%;
+    padding-left: 26px;
+  }
+}
+
+/* ----------------------------------------------------------- recorder */
+
+[data-ui="next"] .recorder {
+  gap: 24px;
+  padding: 24px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+}
+[data-ui="next"] .source-grid {
+  gap: 12px;
+}
+[data-ui="next"] .source-option {
+  align-content: start;
+  gap: 4px 12px;
+  padding: 16px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  transition:
+    border-color var(--dur-out) var(--ease-out),
+    background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .source-option:hover:not(:disabled) {
+  border-color: var(--rule-strong);
+  background: color-mix(in oklab, var(--surface) 96%, var(--ink));
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .source-option[aria-checked="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+[data-ui="next"] .source-option > svg {
+  color: var(--ink-3);
+}
+[data-ui="next"] .source-option-name {
+  font-family: var(--font-sans);
+  font-size: var(--step-0);
+  font-weight: 550;
+  line-height: 1.5;
+}
+[data-ui="next"] .source-option-desc {
+  font-size: var(--step--1);
+  line-height: 1.55;
+}
+[data-ui="next"] .rec-steps {
+  padding: 16px 16px 16px 36px;
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  font-size: var(--step--1);
+  line-height: 1.7;
+}
+[data-ui="next"] .rec-steps li::marker {
+  font-weight: 500;
+  color: var(--ink-3);
+}
+[data-ui="next"] .rec-start {
+  gap: 16px;
+}
+[data-ui="next"] .rec-start p {
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+[data-ui="next"] .recorder.live {
+  padding: 32px 24px 24px;
+}
+[data-ui="next"] .recorder-top {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .rec-status {
+  font-weight: 500;
+}
+[data-ui="next"] .rec-clock {
+  font-family: var(--font-mono);
+  font-size: clamp(2.75rem, 2rem + 3vw, 3.75rem);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  font-variation-settings: normal;
+}
+[data-ui="next"] .source-row-name,
+[data-ui="next"] .meter-label {
+  font-size: var(--step--1);
+  font-weight: 500;
+}
+[data-ui="next"] .meter-track {
+  height: 6px;
+  background: var(--surface-3);
+}
+[data-ui="next"] .meter-hint {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .rec-actions {
+  gap: 12px;
+  padding-top: 16px;
+}
+[data-ui="next"] .rec-recover {
+  gap: 12px;
+  padding: 16px;
+  border-color: transparent;
+  border-radius: var(--radius-m);
+}
+
+/* ===================================================== masthead menus */
+
+/* 新增錄音: two rich items, the title at reading size, the line under it a label. */
+[data-ui="next"] .menu-item-rich {
+  min-width: 300px;
+  gap: 12px;
+  padding: 12px;
+}
+[data-ui="next"] .menu-item-rich > svg {
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  color: var(--ink-2);
+}
+[data-ui="next"] .menu-item-rich > span {
+  gap: 2px;
+}
+[data-ui="next"] .menu-item-title {
+  font-size: var(--step-0);
+  font-weight: 550;
+  line-height: 1.5;
+}
+[data-ui="next"] .menu-item-rich .menu-item-desc {
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+[data-ui="next"] .masthead-new .chev-sm {
+  width: 14px;
+  height: 14px;
+  opacity: 1;
+}
+[data-ui="next"] .masthead-new[aria-expanded="true"] .chev-sm {
+  transform: rotate(180deg);
+}
+
+/* User menu: the name, then labelled rows of choices, then the links. */
+[data-ui="next"] .menu-label {
+  padding: 8px 12px 4px;
+}
+[data-ui="next"] .menu-label.smallcaps {
+  padding: 12px 12px 6px;
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-3);
+}
+[data-ui="next"] .menu-label.smallcaps svg {
+  width: 13px !important; /* the markup sets 12px inline; nothing under 13 */
+  height: 13px !important;
+}
+[data-ui="next"] .menu-sep {
+  margin: 6px 6px;
+}
+[data-ui="next"] .menu-row {
+  gap: 6px;
+  padding: 0 6px 8px;
+}
+[data-ui="next"] .menu-chip {
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  color: var(--ink-2);
+  transition:
+    background-color var(--dur-out) var(--ease-out),
+    border-color var(--dur-out) var(--ease-out),
+    color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .menu-chip:hover {
+  border-color: var(--rule-strong);
+  color: var(--ink);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .menu-chip[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+[data-ui="next"] .menu-chip svg {
+  width: 14px;
+  height: 14px;
+}
+[data-ui="next"] .menu-count {
+  min-width: 22px;
+  padding: 0 7px;
+  line-height: 22px;
+  font-size: var(--step--2);
+  font-weight: 500;
+}
+[data-ui="next"] .avatar-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* ======================================================= announcements */
+
+/* One calm line under the masthead: the page's surface and a hairline; a warning
+   or critical notice keeps its tone's soft ground. No side bar. */
+[data-ui="next"] .announce-stack {
+  padding: 16px 28px 0;
+  gap: 8px;
+}
+[data-ui="next"] .announce-stack + .page {
+  padding-top: 32px;
+}
+[data-ui="next"] .announce {
+  gap: 12px;
+  padding: 12px 12px 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left-width: 1px;
+  border-radius: var(--radius-m);
+}
+[data-ui="next"] .announce-warning,
+[data-ui="next"] .announce-critical {
+  background: var(--tone-soft);
+  border-color: color-mix(in oklab, var(--tone) 22%, transparent);
+}
+[data-ui="next"] .announce-icon {
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+}
+[data-ui="next"] .announce-text {
+  gap: 2px;
+}
+[data-ui="next"] .announce-title {
+  font-size: var(--step-0);
+  font-weight: 550;
+  line-height: 1.5;
+}
+[data-ui="next"] .announce .announce-body {
+  font-size: var(--step--1);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+[data-ui="next"] .announce .announce-body > * {
+  margin: 0 0 4px;
+}
+[data-ui="next"] .announce .announce-body > :last-child {
+  margin-bottom: 0;
+}
+[data-ui="next"] .announce-more,
+[data-ui="next"] .announce-rest {
+  font-size: var(--step--1);
+  font-weight: 500;
+}
+[data-ui="next"] .announce-close {
+  margin: -6px -4px -6px 0;
+}
+@media (max-width: 760px) {
+  [data-ui="next"] .announce-stack {
+    padding: 12px 16px 0;
+  }
+  [data-ui="next"] .announce-stack + .page {
+    padding-top: 24px;
+  }
+}
+
+/* ------------------------------------------------------ reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  [data-ui="next"] .ledger-status .pill.live .dot,
+  [data-ui="next"] .upload .pill.live .dot {
+    animation: none;
+  }
+  [data-ui="next"] .masthead-new[aria-expanded="true"] .chev-sm,
+  [data-ui="next"] .advanced-toggle[aria-expanded="true"] svg {
+    transition: none;
+  }
+}

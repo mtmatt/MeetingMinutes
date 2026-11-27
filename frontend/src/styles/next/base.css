@@ -736,3 +736,24 @@
   border-bottom: 0;
   opacity: 1;
 }
+
+/* A disabled ink button (a section's save with nothing to save) takes the outlined look, not a grey block. */
+[data-ui="next"] .btn-ink:disabled {
+  --btn-bg: transparent;
+  --btn-fg: var(--ink-3);
+  --btn-border: var(--rule-strong);
+  opacity: 1;
+}
+
+/* The sixth speaker colour, violet in the classic palette, becomes a slate blue-green here. */
+:root[data-ui="next"] {
+  --spk-5: #3f7686;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-ui="next"]:not([data-theme="light"]) {
+    --spk-5: #7fb3c2;
+  }
+}
+:root[data-ui="next"][data-theme="dark"] {
+  --spk-5: #7fb3c2;
+}

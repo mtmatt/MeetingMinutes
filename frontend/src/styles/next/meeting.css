@@ -1,1 +1,1103 @@
 /* New interface (preview): meeting pages. Scoped to [data-ui="next"]; see base.css. */
+
+/*
+ * The meeting page /m/:id, after the landing page's mock of the same screen:
+ * the transcript on the left (mono timestamps, coloured speaker names, the
+ * text at 16px), the minutes on the right under quiet 13px headings, one
+ * hairline between them. Boxes give way to hairlines; the current line is
+ * marked by the accent wash and a 2px accent edge.
+ */
+
+/* ------------------------------------------------------------- header */
+
+[data-ui="next"] .back-link {
+  gap: 6px;
+  min-height: 32px;
+  margin-bottom: 12px;
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-3);
+  transition: color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .back-link:hover {
+  color: var(--ink);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .back-link svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* One hairline under the head, not the ink rule. */
+[data-ui="next"] .meeting-head {
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--rule);
+}
+[data-ui="next"] .meeting-head-row {
+  align-items: flex-end;
+  gap: 16px 24px;
+}
+[data-ui="next"] .meeting-title,
+[data-ui="next"] .title-input {
+  font-family: var(--font-display);
+  font-size: var(--h1-size);
+  font-weight: var(--h1-weight);
+  line-height: var(--h1-leading);
+  letter-spacing: -0.025em;
+  font-variation-settings: normal;
+}
+[data-ui="next"] .meeting-title {
+  transition: background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .meeting-title:hover {
+  background: color-mix(in oklab, var(--bg) 94%, var(--ink));
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .title-edit {
+  color: var(--ink-4);
+  transition:
+    color var(--dur-out) var(--ease-out),
+    background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .meeting-title:hover .title-edit,
+[data-ui="next"] .title-edit:focus-visible {
+  color: var(--ink);
+  background: transparent;
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .title-input {
+  border-bottom: 2px solid var(--accent);
+}
+/* Underline fields: the accent underline is their focus mark, so no ring on top. */
+[data-ui="next"] .title-input:focus-visible,
+[data-ui="next"] .legend-input:focus-visible {
+  outline: none;
+}
+[data-ui="next"] .meeting-meta {
+  gap: 8px 20px;
+  margin-top: 12px;
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+[data-ui="next"] .meeting-meta svg {
+  width: 14px;
+  height: 14px;
+}
+[data-ui="next"] .meeting-meta .faint {
+  color: var(--ink-3);
+}
+[data-ui="next"] .meeting-actions {
+  gap: 8px;
+}
+
+/* -------------------------------------------------- processing, failed */
+
+/* The one card: surface, hairline, large radius; it stands from the first paint. */
+[data-ui="next"] .processing {
+  margin-top: 48px;
+  gap: 32px;
+  padding: 32px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  box-shadow: none;
+  animation: none;
+}
+[data-ui="next"] .processing-head p {
+  font-size: var(--step--1);
+  line-height: 1.6;
+}
+[data-ui="next"] .processing-head .processing-hint {
+  font-size: var(--step-0);
+}
+[data-ui="next"] .processing-pct {
+  font-family: var(--font-display);
+  font-size: var(--step-5);
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  font-variation-settings: normal;
+}
+[data-ui="next"] .processing-pct .mono {
+  font-family: var(--font-display);
+}
+[data-ui="next"] .processing-pct .pct {
+  font-size: var(--step-2);
+  color: var(--ink-3);
+}
+[data-ui="next"] .processing-wait {
+  font-size: var(--step-4);
+  letter-spacing: -0.02em;
+}
+[data-ui="next"] .pipeline {
+  gap: 16px;
+}
+[data-ui="next"] .pipeline-step {
+  gap: 10px;
+  font-size: var(--step--1);
+  line-height: 1.45;
+  color: var(--ink-3);
+}
+[data-ui="next"] .pipeline-mark {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--rule-strong);
+  font-size: var(--step--2);
+  background: var(--surface);
+}
+[data-ui="next"] .pipeline-step.done {
+  color: var(--ink-2);
+}
+[data-ui="next"] .pipeline-step.done .pipeline-mark {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg);
+}
+[data-ui="next"] .pipeline-step.active {
+  color: var(--ink);
+  font-weight: 500;
+}
+/* The current step: the accent ring, still (no pulse). */
+[data-ui="next"] .pipeline-step.active .pipeline-mark {
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+  box-shadow: none;
+  animation: none;
+}
+[data-ui="next"] .processing .progress {
+  border-radius: 999px;
+}
+
+[data-ui="next"] .processing.failed {
+  padding: 32px;
+  gap: 24px;
+}
+[data-ui="next"] .failure-head {
+  gap: 16px;
+}
+[data-ui="next"] .failure-head h2 {
+  font-size: var(--h2-size);
+  font-weight: var(--h2-weight);
+  line-height: var(--h2-leading);
+  margin-bottom: 8px;
+}
+[data-ui="next"] .failure-head p {
+  font-size: var(--step-0);
+  line-height: 1.6;
+}
+[data-ui="next"] .failure-icon {
+  width: 40px;
+  height: 40px;
+}
+[data-ui="next"] .failure-actions {
+  gap: 12px;
+}
+[data-ui="next"] .tech-details {
+  font-size: var(--step--1);
+}
+[data-ui="next"] .tech-details summary {
+  padding: 6px 0;
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-3);
+}
+[data-ui="next"] .tech-details pre {
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  font-size: var(--step--2);
+  line-height: 1.6;
+}
+
+/* --------------------------------------------------------------- grid */
+
+[data-ui="next"] .meeting-tabs {
+  margin-top: 8px;
+  border-bottom: 1px solid var(--rule);
+}
+@media (min-width: 1001px) {
+  [data-ui="next"] .meeting-grid {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  }
+}
+[data-ui="next"] .transcript-col {
+  padding: 32px 40px 0 0;
+  border-right: 1px solid var(--rule);
+}
+[data-ui="next"] .summary-col {
+  padding: 32px 16px 0 40px;
+  margin-right: -16px;
+}
+[data-ui="next"] .video-pane {
+  margin-bottom: 24px;
+  border-radius: var(--radius-m);
+  box-shadow: none;
+  animation: none;
+}
+
+@media (max-width: 1000px) {
+  [data-ui="next"] .transcript-col {
+    padding: 24px 0 0;
+    border-right: 0;
+  }
+  [data-ui="next"] .summary-col {
+    padding: 24px 0 0;
+    margin-right: 0;
+  }
+}
+
+/* ------------------------------------------------- speakers (the legend) */
+
+[data-ui="next"] .legend {
+  gap: 12px;
+  padding-bottom: 24px;
+  margin-bottom: 0;
+}
+[data-ui="next"] .legend-head .smallcaps {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+[data-ui="next"] .legend-bar {
+  height: 6px;
+  gap: 2px;
+  background: var(--surface-3);
+}
+[data-ui="next"] .legend-list {
+  gap: 0 24px;
+}
+[data-ui="next"] .legend-list li {
+  font-size: var(--step--1);
+}
+[data-ui="next"] .legend-list li::before {
+  height: 40px;
+}
+[data-ui="next"] .legend-name {
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 8px;
+  margin-left: -6px;
+  font-weight: 500;
+  color: var(--ink);
+  transition: background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .legend-name:hover {
+  background: color-mix(in oklab, var(--bg) 93%, var(--ink));
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .legend-name svg {
+  width: 14px;
+  height: 14px;
+  transition: opacity var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .legend-name:focus-visible svg {
+  opacity: 1;
+}
+/* Naming a speaker: an underline field in the action colour, the row's height. */
+[data-ui="next"] .legend-input {
+  height: 32px;
+  width: 160px;
+  padding: 0 2px;
+  border-bottom: 2px solid var(--accent);
+  font-size: var(--step--1);
+  font-weight: 500;
+  color: var(--ink);
+}
+[data-ui="next"] .legend-share {
+  font-size: var(--step--2);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .legend-time {
+  font-size: var(--step--2);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+[data-ui="next"] .legend-listen,
+[data-ui="next"] .voice-mark {
+  width: 28px;
+  height: 28px;
+  transition:
+    background-color var(--dur-out) var(--ease-out),
+    color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .legend-listen svg,
+[data-ui="next"] .voice-mark svg {
+  width: 15px;
+  height: 15px;
+}
+[data-ui="next"] .legend-listen:hover,
+[data-ui="next"] .voice-mark:hover {
+  background: color-mix(in oklab, var(--bg) 92%, var(--ink));
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .voice-chip {
+  height: 26px;
+  padding: 0 10px;
+  font-size: var(--step--2);
+  font-weight: 500;
+  transition:
+    background-color var(--dur-out) var(--ease-out),
+    border-color var(--dur-out) var(--ease-out),
+    color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .voice-chip svg {
+  width: 13px;
+  height: 13px;
+}
+[data-ui="next"] .voice-menu-label {
+  font-size: var(--step--2);
+  line-height: 1.55;
+}
+
+/* A speaker's clips: a hairline in their colour, no box. */
+[data-ui="next"] .speaker-clips {
+  gap: 8px;
+  margin: 0 0 12px 17px;
+  padding: 4px 0 4px 14px;
+  border-left: 2px solid var(--spk);
+  border-radius: 0;
+  background: transparent;
+  animation: none;
+}
+[data-ui="next"] .speaker-clips .icon-btn.sm {
+  width: 32px;
+  height: 32px;
+}
+[data-ui="next"] .speaker-clips .icon-btn:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--bg) 92%, var(--ink));
+}
+[data-ui="next"] .speaker-clips-play {
+  width: 32px;
+  height: 32px;
+  transition: background-color var(--dur-out) var(--ease-out), transform var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .speaker-clips-play:hover {
+  background: color-mix(in oklab, var(--ink) 86%, var(--bg));
+  color: var(--bg);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .speaker-clips-play:active {
+  transform: scale(0.96);
+  transition-duration: var(--dur-press);
+}
+[data-ui="next"] .speaker-clips-count,
+[data-ui="next"] .speaker-clips-where,
+[data-ui="next"] .speaker-clips-time,
+[data-ui="next"] .speaker-clips-first {
+  font-size: var(--step--2);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .speaker-clips-first {
+  font-weight: 500;
+}
+[data-ui="next"] .speaker-clips-time:hover {
+  background: color-mix(in oklab, var(--bg) 92%, var(--ink));
+  color: var(--ink);
+}
+[data-ui="next"] .speaker-clips-text {
+  font-size: var(--step--1);
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------ transcript tools */
+
+[data-ui="next"] .transcript-tools {
+  gap: 16px;
+  min-height: 56px;
+  padding: 6px 0;
+  margin-bottom: 16px;
+  background: var(--bg);
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+[data-ui="next"] .transcript-search {
+  border-bottom: 0;
+  min-height: 44px;
+}
+[data-ui="next"] .transcript-search input {
+  font-size: var(--step-0);
+}
+[data-ui="next"] .transcript-search input::placeholder {
+  color: var(--ink-4);
+}
+[data-ui="next"] .transcript-search .faint {
+  color: var(--ink-3);
+}
+[data-ui="next"] .transcript-tools .switch-sm .switch-label {
+  font-size: var(--step--2);
+  font-weight: 500;
+}
+[data-ui="next"] .transcript-tools .switch-state {
+  font-weight: 500;
+}
+[data-ui="next"] .transcript-count {
+  font-size: var(--step--2);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .back-to-playback {
+  animation: none;
+}
+
+/* ---------------------------------------------------------- transcript */
+
+/*
+ * One row per turn, as in the mock: the time (mono), the speaker (in their
+ * colour), then what was said. The head's two buttons join the row's grid.
+ */
+[data-ui="next"] .transcript-body {
+  gap: 2px;
+}
+[data-ui="next"] .block {
+  grid-template-columns: 64px 88px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: baseline;
+  padding: 8px 44px 8px 12px;
+  border-radius: var(--radius-s);
+  transition: background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .block-head {
+  display: contents;
+}
+[data-ui="next"] .block-head > .menu-anchor {
+  min-width: 0;
+}
+[data-ui="next"] .block-text {
+  grid-column: 3;
+  grid-row: 1;
+  font-size: var(--step-0);
+  line-height: 1.7;
+  border-left: 0;
+  padding-left: 0;
+}
+/* A transcript without speakers: the text takes the speaker's column too. */
+[data-ui="next"] .block:not(:has(.block-speaker)) .block-text {
+  grid-column: 2 / -1;
+}
+[data-ui="next"] .block-time {
+  grid-row: 1;
+  justify-self: start;
+  font-family: var(--font-mono);
+  font-size: var(--step--2);
+  line-height: 1.7;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: var(--ink-3);
+  border-radius: 4px;
+  transition: color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .block-time:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 4px;
+  transition-duration: var(--dur-in);
+}
+/* The name in the speaker's colour, a step toward the ink so it reads as text in both themes. */
+[data-ui="next"] .block-speaker {
+  display: block;
+  max-width: 100%;
+  font-size: var(--step--1);
+  font-weight: 500;
+  line-height: 1.7;
+  letter-spacing: 0;
+  color: color-mix(in oklab, var(--spk) 78%, var(--ink));
+  text-underline-offset: 4px;
+  border-radius: 4px;
+}
+[data-ui="next"] .block-speaker .speaker-dot {
+  display: none;
+}
+
+/* The line being played: the accent wash and a 2px accent edge. */
+[data-ui="next"] .block.is-active {
+  background: var(--accent-wash);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+[data-ui="next"] .seg {
+  border-radius: 3px;
+  transition: background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .seg:hover {
+  background: color-mix(in oklab, var(--bg) 92%, var(--ink));
+  transition-duration: var(--dur-in);
+}
+/* Inside the lit row the sentence playing now is underlined in the accent,
+   where the row holds more than one sentence. */
+[data-ui="next"] .seg.active {
+  background: transparent;
+  box-shadow: none;
+}
+[data-ui="next"] .block-text:has(.seg + .seg) .seg.active {
+  text-decoration: underline 1.5px var(--accent);
+  text-underline-offset: 6px;
+}
+[data-ui="next"] .seg.edited {
+  text-decoration: underline dotted var(--ink-4);
+  text-underline-offset: 6px;
+}
+[data-ui="next"] .seg mark {
+  border-radius: 3px;
+}
+[data-ui="next"] .block-edit {
+  top: 6px;
+  right: 6px;
+  transition: opacity var(--dur-out) var(--ease-out), background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .block:hover .block-edit {
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .seg-editor .textarea {
+  font-size: var(--step-0);
+  line-height: 1.7;
+  padding: 6px 10px;
+}
+
+@media (max-width: 640px) {
+  [data-ui="next"] .transcript-tools {
+    gap: 4px 16px;
+    padding: 4px 0 8px;
+  }
+  /* Phones: time and name on one line, the text under the name (as the mock at 390). */
+  [data-ui="next"] .block {
+    grid-template-columns: 56px minmax(0, 1fr);
+    column-gap: 10px;
+    row-gap: 0;
+    padding: 8px 8px 8px 10px;
+  }
+  [data-ui="next"] .block-head {
+    display: contents;
+    margin: 0;
+  }
+  [data-ui="next"] .block-text,
+  [data-ui="next"] .block:not(:has(.block-speaker)) .block-text {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  [data-ui="next"] .block:not(:has(.block-speaker)) .block-text {
+    grid-row: 1;
+  }
+  [data-ui="next"] .legend-list li {
+    flex-wrap: wrap;
+  }
+}
+
+/* ------------------------------------------------------------- summary */
+
+[data-ui="next"] .summary-panel {
+  gap: 16px;
+}
+[data-ui="next"] .summary-head {
+  min-height: 44px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rule);
+}
+[data-ui="next"] .summary-head h2 {
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+  line-height: var(--h3-leading);
+  letter-spacing: 0;
+}
+[data-ui="next"] .summary-actions {
+  gap: 4px;
+}
+[data-ui="next"] .version-chip {
+  height: 32px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-s);
+  background: transparent;
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-2);
+  transition:
+    background-color var(--dur-out) var(--ease-out),
+    border-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .version-chip:hover {
+  background: color-mix(in oklab, var(--bg) 94%, var(--ink));
+  border-color: color-mix(in oklab, var(--ink) 35%, transparent);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .version-chip .mono {
+  color: var(--ink);
+}
+[data-ui="next"] .summary-context {
+  gap: 4px 12px;
+  margin-top: -4px;
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+[data-ui="next"] .summary-context span + span::before {
+  margin-right: 12px;
+}
+
+[data-ui="next"] .summary-empty {
+  gap: 12px;
+  padding: 48px 16px;
+}
+[data-ui="next"] .summary-empty-mark {
+  width: 48px;
+  height: 48px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+[data-ui="next"] .summary-empty h3 {
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+}
+[data-ui="next"] .summary-empty p {
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+/* Writing: a still pen and the skeleton lines; no pulse. */
+[data-ui="next"] .writing-pen {
+  background: var(--surface-2);
+  color: var(--ink-2);
+  animation: none;
+}
+[data-ui="next"] .writing-title {
+  font-family: var(--font-sans);
+  font-size: var(--step-0);
+  font-weight: 500;
+}
+[data-ui="next"] .writing-lines .skeleton {
+  height: 14px;
+}
+[data-ui="next"] .summary-error {
+  font-size: var(--step--2);
+}
+
+[data-ui="next"] .stale-names-pair {
+  font-weight: 500;
+}
+
+[data-ui="next"] .summary-foot {
+  margin-top: 32px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+[data-ui="next"] .summary-foot .faint {
+  color: var(--ink-3);
+}
+[data-ui="next"] .summary-prompt-toggle {
+  gap: 6px;
+  min-height: 32px;
+  font-size: var(--step--2);
+  font-weight: 500;
+  color: var(--ink-3);
+  transition: color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .summary-prompt-toggle:hover {
+  color: var(--ink);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .summary-prompt-toggle svg {
+  width: 14px;
+  height: 14px;
+}
+[data-ui="next"] .summary-prompt {
+  margin-top: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  font-size: var(--step--2);
+  line-height: 1.65;
+}
+[data-ui="next"] .summary-editor .textarea {
+  font-size: var(--step--1);
+  line-height: 1.7;
+}
+
+/* -------------------------------------------- the rendered minutes (prose) */
+
+[data-ui="next"] .prose {
+  font-size: var(--step-0);
+  line-height: 1.7;
+  color: var(--ink);
+}
+[data-ui="next"] .prose h1 {
+  font-family: var(--font-display);
+  font-size: var(--h2-size);
+  font-weight: var(--h2-weight);
+  line-height: var(--h2-leading);
+  letter-spacing: -0.01em;
+  margin: 0 0 16px;
+  font-variation-settings: normal;
+}
+/* Section heads (摘要, 重點, 決議, 待辦事項): quiet 13px labels, as in the mock. */
+[data-ui="next"] .prose h2 {
+  margin: 28px 0 6px;
+  padding: 0;
+  border: 0;
+  font-family: var(--font-sans);
+  font-size: var(--step--2);
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+}
+[data-ui="next"] .prose > h2:first-child {
+  margin-top: 0;
+}
+[data-ui="next"] .prose h3 {
+  font-family: var(--font-sans);
+  font-size: var(--step-0);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 20px 0 6px;
+}
+[data-ui="next"] .prose h4 {
+  font-size: var(--step-0);
+  font-weight: 500;
+  color: var(--ink-2);
+  margin: 16px 0 4px;
+}
+[data-ui="next"] .prose p {
+  margin: 0 0 12px;
+}
+[data-ui="next"] .prose ul,
+[data-ui="next"] .prose ol {
+  margin: 0 0 12px;
+  padding-left: 1.25em;
+}
+[data-ui="next"] .prose li {
+  margin: 4px 0;
+  padding-left: 4px;
+}
+[data-ui="next"] .prose li::marker {
+  color: var(--ink-4);
+}
+[data-ui="next"] .prose ol li::marker {
+  font-size: var(--step--2);
+  font-variant-numeric: tabular-nums;
+}
+[data-ui="next"] .prose strong {
+  font-weight: 600;
+}
+[data-ui="next"] .prose a {
+  color: var(--accent);
+}
+[data-ui="next"] .prose blockquote {
+  margin: 12px 0;
+  padding: 2px 0 2px 16px;
+  border-left: 2px solid var(--rule-strong);
+  color: var(--ink-2);
+  font-size: var(--step-0);
+}
+[data-ui="next"] .prose code {
+  font-size: var(--step--1);
+  border-radius: 4px;
+}
+[data-ui="next"] .prose pre {
+  border-radius: var(--radius-m);
+  padding: 14px 16px;
+}
+[data-ui="next"] .prose pre code {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .prose hr {
+  margin: 24px 0;
+  border-top-color: var(--rule);
+}
+/* To-dos: a quiet square, ticked in the ink. */
+[data-ui="next"] .prose li:has(> input[type="checkbox"]) {
+  gap: 12px;
+  margin-left: -1.25em;
+}
+[data-ui="next"] .prose input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--rule-strong);
+  border-radius: 4px;
+  transform: translateY(3px);
+}
+[data-ui="next"] .prose input[type="checkbox"]:checked {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+[data-ui="next"] .prose-table {
+  margin: 8px 0 16px;
+  border-radius: var(--radius-m);
+}
+[data-ui="next"] .prose table {
+  font-size: var(--step--1);
+  line-height: 1.55;
+}
+[data-ui="next"] .prose th {
+  font-size: var(--step--2);
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+  background: transparent;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--rule);
+}
+[data-ui="next"] .prose td {
+  padding: 10px 12px;
+}
+
+/* Timestamps in the minutes: mono, 13px, a wash of the accent; they lead to the transcript. */
+[data-ui="next"] .ts-link {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--step--2);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  vertical-align: 0.05em;
+  transition:
+    background-color var(--dur-out) var(--ease-out),
+    color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .ts-link:hover {
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .ts-quote {
+  gap: 8px;
+  padding: 12px 16px;
+  border-color: var(--rule);
+  border-radius: var(--radius-m);
+  font-size: var(--step--1);
+  line-height: 1.6;
+}
+[data-ui="next"] .ts-wrap:hover .ts-quote,
+[data-ui="next"] .ts-wrap:focus-within .ts-quote {
+  animation: none;
+}
+[data-ui="next"] .ts-quote-head,
+[data-ui="next"] .ts-quote-who {
+  font-size: var(--step--2);
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------- composer */
+
+/* The summary composer in its dialog: one card per template, the choice in the accent. */
+[data-ui="next"] .modal .composer {
+  gap: 24px;
+}
+[data-ui="next"] .modal .template-grid {
+  gap: 12px;
+}
+[data-ui="next"] .modal .template-option {
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  transition:
+    border-color var(--dur-out) var(--ease-out),
+    background-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .modal .template-option:hover {
+  border-color: var(--rule-strong);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .modal .template-option[aria-checked="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: var(--accent-wash);
+}
+[data-ui="next"] .modal .template-option[aria-checked="true"]::after {
+  top: 16px;
+  right: 16px;
+}
+[data-ui="next"] .modal .template-option-name {
+  font-family: var(--font-sans);
+  font-size: var(--step-0);
+  font-weight: 600;
+  line-height: 1.45;
+}
+[data-ui="next"] .modal .template-option-desc {
+  font-size: var(--step--1);
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+[data-ui="next"] .modal .template-option .tag {
+  justify-self: start;
+  margin-top: 4px;
+}
+[data-ui="next"] .modal .disclosure {
+  border-color: var(--rule);
+  background: transparent;
+}
+[data-ui="next"] .modal .disclosure-toggle {
+  min-height: var(--control-h);
+  padding: 0 16px;
+  font-size: var(--step--1);
+  font-weight: 500;
+}
+[data-ui="next"] .modal .disclosure-body {
+  padding: 0 16px 16px;
+}
+[data-ui="next"] .modal .dataflow {
+  padding: 14px 16px;
+  border-color: var(--rule);
+  font-size: var(--step--1);
+  line-height: 1.6;
+}
+[data-ui="next"] .composer-note {
+  font-size: var(--step-0);
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+[data-ui="next"] .resplit p {
+  line-height: 1.6;
+}
+[data-ui="next"] .resplit-warn {
+  padding-top: 16px;
+  font-size: var(--step--1);
+}
+
+/* --------------------------------------------------- diarization notice */
+
+[data-ui="next"] .diarize-notice {
+  margin: 24px 0 0;
+}
+[data-ui="next"] .diarize-notice-main strong {
+  font-weight: 600;
+}
+[data-ui="next"] .diarize-notice-detail summary {
+  font-size: var(--step--2);
+}
+[data-ui="next"] .diarize-notice-detail code {
+  font-size: var(--step--2);
+}
+
+/* -------------------------------------------------------------- player */
+
+/* Opaque, a hairline on top, no shadow, no entrance. */
+[data-ui="next"] .player {
+  background: var(--bg);
+  border-top: 1px solid var(--rule);
+  box-shadow: none;
+  animation: none;
+}
+[data-ui="next"] .player-inner {
+  gap: 24px;
+  padding: 14px 28px calc(14px + env(safe-area-inset-bottom));
+}
+[data-ui="next"] .player-controls {
+  gap: 8px;
+}
+[data-ui="next"] .player-play {
+  width: 48px;
+  height: 48px;
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: none;
+  transition:
+    background-color var(--dur-out) var(--ease-out),
+    transform var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .player-play:hover {
+  background: color-mix(in oklab, var(--ink) 86%, var(--bg));
+  color: var(--bg);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .player-play:active {
+  transform: scale(0.96);
+  transition-duration: var(--dur-press);
+}
+/* Skip and speed: the outlined button, 36px, the 8px radius. */
+[data-ui="next"] .skip-btn,
+[data-ui="next"] .player-rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-h-sm);
+  padding: 0 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--step--1);
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-out) var(--ease-out),
+    border-color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .skip-btn:hover,
+[data-ui="next"] .player-rate:hover {
+  background: color-mix(in oklab, var(--bg) 94%, var(--ink));
+  border-color: color-mix(in oklab, var(--ink) 35%, transparent);
+  color: var(--ink);
+  transition-duration: var(--dur-in);
+}
+[data-ui="next"] .skip-btn svg {
+  width: 15px;
+  height: 15px;
+}
+[data-ui="next"] .player-rate-label {
+  color: var(--ink-3);
+  margin-right: 0;
+}
+[data-ui="next"] .player-time {
+  font-size: var(--step--1);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+[data-ui="next"] .player-time .now {
+  font-weight: 500;
+}
+[data-ui="next"] .speaker-key {
+  gap: 4px 16px;
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+[data-ui="next"] .speaker-key li {
+  transition: color var(--dur-out) var(--ease-out);
+}
+[data-ui="next"] .speaker-key li.speaking {
+  color: var(--ink);
+  font-weight: 500;
+}
+[data-ui="next"] .speaker-key-now {
+  font-size: var(--step--2);
+  font-weight: 500;
+  padding: 0 8px;
+}
+[data-ui="next"] .waveform-hover {
+  padding: 4px 10px;
+  border-radius: var(--radius-s);
+  font-size: var(--step--2);
+}
+[data-ui="next"] .waveform-hover-spk {
+  font-weight: 500;
+}
+
+@media (max-width: 760px) {
+  [data-ui="next"] .player-inner {
+    gap: 10px 12px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  }
+  [data-ui="next"] .player-play {
+    width: 44px;
+    height: 44px;
+  }
+  [data-ui="next"] .skip-btn,
+  [data-ui="next"] .player-rate {
+    height: 40px;
+    padding: 0 10px;
+  }
+}
+
+/* ------------------------------------------------------ reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  [data-ui="next"] .player-play:active,
+  [data-ui="next"] .speaker-clips-play:active {
+    transform: none;
+  }
+}
