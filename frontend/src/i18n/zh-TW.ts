@@ -158,7 +158,7 @@ export const zhTW: Dict = {
     creditsHelp: "這段錄音約需 {need}，你目前剩餘 {have}。請先購買點數（會在新分頁開啟，這個頁面會保留檔案），再重新送出。",
     buyMinutes: "購買點數",
     compactVideo: "這台伺服器會在轉錄完成 {n} 天後，把錄影壓縮成只有聲音的檔案，不保留影片畫面。",
-    compactVideoNow: "這台伺服器會在轉錄完成後，把錄影壓縮成只有聲音的檔案，不保留影片畫面。",
+    compactVideoNow: "錄影只用來轉錄：轉錄完成後會轉成只有聲音的檔案，不保留影片畫面。",
     fileTooLarge: "檔案 {size}，超過伺服器上限 {limit}。",
     formatsNoLimit: "MP3、M4A、WAV、FLAC、OGG、MP4、MOV、MKV、WEBM…",
     downloadRecording: "下載錄音",
@@ -809,7 +809,7 @@ export const zhTW: Dict = {
   },
   storage: {
     title: "錄音保存",
-    lede: "會議轉錄完成後，可以把原始檔重新壓縮成 {kbps} kbps 的單聲道 Opus 音訊（每小時約 {mb} MB），並刪除影片畫面。重新轉錄、重新區分發言者與聲紋比對都只用聲音，不受影響；會失去的是會議頁的影片畫面，以及下載當初上傳的檔案。已經這麼小的音訊檔不會再處理。",
+    lede: "會議轉錄完成後，可以把原始檔重新壓縮成 {kbps} kbps 的單聲道 Opus 音訊（每小時約 {mb} MB），並刪除影片畫面。重新轉錄、重新區分發言者與聲紋比對都只用聲音，不受影響；會失去的是會議頁的影片畫面，以及下載當初上傳的檔案。已經這麼小的音訊檔不會再處理。錄影檔則一律在轉錄完成後立刻轉成音訊，不受這裡的設定影響（MEDIA_KEEP_VIDEO=true 可保留影片）。",
     compact: "轉錄後只保留壓縮音訊",
     afterDays: "轉錄完成後幾天",
     afterDaysHint: "0 代表轉錄完成就壓縮。保留幾天，萬一需要從原始檔重新轉錄還來得及。",

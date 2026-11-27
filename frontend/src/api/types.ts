@@ -400,6 +400,8 @@ export interface MediaPolicy {
   compact: boolean;
   /** Days after transcription. */
   afterDays: number;
+  /** A video is turned into audio once transcribed (its picture is not kept), whatever the policy. */
+  videoAudioOnly?: boolean;
   /** Recordings are deleted this many days after transcription (0: kept). People may choose shorter. */
   retentionDays?: 0 | 7 | 30;
 }

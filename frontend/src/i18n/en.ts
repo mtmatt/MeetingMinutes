@@ -156,7 +156,7 @@ export const en = {
     creditsHelp: "This recording needs about {need}; you have {have}. Buy points (it opens in a new tab, and this page keeps the file), then send it again.",
     buyMinutes: "Buy points",
     compactVideo: "This server keeps only a compact audio copy of recordings {n} days after they are transcribed: the video picture is not kept.",
-    compactVideoNow: "This server keeps only a compact audio copy of recordings once they are transcribed: the video picture is not kept.",
+    compactVideoNow: "Videos are only used for their sound: once transcribed, a video becomes an audio-only file and its picture is not kept.",
     fileTooLarge: "The file is {size}, over the server's {limit} limit.",
     formatsNoLimit: "MP3, M4A, WAV, FLAC, OGG, MP4, MOV, MKV, WEBM…",
     downloadRecording: "Download recording",
@@ -807,7 +807,7 @@ export const en = {
   },
   storage: {
     title: "Keeping recordings",
-    lede: "Once a meeting has been transcribed, its original can be re-encoded as mono Opus audio at {kbps} kbit/s (about {mb} MB per hour), dropping any video. Transcribing again, re-splitting speakers and voice recognition use only the sound and keep working; the video pane and downloading the file as uploaded are given up. Audio that is already that small is left alone.",
+    lede: "Once a meeting has been transcribed, its original can be re-encoded as mono Opus audio at {kbps} kbit/s (about {mb} MB per hour), dropping any video. Transcribing again, re-splitting speakers and voice recognition use only the sound and keep working; the video pane and downloading the file as uploaded are given up. Audio that is already that small is left alone. Videos are always turned into audio as soon as they are transcribed, whatever is set here (MEDIA_KEEP_VIDEO=true keeps them).",
     compact: "Keep only compact audio after transcription",
     afterDays: "Days after transcription",
     afterDaysHint: "0 compacts as soon as a meeting is transcribed. A few days leave time to transcribe again from the file as uploaded.",

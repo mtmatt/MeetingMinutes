@@ -67,19 +67,15 @@ describe("compacting originals to audio only", () => {
     expect((await member.req("PUT", "/api/admin/media", { json: { compact: true, afterDays: 0 } })).status).toBe(403);
     expect((await admin.req("PUT", "/api/admin/media", { json: { compact: true, afterDays: -1 } })).status).toBe(422);
     // People are told, so whoever uploads a video knows it is not kept as uploaded.
-    expect(((await (await member.get("/api/auth/state")).json()) as any).mediaPolicy).toEqual({ compact: false, afterDays: 7 });
+    expect(((await (await member.get("/api/auth/state")).json()) as any).mediaPolicy).toEqual({ compact: false, afterDays: 7, videoAudioOnly: true });
   });
 
   test("a due video is replaced by an Opus copy; the video and the old file are gone", async () => {
     const owner = await memberClient("compact-owner");
     const id = await transcribed(owner);
-    // Transcribed just now: not due with 7 days to wait.
-    let state = await setPolicy(true, 7);
-    expect(await claim(id, ["compact"])).toBeNull();
-    expect(state.stats.candidates).toBeGreaterThanOrEqual(1);
-    expect(state.stats.due).toBe(0);
+    // A video becomes audio as soon as it is transcribed, whatever the policy's wait (that is for audio).
+    await setPolicy(true, 7);
     // Older workers, which do not ask for compactions, are never handed one.
-    state = await setPolicy(true, 0);
     const legacy = await worker.call("/jobs/claim", { workerId: WORKER });
     if (legacy.status === 200) expect(((await legacy.json()) as any).job.kind).not.toBe("compact");
 
@@ -108,6 +104,28 @@ describe("compacting originals to audio only", () => {
     // Done once: never queued again.
     await setPolicy(true, 0);
     expect(await claim(id, ["compact"])).toBeNull();
+  });
+
+  test("a video is turned into audio once transcribed, even with the policy off", async () => {
+    await setPolicy(false, 7);
+    const owner = await memberClient("compact-video-now");
+    const id = await transcribed(owner);
+    const job = await claim(id, ["compact"]);
+    expect(job?.kind).toBe("compact");
+    await worker.call(`/jobs/${job.jobId}/fail`, { workerId: WORKER, error: "test", retryable: false });
+  });
+
+  test("audio waits for the policy's days, and is left alone with the policy off", async () => {
+    const owner = await memberClient("compact-audio-wait");
+    // 400 KB a minute is about 53 kbit/s: worth compacting to 32.
+    const id = await transcribed(owner, { video: false, bytes: 400_000, durationSec: 60 });
+    await setPolicy(false, 0);
+    expect(await claim(id, ["compact"])).toBeNull();
+    const state = await setPolicy(true, 7);
+    expect(await claim(id, ["compact"])).toBeNull();
+    expect(state.stats.candidates).toBeGreaterThanOrEqual(1);
+    await setPolicy(true, 0);
+    expect((await claim(id, ["compact"]))?.kind).toBe("compact");
   });
 
   test("a copy of the wrong length is thrown away and the original kept, without retrying forever", async () => {

@@ -89,21 +89,29 @@ function candidateParams(dueBy: number) {
   return { dueBy, minBps: config.media.compactKbps * 1000 * 1.5 };
 }
 
-/** Queue compactions for meetings that are due. Returns how many were queued. */
+/**
+ * Queue compactions for meetings that are due. Returns how many were queued.
+ * Videos are turned into audio as soon as they are transcribed (unless
+ * MEDIA_KEEP_VIDEO is set); other originals follow the policy.
+ */
 export function enqueueCompactions(): number {
   const s = mediaSettings();
-  if (!s.compact) return 0;
-  const due = now() - s.afterDays * DAY_MS;
+  const t = now();
+  const videos = !config.media.keepVideo;
+  if (!s.compact && !videos) return 0;
   return db.transaction(() => {
-    const ids = db
-      .query<{ id: string }, { dueBy: number; minBps: number; limit: number }>(
-        `SELECT m.id ${CANDIDATES} ORDER BY m.transcribed_at ASC LIMIT $limit`,
-      )
-      .all({ ...candidateParams(due), limit: SWEEP_LIMIT });
+    const ids = new Set<string>();
+    const pick = (sql: string, dueBy: number) => {
+      for (const { id } of db
+        .query<{ id: string }, { dueBy: number; minBps: number; limit: number }>(`SELECT m.id ${CANDIDATES} ${sql} ORDER BY m.transcribed_at ASC LIMIT $limit`)
+        .all({ ...candidateParams(dueBy), limit: SWEEP_LIMIT - ids.size }))
+        ids.add(id);
+    };
+    if (videos) pick("AND m.has_video = 1", t);
+    if (s.compact && ids.size < SWEEP_LIMIT) pick("", t - s.afterDays * DAY_MS);
     const insert = db.query("INSERT INTO jobs (id, meeting_id, status, kind, created_at) VALUES ($id, $m, 'queued', 'compact', $t)");
-    const t = now();
-    for (const { id } of ids) insert.run({ id: newId(12), m: id, t });
-    return ids.length;
+    for (const id of ids) insert.run({ id: newId(12), m: id, t });
+    return ids.size;
   })();
 }
 
@@ -205,6 +213,6 @@ export function compactName(name: string): string {
 }
 
 /** Shown on the upload page, so people know a video will not be kept as uploaded. */
-export function publicMediaPolicy(s: MediaSettings = mediaSettings()): { compact: boolean; afterDays: number } {
-  return { compact: s.compact, afterDays: s.afterDays };
+export function publicMediaPolicy(s: MediaSettings = mediaSettings()): { compact: boolean; afterDays: number; videoAudioOnly: boolean } {
+  return { compact: s.compact, afterDays: s.afterDays, videoAudioOnly: !config.media.keepVideo };
 }
