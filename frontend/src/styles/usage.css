@@ -1,5 +1,9 @@
 /* ------------------------------------------------------------ Usage dashboard */
 
+/* Room under the page's rule, as on the other pages, so the controls do not sit on it. */
+.usage > .rule-double {
+  margin-bottom: var(--space-5);
+}
 .usage-controls {
   display: flex;
   flex-wrap: wrap;
