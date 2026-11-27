@@ -5,7 +5,7 @@ import { db, now } from "../db";
 import { httpError, newId } from "../lib/util";
 import { listTemplatesFor, publicTemplate } from "../services/templates";
 import type { AppEnv, TemplateRow } from "../types";
-import { body } from "./validate";
+import { TEXT_JSON_LIMIT_BYTES, body } from "./validate";
 
 export const templateRoutes = new Hono<AppEnv>();
 templateRoutes.use(requireUser);
@@ -19,7 +19,7 @@ const templateInput = z.object({
 templateRoutes.get("/", (c) => c.json({ templates: listTemplatesFor(c.get("user").id).map(publicTemplate) }));
 
 templateRoutes.post("/", async (c) => {
-  const input = await body(c, templateInput);
+  const input = await body(c, templateInput, TEXT_JSON_LIMIT_BYTES);
   const id = newId(9);
   const t = now();
   const count = db.query<{ n: number }, { u: string }>("SELECT COUNT(*) AS n FROM templates WHERE owner_id = $u").get({ u: c.get("user").id })?.n ?? 0;
@@ -33,7 +33,7 @@ templateRoutes.post("/", async (c) => {
 });
 
 templateRoutes.patch("/:id", async (c) => {
-  const input = await body(c, templateInput.partial());
+  const input = await body(c, templateInput.partial(), TEXT_JSON_LIMIT_BYTES);
   const r = db
     .query(
       `UPDATE templates SET name = COALESCE($name, name), description = COALESCE($description, description),

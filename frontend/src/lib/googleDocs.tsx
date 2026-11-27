@@ -100,6 +100,11 @@ function SummaryDocument({ x, t }: { x: SummaryExport; t: TFn }) {
           td({ children }) {
             return <td style={cell}>{children}</td>;
           },
+          // A summary is written by a model that read the transcript: an image there would be fetched
+          // from wherever it points when the document is opened. Its description is kept instead.
+          img({ alt }) {
+            return alt ? <span>{alt}</span> : null;
+          },
         }}
       >
         {linkTimestamps(summary.content ?? "", meeting.durationSec ?? 0)}

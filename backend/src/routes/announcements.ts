@@ -14,6 +14,6 @@ announcementRoutes.get("/", (c) => c.json(announcementsFor(c.get("user"))));
 /** Closed a banner, or read them on the announcements page. */
 announcementRoutes.post("/seen", async (c) => {
   const input = await body(c, z.object({ ids: z.array(z.string().max(40)).min(1).max(50) }));
-  markSeen(c.get("user").id, input.ids);
+  markSeen(c.get("user"), input.ids);
   return c.json(announcementsFor(c.get("user")));
 });

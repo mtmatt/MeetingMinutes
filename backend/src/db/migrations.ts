@@ -463,4 +463,7 @@ export const migrations: string[] = [
     PRIMARY KEY (announcement_id, user_id)
   );
   `,
+  // 16: a prepaid transcription's limit (seconds) as the worker was told when it claimed the job,
+  // so that what it reports afterwards is never charged beyond it.
+  `ALTER TABLE jobs ADD COLUMN max_sec REAL;`,
 ];

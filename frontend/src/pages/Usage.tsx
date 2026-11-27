@@ -377,9 +377,11 @@ function TopMeetings({ r, own }: { r: UsageReport; own: boolean }) {
             </tr>
           </thead>
           <tbody>
-            {r.top.map((m) => (
-              <tr key={m.id}>
-                <td className="usage-title">{own ? <Link to={`/m/${m.id}`}>{m.title}</Link> : m.title}</td>
+            {r.top.map((m, i) => (
+              <tr key={m.id ?? i}>
+                <td className="usage-title">
+                  {own && m.id ? <Link to={`/m/${m.id}`}>{m.title}</Link> : (m.title ?? <span className="faint">{t("usage.titleHidden")}</span>)}
+                </td>
                 <td className="num">{hoursText(m.sec, locale)}</td>
                 <td className="num mono usage-opt">{m.transcriptions}</td>
                 <td className="num mono usage-opt">{m.summaries}</td>

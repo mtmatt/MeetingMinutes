@@ -26,5 +26,8 @@ usageRoutes.get("/", (c) => {
       userId = who;
     }
   }
-  return c.json(usageReport(userId, range));
+  const report = usageReport(userId, range);
+  // Meetings are their owner's: an administrator sees how much, not what they were called.
+  if (userId !== me.id) return c.json({ ...report, top: report.top.map((m) => ({ ...m, id: null, title: null })) });
+  return c.json(report);
 });

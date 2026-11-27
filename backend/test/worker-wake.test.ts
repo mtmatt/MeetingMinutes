@@ -116,7 +116,8 @@ describe("workers started on demand", () => {
     expect(await wakeSweep(t)).toEqual([]);
     const state = ((await (await admin.get("/api/admin/worker-profiles")).json()) as any).wake[id];
     expect(state.ok).toBe(false);
-    expect(state.error).toContain("HTTP 500");
+    // Only the status: what the other side answered ("nope") is neither kept nor shown.
+    expect(state.error).toBe("HTTP 500");
     // A new job is worth trying again.
     queued(5_000);
     clearQueue();

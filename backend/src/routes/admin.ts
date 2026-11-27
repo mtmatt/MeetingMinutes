@@ -78,7 +78,7 @@ import {
   unblockIp,
 } from "../services/security";
 import { isIP } from "node:net";
-import { SMALL_JSON_LIMIT_BYTES, body } from "./validate";
+import { SMALL_JSON_LIMIT_BYTES, TEXT_JSON_LIMIT_BYTES, body } from "./validate";
 
 export const adminRoutes = new Hono<AppEnv>();
 adminRoutes.use(requireUser, requireAdmin);
@@ -476,13 +476,13 @@ adminRoutes.put("/worker-profiles/:id", async (c) => {
 adminRoutes.get("/announcements", (c) => c.json({ announcements: adminAnnouncements() }));
 
 adminRoutes.post("/announcements", async (c) => {
-  const input = await body(c, announcementInput);
+  const input = await body(c, announcementInput, TEXT_JSON_LIMIT_BYTES);
   const id = createAnnouncement(input, c.get("user").id);
   return c.json({ id }, 201);
 });
 
 adminRoutes.put("/announcements/:id", async (c) => {
-  const input = await body(c, announcementInput);
+  const input = await body(c, announcementInput, TEXT_JSON_LIMIT_BYTES);
   if (!updateAnnouncement(c.req.param("id"), input)) httpError(404, "No such announcement.", "not_found");
   return c.json({ ok: true });
 });
@@ -525,7 +525,7 @@ adminRoutes.put("/billing", async (c) => {
 adminRoutes.get("/terms", (c) => c.json({ markdown: termsText(), updatedAt: termsUpdatedAt() }));
 
 adminRoutes.put("/terms", async (c) => {
-  const input = await body(c, z.object({ markdown: z.string().max(TERMS_MAX) }));
+  const input = await body(c, z.object({ markdown: z.string().max(TERMS_MAX) }), TEXT_JSON_LIMIT_BYTES);
   saveTerms(input.markdown, c.get("user").id);
   return c.json({ markdown: termsText(), updatedAt: termsUpdatedAt() });
 });

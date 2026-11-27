@@ -316,6 +316,24 @@ export async function deleteMeeting(m: MeetingRow) {
   publish(m.owner_id, { type: "meeting.deleted", meetingId: m.id });
 }
 
+/** Uploads one person may have unfinished at once: each can be as large as MAX_UPLOAD_MB on disk. */
+export const MAX_PENDING_UPLOADS = 5;
+/** An upload that has received nothing for this long is given up, and its partial file removed. */
+export const ABANDONED_UPLOAD_MS = 24 * 3600 * 1000;
+
+export function pendingUploads(userId: string): number {
+  return db.query<{ n: number }, { u: string }>("SELECT COUNT(*) AS n FROM meetings WHERE owner_id = $u AND status = 'uploading'").get({ u: userId })?.n ?? 0;
+}
+
+/** Removes uploads nobody finished (the page was closed, or someone only meant to fill the disk). Returns how many. */
+export async function purgeAbandonedUploads(t = now()): Promise<number> {
+  const stale = db
+    .query<MeetingRow, { before: number }>("SELECT * FROM meetings WHERE status = 'uploading' AND updated_at < $before")
+    .all({ before: t - ABANDONED_UPLOAD_MS });
+  for (const m of stale) await deleteMeeting(m);
+  return stale.length;
+}
+
 // -------------------------------------------------------------- job queue
 
 /**
@@ -384,10 +402,15 @@ export function claimJob(
     const before = now() - fallbackDelaySec(profileId) * 1000;
     const job = db
       .query<JobRow, { t: number; v: number; c: number; before: number }>(
-        `SELECT * FROM jobs WHERE status = 'queued'
-           AND ((kind = 'transcribe' AND $t AND created_at <= $before) OR (kind = 'voiceprint' AND $v AND created_at <= $before)
-             OR (kind = 'compact' AND $c))
-         ORDER BY kind = 'compact', kind = 'voiceprint', created_at ASC LIMIT 1`,
+        `SELECT j.* FROM jobs j JOIN meetings jm ON jm.id = j.meeting_id WHERE j.status = 'queued'
+           AND ((j.kind = 'transcribe' AND $t AND j.created_at <= $before) OR (j.kind = 'voiceprint' AND $v AND j.created_at <= $before)
+             OR (j.kind = 'compact' AND $c))
+           -- A paying owner's transcriptions run one at a time: each is told what the points left pay for,
+           -- which two running at once would both be told, and both spend.
+           AND NOT (j.kind = 'transcribe' AND j.hold IS NOT NULL AND EXISTS (
+             SELECT 1 FROM jobs r JOIN meetings rm ON rm.id = r.meeting_id
+              WHERE r.status = 'running' AND r.kind = 'transcribe' AND r.hold IS NOT NULL AND rm.owner_id = jm.owner_id))
+         ORDER BY j.kind = 'compact', j.kind = 'voiceprint', j.created_at ASC LIMIT 1`,
       )
       .get({
         t: kinds.includes("transcribe") && can.transcribe ? 1 : 0,
@@ -420,6 +443,7 @@ export function claimJob(
     });
     touchMeeting(m);
     const maxSec = jobCreditLimit(m.owner_id, m.id, job.hold);
+    db.query("UPDATE jobs SET max_sec = $s WHERE id = $id").run({ id: job.id, s: maxSec });
     return {
       ...base,
       options: { ...DEFAULT_OPTIONS, ...parseJson<Partial<TranscribeOptions>>(m.options, {}) },
@@ -573,7 +597,10 @@ function chargeJob(job: JobRow, durationSec: number) {
   if (job.hold == null) return;
   const m = getMeeting(job.meeting_id);
   if (!m) return;
-  const cost = chargeTranscription(m.owner_id, m, durationSec);
+  // The worker reports the length, and was told the most the points pay for: nothing beyond that is charged,
+  // so the balance cannot go below zero (at most the second of slack the worker allows for rounding is free).
+  const charged = job.max_sec != null ? Math.min(durationSec, job.max_sec) : durationSec;
+  const cost = chargeTranscription(m.owner_id, m, charged);
   if (cost != null) db.query("UPDATE jobs SET charged = $c WHERE id = $id").run({ id: job.id, c: cost });
 }
 

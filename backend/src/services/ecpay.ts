@@ -70,7 +70,7 @@ export function checkMacValue(fields: Record<string, string>, hashKey = config.e
 /** Whether fields ECPay sent carry a valid signature from this shop. */
 export function verifyFields(fields: Record<string, string>): boolean {
   const given = fields.CheckMacValue ?? "";
-  if (given.length !== 64 || fields.MerchantID !== config.ecpay.merchantId) return false;
+  if (!/^[0-9A-Fa-f]{64}$/.test(given) || fields.MerchantID !== config.ecpay.merchantId) return false;
   const expected = checkMacValue(fields);
   return timingSafeEqual(Buffer.from(given.toUpperCase()), Buffer.from(expected));
 }

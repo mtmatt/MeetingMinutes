@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { config } from "../src/config";
 import { db } from "../src/db";
 import { checkMacValue, taipeiTime } from "../src/services/ecpay";
 import { outbox } from "../src/services/mail";
@@ -6,6 +7,16 @@ import { mailIpLimiter, registerLimiter } from "../src/auth/ratelimit";
 import { Client, adminClient, memberClient, waitFor, worker } from "./helpers";
 
 const PASSWORD = "a long enough password";
+
+// Links in mail need the site's own address (never the Host a request names).
+const mutable = config as { publicUrl: string };
+const publicUrlBefore = mutable.publicUrl;
+beforeAll(() => {
+  mutable.publicUrl = "http://mm.test";
+});
+afterAll(() => {
+  mutable.publicUrl = publicUrlBefore;
+});
 
 async function openSignUp(extra: Record<string, unknown> = {}) {
   const admin = await adminClient();
@@ -145,6 +156,38 @@ describe("signing up", () => {
     expect((await new Client().post("/api/auth/login", { username: "forgetful", password: "a brand new password" })).status).toBe(200);
   });
 
+  test("trying names that are taken counts against the sign-up limit, so accounts cannot be listed freely", async () => {
+    await openSignUp();
+    registerLimiter.reset("unknown");
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      const res = await new Client().post("/api/auth/register", { username: "admin", displayName: "x", email: `probe${i}@example.com`, password: PASSWORD });
+      statuses.push(res.status);
+    }
+    expect(statuses.slice(0, 10).every((s) => s === 409)).toBe(true);
+    expect(statuses[10]).toBe(429);
+    registerLimiter.reset("unknown");
+  });
+
+  test("a confirmation mail does not carry the name typed at sign-up, and only its own link is clickable", async () => {
+    await openSignUp();
+    registerLimiter.reset("unknown");
+    mailIpLimiter.reset("unknown");
+    const email = "named@example.com";
+    const res = await new Client().post("/api/auth/register", {
+      username: "named-one",
+      displayName: "Your account is locked. Sign in at https://evil.example/login",
+      email,
+      password: PASSWORD,
+      locale: "en",
+    });
+    expect(res.status).toBe(200);
+    const mail = lastMailTo(email);
+    expect(mail.text).not.toContain("evil.example");
+    expect(mail.links).toHaveLength(1);
+    expect(mail.links![0]).toStartWith("http://mm.test/verify-email/");
+  });
+
   test("mail to one address is rate limited", async () => {
     let last = 0;
     for (let i = 0; i < 4; i++) last = (await new Client().post("/api/auth/verify-email/resend", { email: "flood@example.com" })).status;
@@ -279,6 +322,29 @@ describe("paying for transcription", () => {
     // Transcribing again is paid again, by the length now known.
     const again = await c.post(`/api/meetings/${first.id}/retranscribe`, {});
     expect(again.status).toBe(402);
+  });
+
+  test("one owner's transcriptions run one at a time, and nothing beyond the limit told is charged", async () => {
+    const c = await signedUp("racer");
+    const admin = await adminClient();
+    const me = ((await (await c.get("/api/me")).json()) as any).user;
+    await admin.post(`/api/admin/users/${me.id}/credits`, { points: 2, note: "Test" });
+    // Two recordings the browser said were a moment long: each sets aside almost nothing.
+    const one = await upload(c, 0.001);
+    const two = await upload(c, 0.001);
+    expect([one.status, two.status]).toEqual([200, 200]);
+    const first = await claimFor(one.id!);
+    expect(first.credits.maxSec).toBeGreaterThan(100);
+    // While it runs, the other is not handed to a second worker (both would be told the same 2 points).
+    expect(await claimFor(two.id!)).toBeNull();
+    // A worker reporting a huge length is charged for what it was told it may transcribe, no more.
+    expect((await worker.call(`/jobs/${first.jobId}/complete`, { workerId: "gpu-billing", result: RESULT(1e9) })).status).toBe(200);
+    const after = (await (await c.get("/api/billing")).json()) as any;
+    expect(after.balance).toBeGreaterThanOrEqual(0);
+    expect(after.ledger[0]).toMatchObject({ kind: "transcription", quantity: { sec: first.credits.maxSec } });
+    // Then the next one runs, told what is left.
+    const second = await claimFor(two.id!);
+    expect(second.credits.maxSec).toBeLessThan(5);
   });
 
   test("a failed transcription costs nothing", async () => {

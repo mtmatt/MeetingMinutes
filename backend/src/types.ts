@@ -199,6 +199,8 @@ export interface JobRow {
   /** Prepaid transcriptions: points (thousandths) set aside while the job is queued or running, and charged. */
   hold: number | null;
   charged: number | null;
+  /** Prepaid transcriptions: the most audio (seconds) the worker was told it may transcribe; nothing longer is charged. */
+  max_sec: number | null;
 }
 
 export type AppEnv = {

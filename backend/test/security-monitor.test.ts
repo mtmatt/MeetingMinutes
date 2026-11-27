@@ -4,7 +4,7 @@ import { db } from "../src/db";
 import { inRange, isProbe, normalizeIp, sentAlerts, unblockIp } from "../src/services/security";
 import { adminClient, app } from "./helpers";
 
-// Requests here come from addresses given in X-Forwarded-For (tests have no real socket).
+// Requests here come through a proxy on this machine, which names the visitor in X-Forwarded-For.
 const mutable = config as { trustProxy: boolean };
 const before = mutable.trustProxy;
 beforeAll(() => {
@@ -18,8 +18,11 @@ function from(ip: string, path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);
   headers.set("host", "mm.test");
   headers.set("x-forwarded-for", ip);
-  return app.fetch(new Request("http://mm.test" + path, { ...init, headers }));
+  return app.fetch(new Request("http://mm.test" + path, { ...init, headers }), viaProxy);
 }
+
+/** What Bun.serve passes as the second argument: here, the connection is from a proxy on this machine. */
+const viaProxy = { requestIP: () => ({ address: "127.0.0.1", family: "IPv4", port: 40000 }) };
 
 const login = (ip: string, username: string, password = "wrong password!") =>
   from(ip, "/api/auth/login", { method: "POST", headers: { "content-type": "application/json", "x-mm-client": "1" }, body: JSON.stringify({ username, password }) });

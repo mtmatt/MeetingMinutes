@@ -2,18 +2,19 @@ import type { Context } from "hono";
 import type { z } from "zod";
 import { httpError } from "../lib/util";
 
-/** Most JSON a signed-in person sends at once: an edited summary (500,000 characters) fits several times over. */
+/** The largest JSON a signed-in person sends at once: an edited summary (500,000 characters) fits several times over. */
 export const JSON_LIMIT_BYTES = 4 * 1024 * 1024;
+/** Requests with one long text (a prompt or template of 20,000 characters, the terms of 50,000). */
+export const TEXT_JSON_LIMIT_BYTES = 1024 * 1024;
 /**
- * For requests that anyone can send (signing in, first-run setup, accepting an
- * invitation, enrolling a worker) and for the workers' small messages: a few
- * short fields. Without it each such request could make the server buffer and
- * parse as much as one upload chunk (UPLOAD_CHUNK_MB) before it is even looked at.
+ * The default: a few short fields. Anything larger must ask for it (above).
+ * A large body is costly before it is even looked at: buffering and parsing it,
+ * and validating every element of an array before its length is checked.
  */
 export const SMALL_JSON_LIMIT_BYTES = 64 * 1024;
 
 /** The request body as text, refusing (413) as soon as it is known to be longer than `maxBytes`. */
-async function readText(c: Context, maxBytes: number): Promise<string> {
+export async function readText(c: Context, maxBytes: number): Promise<string> {
   const tooLarge = () => httpError(413, "The request is too large.", "too_large");
   const declared = Number(c.req.header("content-length") ?? "");
   if (Number.isFinite(declared) && declared > maxBytes) tooLarge();
@@ -40,7 +41,7 @@ async function readText(c: Context, maxBytes: number): Promise<string> {
  * Parse and validate a JSON body, answering 422 with a readable message on
  * failure, and 413 when it is longer than `maxBytes`.
  */
-export async function body<T extends z.ZodType>(c: Context, schema: T, maxBytes: number = JSON_LIMIT_BYTES): Promise<z.infer<T>> {
+export async function body<T extends z.ZodType>(c: Context, schema: T, maxBytes: number = SMALL_JSON_LIMIT_BYTES): Promise<z.infer<T>> {
   const text = await readText(c, maxBytes);
   let raw: unknown;
   try {

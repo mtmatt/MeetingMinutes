@@ -649,7 +649,8 @@ export interface UsageReport {
   weekdays: UsageGroup[];
   templates: UsageTokenGroup[];
   models: UsageTokenGroup[];
-  top: { id: string; title: string; sec: number; transcriptions: number; summaries: number; points: number }[];
+  /** Another person's report (an administrator's view): no id or title. */
+  top: { id: string | null; title: string | null; sec: number; transcriptions: number; summaries: number; points: number }[];
   library: { meetings: number; bytes: number; sec: number };
   byUser:
     | { id: string | null; username: string | null; displayName: string | null; billing: string | null; sec: number; transcriptions: number; summaries: number; points: number }[]

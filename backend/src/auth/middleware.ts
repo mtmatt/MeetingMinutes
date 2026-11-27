@@ -1,24 +1,68 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { getConnInfo } from "hono/bun";
+import { isIP } from "node:net";
 import { config, normalizeHost } from "../config";
 import { httpError, safeEqual } from "../lib/util";
 import type { AppEnv } from "../types";
 import { SESSION_COOKIE, resolveSession } from "./service";
 import { workerKeyForToken } from "../services/workerKeys";
 
-export function clientIp(c: Context): string {
-  if (config.trustProxy) {
-    const fwd = c.req.header("x-forwarded-for");
-    if (fwd) return fwd.split(",")[0]!.trim();
-    const real = c.req.header("x-real-ip");
-    if (real) return real.trim();
-  }
+function peerAddress(c: Context): string | undefined {
   try {
-    return getConnInfo(c).remote.address ?? "unknown";
+    return getConnInfo(c).remote.address ?? undefined;
   } catch {
-    return "unknown";
+    return undefined;
   }
+}
+
+/** A connection from this machine (or a request handed to the app in-process, which only code here can do). */
+function fromThisMachine(c: Context): boolean {
+  try {
+    return isLoopbackAddress(getConnInfo(c).remote.address);
+  } catch {
+    // No server behind the request: app.fetch called directly, as the tests do.
+    return true;
+  }
+}
+
+/** "::ffff:10.0.0.5" -> "10.0.0.5"; lower case. */
+function plainAddress(addr: string): string {
+  const a = addr.trim().toLowerCase();
+  return a.startsWith("::ffff:") && isIP(a.slice(7)) === 4 ? a.slice(7) : a;
+}
+
+/** An address on this machine or a private network: where a reverse proxy normally is. */
+export function isPrivateAddress(addr: string): boolean {
+  const a = plainAddress(addr);
+  if (isIP(a) === 4) {
+    const [x, y] = a.split(".").map(Number) as [number, number];
+    return x === 127 || x === 10 || (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168) || (x === 169 && y === 254) || (x === 100 && y >= 64 && y <= 127);
+  }
+  if (isIP(a) === 6) return a === "::1" || /^f[cd]/.test(a) || /^fe[89ab]/.test(a);
+  return false;
+}
+
+/** Whether the connection comes from the reverse proxy, so that its X-Forwarded-* headers may be believed. */
+export function fromTrustedProxy(c: Context): boolean {
+  if (!config.trustProxy) return false;
+  const peer = peerAddress(c);
+  if (!peer) return false;
+  return isPrivateAddress(peer) || config.trustedProxies.includes(plainAddress(peer));
+}
+
+/**
+ * The visitor's address. Behind a trusted proxy, the last X-Forwarded-For entry:
+ * the one the proxy added. Earlier entries are whatever the client sent, and
+ * would let anyone pick the address used for sign-in limits and blocking.
+ */
+export function clientIp(c: Context): string {
+  const peer = peerAddress(c);
+  if (fromTrustedProxy(c)) {
+    const last = c.req.header("x-forwarded-for")?.split(",").pop()?.trim();
+    if (last && isIP(plainAddress(last))) return plainAddress(last);
+  }
+  return peer ? plainAddress(peer) : "unknown";
 }
 
 const LOOPBACK_NAMES = new Set(["localhost", "127.0.0.1", "::1"]);
@@ -29,9 +73,13 @@ function isLoopbackAddress(addr: string | undefined): boolean {
   return a === "::1" || /^(::ffff:)?127(\.\d{1,3}){3}$/.test(a);
 }
 
-/** The host name a request names (Host header, or X-Forwarded-Host behind a trusted proxy), or null. */
+/**
+ * The host name a request names, or null. Only the Host header: Caddy and the
+ * nginx example pass the visitor's Host through, and X-Forwarded-Host is not
+ * set by them, so it would be whatever the client chose.
+ */
 function requestedHost(c: Context): string | null {
-  const raw = (config.trustProxy && c.req.header("x-forwarded-host")?.split(",")[0]?.trim()) || c.req.header("host");
+  const raw = c.req.header("host");
   if (!raw) return null;
   try {
     return normalizeHost(new URL(`http://${raw}`).hostname);
@@ -54,15 +102,7 @@ export const hostGuard: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (allowed.length === 0) return next();
   const host = requestedHost(c);
   if (host && allowed.includes(host)) return next();
-  if (host && LOOPBACK_NAMES.has(host)) {
-    let peer: string | undefined;
-    try {
-      peer = getConnInfo(c).remote.address;
-    } catch {
-      peer = undefined;
-    }
-    if (isLoopbackAddress(peer)) return next();
-  }
+  if (host && LOOPBACK_NAMES.has(host) && isLoopbackAddress(peerAddress(c))) return next();
   return new Response("Misdirected request.\n", {
     status: 421,
     headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", Connection: "close" },
@@ -92,7 +132,7 @@ export const csrfGuard: MiddlewareHandler<AppEnv> = async (c, next) => {
 
 function isAllowedOrigin(c: Context, origin: string): boolean {
   if (config.publicUrl && origin === config.publicUrl) return true;
-  const host = c.req.header("x-forwarded-host") && config.trustProxy ? c.req.header("x-forwarded-host") : c.req.header("host");
+  const host = c.req.header("host");
   try {
     return new URL(origin).host === host;
   } catch {
@@ -124,6 +164,9 @@ export const requireWorker: MiddlewareHandler = async (c, next) => {
   const auth = c.req.header("authorization") ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   if (token && safeEqual(token, config.workerToken)) {
+    // The shared token is for workers on this machine: refused from anywhere else, or through the
+    // proxy (which adds X-Forwarded-For), so a copy of it is of no use outside the server.
+    if (!fromThisMachine(c) || c.req.header("x-forwarded-for")) httpError(401, "Invalid worker token.", "unauthenticated");
     c.set("worker", { local: true, keyId: null });
     return next();
   }

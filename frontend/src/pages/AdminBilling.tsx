@@ -92,6 +92,15 @@ export function AdminBilling() {
             <p className="faint">{live ? t("sales.ecpayLiveHint") : data.ecpay.testShop ? t("sales.ecpayTestShopHint") : t("sales.ecpayTestHint")}</p>
           </div>
         </div>
+        {!live && data.ecpay.testShop && (
+          <div className="sales-status-row">
+            <AlertTriangle className="warn-icon" />
+            <div>
+              <strong>{t("sales.testShopForgeable")}</strong>
+              <p className="faint">{t("sales.testShopForgeableHint")}</p>
+            </div>
+          </div>
+        )}
         {!data.ecpay.publicUrl && (
           <div className="sales-status-row">
             <AlertTriangle className="warn-icon" />

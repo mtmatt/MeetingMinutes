@@ -7,7 +7,8 @@ import { purgeUnverifiedAccounts } from "./auth/accounts";
 import { purgeSecurityEvents } from "./services/security";
 import { enqueueCompactions } from "./services/mediaCompaction";
 import { sweepTransfers } from "./services/mediaTransfer";
-import { reapStaleJobs } from "./services/meetings";
+import { purgeAbandonedUploads, reapStaleJobs } from "./services/meetings";
+import { billingSettings } from "./services/billingSettings";
 import { kick, recoverSummaries } from "./services/summarizer";
 import { seedBuiltinTemplates } from "./services/templates";
 import { bindHelp, handoffHandler, redirectHandler } from "./redirect";
@@ -113,6 +114,12 @@ const sweepCompactions = () => {
   }
 };
 setInterval(sweepCompactions, 10 * 60 * 1000);
+// Uploads left unfinished for a day: their partial files.
+setInterval(() => {
+  purgeAbandonedUploads()
+    .then((n) => n && console.log(`[media] removed ${n} upload(s) left unfinished for a day`))
+    .catch((e) => console.error("[media] could not remove unfinished uploads:", e));
+}, 60 * 60 * 1000);
 // Transfer copies a remote worker never came back for.
 setInterval(() => {
   try {
@@ -136,6 +143,12 @@ for (const r of redirects) {
   console.log(`Port ${r.port}: ${handoff ? "serves the site; its pages move to" : "sends people to"} ${config.publicUrl}`);
 }
 const loopback = ["127.0.0.1", "localhost", "::1"].includes(config.host);
+if (config.ecpay.mode === "stage" && config.ecpay.testShop && billingSettings().enabled) {
+  console.warn("");
+  console.warn("  WARNING: points are on sale through ECPay's public test shop, whose keys are published: anyone with an");
+  console.warn("  account can forge a payment notification and add points. Set ECPAY_MODE=production with your shop.");
+  console.warn("");
+}
 if (config.tls && config.trustProxy) {
   console.warn("");
   console.warn("  WARNING: TRUST_PROXY=true while serving HTTPS directly. Without a proxy in front, clients can");
