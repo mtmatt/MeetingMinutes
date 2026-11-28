@@ -1,5 +1,6 @@
 /**
- * Administrative command line.
+ * Administrative command line. scripts/admin.sh runs it from any shell (and,
+ * for root, as the project's owner): scripts/admin.sh <command> …
  *
  *   bun run admin create-admin <username> [display name]   create an administrator (prompts for password)
  *   bun run admin reset-password <username>                  set a new password (prompts)
