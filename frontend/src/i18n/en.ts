@@ -1504,6 +1504,11 @@ export const en = {
     backToPoints: "Back to Points",
   },
   errors: {
+    updatedTitle: "The site was just updated",
+    updatedBody: "This tab is still on the previous version: reload to get the new one.",
+    pageTitle: "This page could not be shown",
+    pageBody: "Reload to try again; if it keeps happening, contact us.",
+    reload: "Reload",
     notFound: "Page not found",
     notFoundBody: "The page you are looking for does not exist.",
   },

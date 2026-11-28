@@ -46,6 +46,7 @@ const queryClient = new QueryClient({
 
 // Enter and Escape typed into an input method are not the page's.
 installImeGuard();
+
 preloadPages(window.location.pathname);
 prefetchPageData(queryClient, window.location.pathname);
 

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { db } from "../src/db";
-import { acceptableFix, editDistance, setRefineClientForTests } from "../src/services/refine";
+import { acceptableFix, applyReplacement, editDistance, setRefineClientForTests } from "../src/services/refine";
 import { adminClient, memberClient, waitFor, worker, type Client } from "./helpers";
 
 let n = 0;
@@ -22,16 +22,17 @@ const fake = {
       calls.push({ max_tokens: args.max_tokens, content });
       const usage = { input_tokens: 1000, output_tokens: 200, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
       if (args.max_tokens === 4000) return { parsed_output: { topic: "前端改版會議", terms: ["React", "API"] }, usage };
-      const fixes: { id: number; text: string }[] = [];
-      const editable = content.split("Return only the ones you changed")[1] ?? "";
+      const fixes: { id: number; wrong: string; right: string }[] = [];
+      const editable = content.split("the phrase that was actually said:")[1] ?? "";
       for (const line of editable.split("\n")) {
-        const m = /^\[(\d+)\] [^:]+: (.*)$/.exec(line);
-        if (!m) continue;
-        let text = m[2]!;
-        for (const [a, b] of FIXES) text = text.replaceAll(a, b);
-        // A rewrite the server must refuse.
-        if (text.includes("整句重寫")) text = "完全不同的一句話，內容已經被模型改寫掉了";
-        if (text !== m[2]) fixes.push({ id: Number(m[1]), text });
+        if (!line.startsWith("{")) continue;
+        const s = JSON.parse(line) as { id: number; speaker: string; text: string };
+        for (const [a, b] of FIXES) if (s.text.includes(a)) fixes.push({ id: s.id, wrong: a, right: b });
+        // What the server must refuse: the speaker's name glued in front, and a whole sentence rewritten.
+        if (s.text.includes("他們應該")) fixes.push({ id: s.id, wrong: "他們應該", right: `${s.speaker}: 他們應該` });
+        if (s.text.includes("整句重寫")) fixes.push({ id: s.id, wrong: s.text, right: "完全不同的一句話，內容已經被模型改寫掉了" });
+        // Nothing misheard, the phrase "corrected" to itself.
+        if (s.text.includes("下週見")) fixes.push({ id: s.id, wrong: "下週見", right: "下週見" });
       }
       return { parsed_output: { fixes }, usage };
     },
@@ -73,6 +74,20 @@ describe("correcting a transcript with a hosted model", () => {
     db.query("DELETE FROM meetings WHERE id LIKE 'refine-m%'").run();
   });
 
+  test("a correction replaces a misheard phrase and nothing else", () => {
+    expect(applyReplacement("我們改用瑞克特來寫", "瑞克特", "React")).toBe("我們改用React來寫");
+    // The phrase must be in the sentence, and change.
+    expect(applyReplacement("我們改用React", "瑞克特", "React")).toBeNull();
+    expect(applyReplacement("下週見", "下週見", "下週見")).toBeNull();
+    // Only adding to what was said: a name or a label in front.
+    expect(applyReplacement("他們應該也是有在做", "他們", "蔡承霖: 他們")).toBeNull();
+    expect(applyReplacement("他們應該也是有在做", "他們", "蔡承霖：他們")).toBeNull();
+    expect(applyReplacement("點將資訊股份有限公司", "點將資訊", "蔡承霖點將資訊")).toBeNull();
+    // A speaker's name where none was heard; but a misheard name may be corrected to it.
+    expect(applyReplacement("那個人說好", "那個人", "蔡承霖", ["蔡承霖"])).toBeNull();
+    expect(applyReplacement("我是蔡成林", "蔡成林", "蔡承霖", ["蔡承霖"])).toBe("我是蔡承霖");
+  });
+
   test("a fix is a small change, never a rewrite", () => {
     expect(editDistance("瑞克特很好用", "React很好用")).toBe(5);
     expect(acceptableFix("我們改用瑞克特來寫前端", "我們改用React來寫前端")).toBe(true);
@@ -98,7 +113,7 @@ describe("correcting a transcript with a hosted model", () => {
     const c = await memberClient("refine-amy");
     const id = await meeting(
       c,
-      ["我們這次改用瑞克特來重寫前端。", "後端的A屁愛下週凍結。", "我手動改過的瑞克特句子。", "這句整句重寫測試。", "好，下週見。"],
+      ["我們這次改用瑞克特來重寫前端。", "後端的A屁愛下週凍結。", "我手動改過的瑞克特句子。", "這句整句重寫測試。", "好，下週見。", "他們應該也是有在做。"],
       { edited: [2] },
     );
     const res = await c.post(`/api/meetings/${id}/refine`);
@@ -114,11 +129,16 @@ describe("correcting a transcript with a hosted model", () => {
     expect(texts[1]).toBe("後端的API下週凍結。");
     expect(texts[2]).toBe("我手動改過的瑞克特句子。"); // edited by hand: untouched
     expect(texts[3]).toBe("這句整句重寫測試。"); // a rewrite: refused
+    expect(texts[4]).toBe("好，下週見。"); // nothing to correct
+    expect(texts[5]).toBe("他們應該也是有在做。"); // a speaker's name glued on: refused
+    expect(m.segments[5].original).toBeUndefined();
     expect(m.segments[0].original).toBe("我們這次改用瑞克特來重寫前端。");
     expect(m.segments[4].original).toBeUndefined();
     expect(m.refinement.changed).toBe(2);
     // The hand-edited sentence was not even sent to be corrected; the topic was read first.
-    expect(calls.some((x) => x.content.includes("我手動改過的") && x.content.includes("Return only the ones you changed") && x.content.split("Return only")[1]!.includes("我手動改過的"))).toBe(false);
+    expect(calls.some((x) => (x.content.split("the phrase that was actually said:")[1] ?? "").includes("我手動改過的"))).toBe(false);
+    // The speaker goes as a field of its own, never in front of the words.
+    expect(calls.some((x) => x.content.includes('"speaker":"林怡君","text":"我們這次改用瑞克特來重寫前端。"'))).toBe(true);
     expect(calls.some((x) => x.max_tokens === 4000)).toBe(true);
 
     const undo = await c.post(`/api/meetings/${id}/refine/undo`);

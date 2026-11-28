@@ -149,6 +149,11 @@ export function createApp() {
       const immutable = urlPath.startsWith("/assets/");
       return staticFile(candidate, c.req.header("Accept-Encoding"), immutable ? "public, max-age=31536000, immutable" : "no-cache");
     }
+    // A script or style of a build the site no longer has: a plain 404 (not the app's page, which a
+    // browser would try to run as a script), so the page knows to reload into the new version.
+    if (urlPath.startsWith("/assets/")) {
+      return c.text("Not found.", 404, { "Cache-Control": "no-store" });
+    }
     return staticFile(indexHtml, c.req.header("Accept-Encoding"), "no-cache", "text/html; charset=utf-8");
   });
 

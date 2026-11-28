@@ -1108,3 +1108,12 @@
   text-decoration-thickness: 1.5px;
   text-underline-offset: 6px;
 }
+
+/* Like the speaker notice: clear of the head's hairline. */
+[data-ui="next"] .meeting > .retention-note,
+[data-ui="next"] .meeting > .refine-note {
+  margin: 24px 0 0;
+}
+[data-ui="next"] .meeting > .callout + .callout {
+  margin-top: 12px;
+}

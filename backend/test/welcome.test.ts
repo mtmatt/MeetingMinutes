@@ -22,4 +22,14 @@ describe("the front page", () => {
     stale.cookie = "mm_session=not-a-session";
     expect(await (await stale.get("/")).text()).toContain("<title>welcome</title>");
   });
+
+  test("a script of a build the site no longer has is a 404, not the app's page", async () => {
+    const visitor = new Client();
+    const gone = await visitor.get("/assets/Upload-OLDHASH.js");
+    expect(gone.status).toBe(404);
+    expect(gone.headers.get("content-type")).not.toContain("text/html");
+    expect(gone.headers.get("cache-control")).toBe("no-store");
+    // Other addresses still open the app (its own routes).
+    expect(await (await (await adminClient()).get("/new")).text()).toContain("<title>app</title>");
+  });
 });

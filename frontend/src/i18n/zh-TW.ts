@@ -1505,6 +1505,11 @@ export const zhTW: Dict = {
     backToPoints: "回到點數與購買",
   },
   errors: {
+    updatedTitle: "網站剛更新",
+    updatedBody: "這個分頁還是舊版，請重新整理載入新版本。",
+    pageTitle: "這個頁面無法顯示",
+    pageBody: "請重新整理再試一次；如果持續發生，請聯絡我們。",
+    reload: "重新整理",
     notFound: "找不到頁面",
     notFoundBody: "你要找的頁面不存在。",
   },
