@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { db } from "../src/db";
 import { BUCKETS_MS, bucketOf, flushPerf, percentile, perfReport, recordRequest } from "../src/services/perf";
-import { adminClient, memberClient } from "./helpers";
+import { Client, adminClient, memberClient } from "./helpers";
 
 describe("performance statistics", () => {
   test("percentiles come from the time buckets", () => {
@@ -35,6 +35,27 @@ describe("performance statistics", () => {
     expect(names.some((n) => n === "GET /" || n.endsWith(" /*"))).toBe(false);
     const byId = routes.find((r) => r.route === "GET /api/meetings/:id")!;
     expect(byId.count).toBeGreaterThanOrEqual(2);
+  });
+
+  test("workers' polling is not counted, and rows kept from before are left out of the report", async () => {
+    await new Client().post("/internal/jobs/claim", {});
+    await new Client().post("/internal/worker/heartbeat", {});
+    flushPerf();
+    const stored = db.query<{ route: string }, []>("SELECT DISTINCT route FROM request_stats").all().map((r) => r.route);
+    expect(stored.some((r) => r.includes("/internal/"))).toBe(false);
+    // As stored by an earlier version.
+    recordRequest("POST /internal/jobs/claim", 200, 3);
+    flushPerf();
+    const report = perfReport("1h");
+    expect(report.routes.some((r) => r.route.includes("/internal/"))).toBe(false);
+  });
+
+  test("a percentile never reads above the slowest request seen", () => {
+    for (let i = 0; i < 100; i++) recordRequest("GET /api/clamp-test", 200, 12);
+    flushPerf();
+    const route = perfReport("1h").routes.find((r) => r.route === "GET /api/clamp-test")!;
+    expect(route.maxMs).toBe(12);
+    for (const p of [route.p50, route.p95, route.p99]) expect(p!).toBeLessThanOrEqual(12);
   });
 
   test("the report: overall, a series over the window, routes, and 4xx/5xx kept apart", () => {
