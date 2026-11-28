@@ -275,7 +275,7 @@ scripts/start.sh                # web server; prints the one-time setup token on
 scripts/worker.sh               # a worker for every GPU (or WORKER_GPUS=0,1)
 ```
 
-Open the site, enter the setup token (also saved in `data/setup.token`), and create the administrator. Invite everyone else from **Admin → Invitations**. You can also create an admin from the shell with `bun run admin create-admin <username>`.
+Open the site, enter the setup token (also saved in `data/setup.token`), and create the administrator. Invite everyone else from **Admin → Invitations**. You can also create an admin from the shell with `bun run admin create-admin <username>` (or `scripts/admin.sh create-admin <username>`, which finds Bun itself and, run by root, runs as the project's owner).
 
 ### Running the web server with systemd
 

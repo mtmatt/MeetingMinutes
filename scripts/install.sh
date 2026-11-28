@@ -59,6 +59,13 @@ fi
 
 say "Installing the worker (Python via uv; no system packages needed)"
 cd "$ROOT/worker"
+# A Python environment made by another account (root, before scripts/setup-user.sh)
+# points at that account's Python, which this one may not be allowed to read.
+# It is rebuilt from uv.lock, so start it afresh; models live in the data directory.
+if [ -e .venv ] && ! .venv/bin/python -c "" 2>/dev/null; then
+  say "Rebuilding worker/.venv: its Python belongs to another account or is gone"
+  rm -rf .venv
+fi
 EXTRAS=()
 [ "$GPU" = 1 ] && EXTRAS+=(--extra gpu)
 [ "$VLLM" = 1 ] && EXTRAS+=(--extra gpu --extra vllm)
