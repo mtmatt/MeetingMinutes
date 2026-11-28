@@ -98,10 +98,8 @@ else
 fi
 if [ "$DRY" = 1 ] && ! id -u "$NAME" >/dev/null 2>&1; then
   GROUP=$NAME
-  HOME_DIR=/home/$NAME
 else
   GROUP=$(id -gn "$NAME")
-  HOME_DIR=$(getent passwd "$NAME" | cut -d: -f6)
 fi
 
 say "Giving $PROJECT_DIR to $NAME"
@@ -155,7 +153,8 @@ $HEAD
 
 1. Stop what is still running as root${running:+ (tmux sessions:$running)}:
      tmux kill-session -t mm-web; tmux kill-session -t mm-worker
-   (or systemctl stop …, if you start them with systemd).
+   (or systemctl stop meetingminutes-web, if it runs as a systemd service:
+   run scripts/install-service.sh again after the next step, for $NAME).
 
 2. Give $NAME its own tools. Bun and uv are installed in the home directory
    of whoever ran scripts/install.sh, and the worker's Python environment
@@ -174,27 +173,11 @@ $HEAD
 4. Start them at boot, one of:
    a) cron, as $NAME:   crontab -u $NAME -e   and add the line
         @reboot $PROJECT_DIR/scripts/restart.sh
-   b) systemd, as system units that run as $NAME. For the web server,
-      /etc/systemd/system/meetingminutes.service:
-        [Unit]
-        Description=MeetingMinutes web server
-        After=network-online.target
-        Wants=network-online.target
-        [Service]
-        User=$NAME
-        Group=$GROUP
-        WorkingDirectory=$PROJECT_DIR
-        Environment=HOME=$HOME_DIR
-        ExecStart=$PROJECT_DIR/scripts/start.sh
-        Restart=on-failure
-        RestartSec=3
-        [Install]
-        WantedBy=multi-user.target
-      and the same as meetingminutes-worker.service with
-      ExecStart=$PROJECT_DIR/scripts/worker.sh (add After=meetingminutes.service,
-      TimeoutStopSec=30 and KillMode=mixed); then
-        systemctl daemon-reload && systemctl enable --now meetingminutes meetingminutes-worker
-      Use tmux (step 3) or systemd, not both: they would fight over the port.
+   b) systemd for the web server, as a system service that runs as $NAME:
+        $PROJECT_DIR/scripts/install-service.sh
+      (it stops the tmux copy, mm-web, and lets $NAME restart the service with
+      scripts/restart.sh web); and the cron line above with "restart.sh worker"
+      for the worker.
 
 5. Certificates. If acme.sh renews the certificate (scripts/install-cert.sh),
    it is root's acme.sh that does so now: it would write data/tls as root, in

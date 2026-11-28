@@ -277,7 +277,21 @@ scripts/worker.sh               # a worker for every GPU (or WORKER_GPUS=0,1)
 
 Open the site, enter the setup token (also saved in `data/setup.token`), and create the administrator. Invite everyone else from **Admin → Invitations**. You can also create an admin from the shell with `bun run admin create-admin <username>`.
 
-To keep the processes running as systemd user services, see `deploy/systemd/`. The unit files explain the `loginctl enable-linger` caveat.
+### Running the web server with systemd
+
+On a Linux server, let systemd run the web server: it starts at boot, comes back after a crash, and logs to the journal. Run once, as root:
+
+```bash
+sudo scripts/install-service.sh              # install, enable and start meetingminutes-web
+sudo scripts/install-service.sh --dry-run    # only show what it would do
+sudo scripts/install-service.sh --uninstall  # back to tmux
+```
+
+It installs `/etc/systemd/system/meetingminutes-web.service` from `deploy/systemd/system/meetingminutes-web.service.in`, running as the user who owns the project directory (root warns; see "Running as a normal user"), with systemd's sandboxing options that the server does not need to do without (no new privileges, private `/tmp`, read-only system directories, no kernel tunables). It stops the copy running in tmux (`mm-web`) and starts the service. For a user other than root it adds a sudoers rule that lets that user restart this one service and read its last log lines, and nothing else.
+
+Afterwards nothing changes in how you update: `scripts/restart.sh web` (and acme.sh after renewing a certificate) restarts the service and waits until the site answers, showing the last log lines if it does not come up. Look at it with `systemctl status meetingminutes-web` and `journalctl -u meetingminutes-web -f`. A crash restarts it after 3 seconds; five failed starts within 2 minutes (a broken `.env`, say) stop the retries until the next restart. The worker keeps running in tmux (`scripts/restart.sh worker`).
+
+The units in `deploy/systemd/` (without `system/`) are the other way: user services for an ordinary login account (`systemctl --user`); they explain the `loginctl enable-linger` caveat. Use one way, not both.
 
 ### Exposing it on a public IP
 
@@ -397,11 +411,7 @@ Afterwards, as root:
 1. Stop the services that still run as root: `tmux kill-session -t mm-web; tmux kill-session -t mm-worker`.
 2. Run `sudo -u minutes -H scripts/install.sh` once more, with the options you used before (`--no-gpu` for a server without a GPU). Bun and uv are installed in the home directory of whoever ran it, and the worker's Python environment points there. Things kept in root's home directory do not move: Ollama and its models, and Hugging Face downloads. Recordings, the database, the worker's CPU models and its enrollment are in the data directory and stay as they are.
 3. Start the services as that user: `sudo -u minutes -H scripts/restart.sh`. Look at them with `sudo -u minutes -H tmux attach -t mm-web` (or `mm-worker`).
-4. Start them at boot, one of:
-   - cron: `crontab -u minutes -e`, with the line `@reboot /opt/MeetingMinutes/scripts/restart.sh`;
-   - systemd system units with `User=minutes`: the script prints one for the web server (`ExecStart=…/scripts/start.sh`) and says what differs for the worker. The units in `deploy/systemd/` are user units for an ordinary login account (`systemctl --user`), which is the other way to do it.
-
-   Use tmux or systemd, not both.
+4. Start them at boot: `sudo scripts/install-service.sh` runs the web server as a systemd service as `minutes` (see "Running the web server with systemd"); for the worker, `crontab -u minutes -e` with the line `@reboot /opt/MeetingMinutes/scripts/restart.sh worker`. Without systemd, the same cron line without `worker` starts both.
 5. Update as that user from now on: `sudo -u minutes -H git -C /opt/MeetingMinutes pull`, then `sudo -u minutes -H scripts/restart.sh`.
 
 **Certificate renewal.** `scripts/install-cert.sh` gives acme.sh a reload command (`scripts/restart.sh web`), and acme.sh renews from the crontab of the account it was installed for. If that was root, renewals would write `data/tls` as root, in files the new user cannot read, and restart the web server as root. Move it: as the new user, install acme.sh, issue the certificate again and run `scripts/install-cert.sh <domain>`; then, as root, `~/.acme.sh/acme.sh --remove -d <domain>`. Whichever account runs acme.sh must be able to write `data/tls`.
@@ -779,7 +789,7 @@ deploy/    Caddyfile, nginx.conf, systemd user units
 
 ## Operations
 
-- **Updating**: `git pull`, then restart `scripts/start.sh` and `scripts/worker.sh` (or the systemd services). `scripts/llm.sh install` updates Ollama. `start.sh` reinstalls JavaScript dependencies when `bun.lock` changed and rebuilds the web interface when its sources changed, so browsers get the new UI after a reload. If `worker/uv.lock` changed, run `scripts/install.sh` once (repeat `--vllm` if you use it).
+- **Updating**: `git pull`, then `scripts/restart.sh` (it restarts the systemd service when `scripts/install-service.sh` set one up). `scripts/llm.sh install` updates Ollama. `start.sh` reinstalls JavaScript dependencies when `bun.lock` changed and rebuilds the web interface when its sources changed, so browsers get the new UI after a reload. If `worker/uv.lock` changed, run `scripts/install.sh` once (repeat `--vllm` if you use it).
 - **Speaker diarization status**: the admin page shows a warning on a worker only after loading the diarization model actually failed, with the reason. Each meeting also records whether diarization ran; a transcript without speakers says why and offers **Separate speakers again**.
 - **Everyone appears as one speaker**: usually pyannote is not running. To enable it:
   1. With a Hugging Face account, accept the conditions of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1).

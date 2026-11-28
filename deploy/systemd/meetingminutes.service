@@ -1,3 +1,5 @@
+# On a server, prefer the system service: sudo scripts/install-service.sh
+# (deploy/systemd/system/). This is the other way, for an ordinary login account.
 # User-level unit (no root needed):
 #   mkdir -p ~/.config/systemd/user && cp deploy/systemd/*.service ~/.config/systemd/user/
 #   edit WorkingDirectory below, then:

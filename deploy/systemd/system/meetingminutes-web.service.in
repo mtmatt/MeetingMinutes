@@ -1,0 +1,49 @@
+# Template for scripts/install-service.sh, which fills in @USER@, @GROUP@, @HOME@
+# and @DIR@ and installs it as /etc/systemd/system/meetingminutes-web.service.
+# Edit this file, not the installed copy: running the script again replaces it.
+[Unit]
+Description=MeetingMinutes web server
+Documentation=file://@DIR@/README.md
+After=network-online.target
+Wants=network-online.target
+# A crash loop (a broken .env, say) stops after 5 failed starts in 2 minutes
+# instead of restarting forever; `systemctl restart` starts it again.
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=@USER@
+Group=@GROUP@
+WorkingDirectory=@DIR@
+Environment=HOME=@HOME@
+# start.sh installs dependencies and rebuilds the web interface when they
+# changed, then runs the server in its place (exec): stopping the service
+# stops the server.
+ExecStart=@DIR@/scripts/start.sh
+Restart=always
+RestartSec=3
+# The server stops at once on SIGTERM; allow time for the build on start.
+TimeoutStartSec=600
+TimeoutStopSec=20
+# Many people streaming uploads and live updates at once.
+LimitNOFILE=65536
+
+# Hardening that changes nothing the server needs: it writes only to the
+# project and data directories and to its own home (Bun's cache).
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target
