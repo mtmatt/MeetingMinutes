@@ -129,7 +129,9 @@ section[data-moment="pinned-chapters"] .mo-pc__visual > img.shot--fit { width: a
 @media (max-width: 639px) { .faq-frame { height: 300px; } #export .shot { margin-top: -64px; } }
 
 /* the statement under liquid-type: its line sits on the page's left line under the type */
-.statement .mo-lt__type { margin-top: 0; }
+.statement .statement__kicker { margin: 0 0 var(--s-4); font-size: 20px; font-weight: 500; line-height: 1.4; color: var(--muted); }
+.statement .mo-lt__type { margin-top: 0; font-size: clamp(44px, 6.2vw, 96px); }
+@media (max-width: 639px) { .statement .statement__kicker { font-size: 18px; } .statement .mo-lt__type { font-size: clamp(40px, 11vw, 64px); } }
 .statement .statement__line { margin-top: var(--s-6); font-size: var(--t-lead); line-height: 1.5; max-width: 34ch; }
 </style>
 <script src="js/head.js"></script>
@@ -300,6 +302,7 @@ section[data-moment="pinned-chapters"] .mo-pc__visual > img.shot--fit { width: a
   <!-- liquid-type (references/moments.md): the statement's own section; its letters ripple under the pointer -->
   <section class="section statement" id="billing" data-moment="liquid-type" aria-labelledby="billing-h">
     <div class="wrap">
+      <p class="statement__kicker">計價方式</p>
       <h2 class="mo-lt__type" id="billing-h">只收<wbr>完成的工作</h2>
       <p class="statement__line">點數只扣在完成的轉錄和摘要上。轉錄依錄音長度按秒計算，摘要依讀寫的文字量（token）計算。</p>
     </div>
