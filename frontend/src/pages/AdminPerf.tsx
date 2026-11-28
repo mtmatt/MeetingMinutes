@@ -71,17 +71,17 @@ function Tiles({ s }: { s: PerfSummary }) {
   const { t, locale } = useI18n();
   const tiles: [string, string, string?][] = [
     [t("perf.requests"), s.count.toLocaleString(locale)],
-    ["p50", ms(s.p50), t("perf.p50Hint")],
-    ["p95", ms(s.p95), t("perf.p95Hint")],
-    ["p99", ms(s.p99), t("perf.p99Hint")],
+    ["p50", ms(s.p50)],
+    ["p95", ms(s.p95)],
+    ["p99", ms(s.p99)],
     [t("perf.errorRate"), pct(s.errors, s.count), t("perf.errorHint", { n: s.errors.toLocaleString(locale), c: s.clientErrors.toLocaleString(locale) })],
   ];
   return (
     <div className="perf-tiles">
       {tiles.map(([label, value, hint]) => (
         <div key={label} className="perf-tile">
-          <span className="perf-tile-label">{label}</span>
           <span className="perf-tile-value mono">{value}</span>
+          <span className="perf-tile-label">{label}</span>
           {hint && <span className="perf-tile-hint">{hint}</span>}
         </div>
       ))}
