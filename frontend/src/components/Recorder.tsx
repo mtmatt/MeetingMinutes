@@ -6,6 +6,7 @@ import { listMicrophones, recorderSupport, type RecordSource, type SourceKind, t
 import { deleteRecording, listRecordings, loadRecording, loadSlides, type RecordingMeta } from "../lib/recordingStore";
 import { SlideOption, useSlidesChoice } from "./SlideOption";
 import { SlideStrip } from "./SlideStrip";
+import { finishSlides } from "../lib/slides";
 import { fileForRecording, type RecordedFile, type RecordingController, type SourceHealth } from "../lib/useRecording";
 import { useAuth } from "../lib/auth";
 import { useConfirm } from "./Modal";
@@ -212,7 +213,8 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
       setPending((p) => p.filter((x) => x.id !== m.id));
       return;
     }
-    const slides = await loadSlides(m.id).catch(() => []);
+    // Stored as they were taken: cut to the slide and made compact, as a finished recording's are.
+    const slides = await finishSlides(await loadSlides(m.id).catch(() => []), m.slideRegion ?? null);
     onRecorded({ file: await fileForRecording(blob, m), recordingId: m.id, startedAt: m.startedAt, source: m.source, durationMs: m.durationMs, slides });
   };
 

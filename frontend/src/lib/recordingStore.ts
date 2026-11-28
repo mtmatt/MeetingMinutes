@@ -5,7 +5,7 @@
  * stays here until it is uploaded or explicitly discarded.
  */
 
-import type { CapturedSlide } from "./slides";
+import type { CapturedSlide, Region } from "./slides";
 
 const DB_NAME = "mm-recordings";
 /** 2: slides picked from the shared tab, kept with their recording. */
@@ -25,6 +25,8 @@ export interface RecordingMeta {
   ownerId?: string;
   /** Slides were being picked from the shared tab. */
   slides?: boolean;
+  /** Where the slide is on the shared screen, as far as was known: restored slides are cut to it. */
+  slideRegion?: Region;
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
