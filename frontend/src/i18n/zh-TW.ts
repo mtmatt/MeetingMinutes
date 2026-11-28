@@ -854,6 +854,7 @@ export const zhTW: Dict = {
   refine: {
     uploadSwitch: "用 AI 修正逐字稿",
     uploadHint: "轉錄完成後，AI 會依會議主題修正聽錯的人名、名詞與英文，再產生摘要。逐字稿會送到 {vendor}（{host}）處理，依摘要費率扣點。",
+    againHint: "新的逐字稿完成後，AI 會依會議主題修正聽錯的人名、名詞與英文。逐字稿會送到 {vendor}（{host}）處理，依摘要費率扣點。",
     menu: "用 AI 修正逐字稿",
     running: "AI 正在修正逐字稿…",
     runningNote: "AI 正在依會議主題修正逐字稿裡聽錯的詞，完成後會自動更新。",

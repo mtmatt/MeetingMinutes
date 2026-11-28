@@ -6,8 +6,10 @@ import type { MeetingDetail } from "../api/types";
 import { useI18n, type TKey } from "../i18n";
 import { diarizationReason } from "../lib/errors";
 import { Modal } from "./Modal";
+import { RefineOption, refineByDefault } from "./RefineOption";
 import { Stepper } from "./Stepper";
 import { useToast } from "./Toast";
+import { useAuth } from "../lib/auth";
 
 type Issue = { kind: "unavailable" | "failed" | "single" | "unknown"; reason?: string | null };
 
@@ -86,6 +88,8 @@ export function ResplitDialog({ meeting, onClose }: { meeting: MeetingDetail; on
   const [exact, setExact] = useState(o.numSpeakers ?? Math.max(2, meeting.speakers.length));
   const [range, setRange] = useState<[number, number]>([o.minSpeakers ?? 2, o.maxSpeakers ?? 6]);
   const [busy, setBusy] = useState(false);
+  const { refine: refineInfo } = useAuth();
+  const [refine, setRefine] = useState(() => refineByDefault(meeting));
 
   const submit = async () => {
     setBusy(true);
@@ -94,6 +98,7 @@ export function ResplitDialog({ meeting, onClose }: { meeting: MeetingDetail; on
         meeting.id,
         {
           ...o,
+          refine: refine && !!refineInfo?.available,
           diarize: true,
           numSpeakers: mode === "exact" ? exact : null,
           minSpeakers: mode === "range" ? range[0] : null,
@@ -145,6 +150,51 @@ export function ResplitDialog({ meeting, onClose }: { meeting: MeetingDetail; on
         </div>
         <p className="faint">{mode === "auto" ? t("diarize.autoHint") : t("diarize.countHint")}</p>
         <p className="resplit-warn">{t("diarize.resplitEffects")}</p>
+        <RefineOption checked={refine} onChange={setRefine} />
+      </div>
+    </Modal>
+  );
+}
+
+/** Transcribing again: what it replaces, and whether to correct the new transcript with AI. */
+export function RetranscribeDialog({ meeting, onClose }: { meeting: MeetingDetail; onClose: () => void }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const qc = useQueryClient();
+  const { refine: refineInfo } = useAuth();
+  const [refine, setRefine] = useState(() => refineByDefault(meeting));
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      await api.retranscribe(meeting.id, { ...meeting.options, refine: refine && !!refineInfo?.available });
+      await qc.invalidateQueries({ queryKey: ["meeting", meeting.id] });
+      onClose();
+    } catch (e) {
+      toast.error(e);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={t("meeting.retranscribeTitle")}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn" onClick={onClose}>
+            {t("common.cancel")}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={submit} disabled={busy}>
+            {busy && <span className="spinner" />} {t("meeting.retranscribe")}
+          </button>
+        </>
+      }
+    >
+      <div className="resplit">
+        <p>{t("meeting.retranscribeBody")}</p>
+        <RefineOption checked={refine} onChange={setRefine} />
       </div>
     </Modal>
   );

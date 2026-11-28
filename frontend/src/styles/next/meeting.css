@@ -226,7 +226,7 @@
   border-right: 1px solid var(--rule);
 }
 [data-ui="next"] .summary-col {
-  padding: 32px 16px 0 40px;
+  padding: 32px 16px 24px 40px;
   margin-right: -16px;
 }
 [data-ui="next"] .video-pane {

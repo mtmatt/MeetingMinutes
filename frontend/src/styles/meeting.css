@@ -298,6 +298,8 @@
   max-height: calc(100dvh - var(--masthead-h) - var(--player-h));
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* The last line (the prompt used, the token counts) clear of the player. */
+  padding-bottom: 24px;
 }
 
 .video-pane {

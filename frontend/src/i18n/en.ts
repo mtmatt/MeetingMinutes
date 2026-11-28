@@ -852,6 +852,7 @@ export const en = {
   refine: {
     uploadSwitch: "Correct the transcript with AI",
     uploadHint: "Once transcribed, AI fixes misheard names, terms and English words from the meeting's topic, then the summary is written. The transcript is sent to {vendor} ({host}) for this, charged at the summary rates.",
+    againHint: "Once the new transcript is done, AI fixes misheard names, terms and English words from the meeting's topic. The transcript is sent to {vendor} ({host}), charged at the summary rates.",
     menu: "Correct the transcript with AI",
     running: "AI is correcting the transcript…",
     runningNote: "AI is correcting misheard words in the transcript from the meeting's topic; the page updates when it is done.",

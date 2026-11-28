@@ -26,7 +26,7 @@ import { Menu } from "../components/Menu";
 import { useConfirm } from "../components/Modal";
 import { PlayerBar } from "../components/Player";
 import { MeetingStatus } from "../components/Status";
-import { DiarizationNotice, ResplitDialog } from "../components/Diarization";
+import { DiarizationNotice, ResplitDialog, RetranscribeDialog } from "../components/Diarization";
 import { SummaryExportItems, SummaryPanel, useSummaryInfo, useSummarySelection } from "../components/SummaryPanel";
 import { useToast } from "../components/Toast";
 import { Transcript } from "../components/Transcript";
@@ -265,16 +265,9 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
     .map((l) => tMaybe(`lang.${l}`) ?? l)
     .join(" + ");
 
-  const retranscribe = async () => {
-    if (!(await confirm({ title: t("meeting.retranscribeTitle"), body: t("meeting.retranscribeBody"), confirmLabel: t("meeting.retranscribe") })))
-      return;
-    try {
-      await api.retranscribe(meeting.id);
-      await qc.invalidateQueries({ queryKey: ["meeting", meeting.id] });
-    } catch (e) {
-      toast.error(e);
-    }
-  };
+  // Transcribing again: a dialog with the option to correct the new transcript with AI.
+  const [retranscribing, setRetranscribing] = useState(false);
+  const retranscribe = async () => setRetranscribing(true);
 
   // AI correction of the transcript (a hosted model, from the meeting's topic).
   const { refine: refineInfo } = useAuth();
@@ -550,6 +543,7 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
         </>
       )}
       {resplit && <ResplitDialog meeting={meeting} onClose={() => setResplit(false)} />}
+      {retranscribing && <RetranscribeDialog meeting={meeting} onClose={() => setRetranscribing(false)} />}
       {!ready && meeting.summaries.length > 0 && <SummaryPanel meeting={meeting} selection={summarySelection} />}
     </div>
   );

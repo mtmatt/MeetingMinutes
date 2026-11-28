@@ -286,9 +286,24 @@ export function PlayerBar({ meeting, videoMode }: { meeting: MeetingDetail; vide
     if (!videoMode) register(audioRef.current);
   }, [videoMode, register]);
 
+  // The bar grows when the speaker legend wraps (many speakers, a narrow window):
+  // the page keeps room for its real height (--player-h), so nothing ends up under it.
+  const barRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = barRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    const ro = new ResizeObserver(() => root.style.setProperty("--player-h", `${Math.ceil(el.getBoundingClientRect().height)}px`));
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty("--player-h");
+    };
+  }, []);
+
   const total = duration || meeting.durationSec || 0;
   return (
-    <div className="player">
+    <div className="player" ref={barRef}>
       {!videoMode && <audio ref={audioRef} src={mediaUrl.audio(meeting.id)} preload="metadata" />}
       <div className="player-inner">
         <div className="player-controls">
