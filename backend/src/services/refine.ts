@@ -187,8 +187,9 @@ const ContextSchema = z.object({
   terms: z.array(z.string()),
 });
 
+/** Replacements, not sentences: the server applies them, so nothing else in a sentence can change. */
 const FixesSchema = z.object({
-  fixes: z.array(z.object({ id: z.number().int(), text: z.string() })),
+  fixes: z.array(z.object({ id: z.number().int(), wrong: z.string(), right: z.string() })),
 });
 
 interface Usage {
@@ -196,14 +197,36 @@ interface Usage {
   output: number;
 }
 
-const SYSTEM = `You correct speech recognition errors in a meeting transcript. The meeting may mix Mandarin Chinese (Taiwan, Traditional characters) and English.
+const SYSTEM = `You find speech recognition errors in a meeting transcript. The meeting may mix Mandarin Chinese (Taiwan, Traditional characters) and English.
 
-Fix only what the recogniser clearly got wrong: a word that sounds like the right one but is not (homophones), misheard names, product names, acronyms and terms, English words broken up or written in Chinese characters, and obvious wrong characters. Use the meeting's topic and terms to decide.
+A recogniser writes what it heard. Its mistakes sound like what was said but make no sense in context: a homophone or near-homophone in Mandarin (same or similar pinyin, often with a different tone), an English word or name written as Chinese characters that sound like it, an English word broken up or misspelled, a misheard name, product name, acronym or term.
 
-Do not: rephrase, shorten, tidy up, summarise or translate; add or remove content, filler words or repetitions; change punctuation style; change Traditional characters to Simplified or the other way; guess when you are not sure. If a sentence is fine, leave it out.`;
+For each phrase that does not fit the meeting, say it aloud in your head (pinyin for Chinese, its pronunciation for English), and look for a word that sounds the same or nearly so AND fits the topic, the terms and the sentences around it. Correct it only when you find such a word and are confident. When nothing sounds close, or the phrase already makes sense, leave it.
 
+Give each correction as the exact wrong phrase, copied character for character from the sentence, and the phrase that replaces it. Keep each phrase short: only the misheard word or words. Never add words, names, speaker labels or punctuation that were not said; never rephrase, tidy up, translate or remove anything; never change Traditional characters to Simplified. A sentence with nothing misheard gets no correction.`;
+
+/** Sentences as data: the speaker is a field of its own, so it is never taken for part of what was said. */
 function textOf(segments: { id: number; speaker: string; text: string }[]): string {
-  return segments.map((s) => `[${s.id}] ${s.speaker}: ${s.text}`).join("\n");
+  return segments.map((s) => JSON.stringify({ id: s.id, speaker: s.speaker, text: s.text })).join("\n");
+}
+
+/**
+ * Apply one replacement to a sentence, or null when it is not a correction: the
+ * wrong phrase must be in the sentence, the right one must differ, be about as
+ * long, and not merely add to it (a name or speaker label in front, say).
+ */
+export function applyReplacement(text: string, wrong: string, right: string, speakerNames: readonly string[] = []): string | null {
+  const w = wrong.trim();
+  const r = right.trim();
+  if (!w || !r || w === r || !text.includes(w)) return null;
+  if (r.includes(w)) return null; // only adds to what was said
+  const wl = [...w].length;
+  const rl = [...r].length;
+  if (rl > wl * 3 + 6 || rl * 3 + 6 < wl) return null;
+  if (/[:：]\s*$/.test(r) || /^[^:：]{1,20}[:：]/.test(r)) return null; // a speaker label
+  // A speaker's name appearing where none was heard (unless the misheard phrase was that name).
+  if (speakerNames.some((n) => n && r.includes(n) && !text.includes(n) && editDistance(w, n) > Math.ceil([...n].length / 2))) return null;
+  return text.split(w).join(r);
 }
 
 /** Levenshtein distance, for the check that a correction did not rewrite a sentence. */
@@ -280,6 +303,7 @@ async function execute(r: RefinementRow) {
 
     // 2. The transcript in parts: fix only misheard words.
     const fixes = new Map<number, string>();
+    const names = [...speakers.values()];
     let start = 0;
     while (start < items.length) {
       let end = start;
@@ -293,11 +317,12 @@ async function execute(r: RefinementRow) {
           max_tokens: 16000,
           // The brief is the same for every part: cached after the first.
           system: [{ type: "text", text: `${SYSTEM}\n\n${brief}`, cache_control: { type: "ephemeral" } }],
-          output_config: { effort: "low", format: zodOutputFormat(FixesSchema) },
+          // Weighing how words sound against the topic is worth some thought.
+          output_config: { effort: "medium", format: zodOutputFormat(FixesSchema) },
           messages: [
             {
               role: "user",
-              content: `${before.length ? `Context (do not correct):\n${textOf(before)}\n\n` : ""}Correct these sentences. Return only the ones you changed, with their id and the whole corrected sentence:\n${textOf(part)}`,
+              content: `${before.length ? `Context (do not correct):\n${textOf(before)}\n\n` : ""}Find the misheard phrases in these sentences (one JSON object per sentence). For each, give the sentence id, the wrong phrase exactly as written in its text, and the phrase that was actually said:\n${textOf(part)}`,
             },
           ],
         });
@@ -306,7 +331,10 @@ async function execute(r: RefinementRow) {
         const allowed = new Map(part.map((s) => [s.id, s.text]));
         for (const f of res.parsed_output?.fixes ?? []) {
           const was = allowed.get(f.id);
-          if (was !== undefined && acceptableFix(was, f.text)) fixes.set(f.id, f.text.trim());
+          if (was === undefined) continue;
+          const current = fixes.get(f.id) ?? was;
+          const next = applyReplacement(current, f.wrong, f.right, names);
+          if (next != null && acceptableFix(was, next)) fixes.set(f.id, next);
         }
       }
       start = end;
@@ -314,7 +342,6 @@ async function execute(r: RefinementRow) {
 
     // 3. Apply: keep the original text, never touch a sentence edited by hand meanwhile.
     const secrets = providerKeyValues();
-    const names = [...speakers.values()];
     let changed = 0;
     db.transaction(() => {
       const apply = db.query(
