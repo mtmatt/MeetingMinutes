@@ -89,15 +89,31 @@ const internal = config.tls
     })
   : null;
 
-setInterval(reapStaleJobs, 30_000);
+/**
+ * A background task every `ms`. A failure (the database briefly locked by
+ * another program, say) is logged and the task runs again next time: it must
+ * never take the server down.
+ */
+function every(ms: number, name: string, task: () => unknown) {
+  setInterval(() => {
+    try {
+      const r = task();
+      if (r instanceof Promise) r.catch((e) => console.error(`[${name}] failed:`, e instanceof Error ? e.message : e));
+    } catch (e) {
+      console.error(`[${name}] failed:`, e instanceof Error ? e.message : e);
+    }
+  }, ms);
+}
+
+every(30_000, "jobs", reapStaleJobs);
 // Request timings are written once a minute, and kept for 30 days.
-setInterval(flushPerf, 60_000);
-setInterval(prunePerf, 60 * 60 * 1000);
+every(60_000, "perf", flushPerf);
+every(60 * 60 * 1000, "perf", prunePerf);
 // Workers started on demand (Modal): called when queued work waits for them (also right after a job is queued).
 setInterval(() => {
   wakeSweep().catch((e) => console.error("[workers] wake-up check failed:", e));
 }, 15_000);
-setInterval(purgeExpiredSessions, 60 * 60 * 1000);
+every(60 * 60 * 1000, "auth", purgeExpiredSessions);
 // Security events older than 90 days, and blocks that ended.
 setInterval(() => {
   try {
@@ -107,10 +123,10 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000);
 // Sign-ups whose address was never confirmed.
-setInterval(() => {
+every(60 * 60 * 1000, "auth", () => {
   const n = purgeUnverifiedAccounts();
   if (n) console.log(`[auth] removed ${n} sign-up(s) never confirmed`);
-}, 60 * 60 * 1000);
+});
 // Compactions become due as days pass; the admin page also starts them when saved.
 const sweepCompactions = () => {
   try {

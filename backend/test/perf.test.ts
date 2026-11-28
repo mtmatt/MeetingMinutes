@@ -71,3 +71,23 @@ describe("performance statistics", () => {
     expect((await member.get("/api/admin/perf")).status).toBe(403);
   });
 });
+
+describe("performance statistics and a busy database", () => {
+  test("while another program holds the database, timings wait (nothing thrown, nothing lost)", async () => {
+    const { Database } = await import("bun:sqlite");
+    const { config } = await import("../src/config");
+    recordRequest("GET /api/test-locked", 200, 12);
+    const other = new Database(config.dbPath);
+    other.exec("PRAGMA busy_timeout = 0;");
+    other.exec("BEGIN IMMEDIATE");
+    try {
+      expect(() => flushPerf()).not.toThrow();
+    } finally {
+      other.exec("ROLLBACK");
+      other.close();
+    }
+    flushPerf();
+    const row = db.query<{ count: number }, []>("SELECT SUM(count) AS count FROM request_stats WHERE route = 'GET /api/test-locked'").get();
+    expect(row?.count).toBe(1);
+  }, 15_000);
+});
