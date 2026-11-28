@@ -732,28 +732,29 @@
   margin: 0 0 16px;
   font-variation-settings: normal;
 }
-/* Section heads (摘要, 重點, 決議, 待辦事項): quiet 13px labels, as in the mock. */
+/* Section heads (摘要, 重點, 決議, 待辦事項): clearly above the text, 20px in the ink. */
 [data-ui="next"] .prose h2 {
-  margin: 28px 0 6px;
+  margin: 32px 0 10px;
   padding: 0;
   border: 0;
   font-family: var(--font-sans);
-  font-size: var(--step--2);
-  font-weight: 500;
-  line-height: 1.5;
-  letter-spacing: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
   text-transform: none;
-  color: var(--ink-3);
+  color: var(--ink);
 }
 [data-ui="next"] .prose > h2:first-child {
   margin-top: 0;
 }
+/* Sub-heads: between the section heads and the text. */
 [data-ui="next"] .prose h3 {
   font-family: var(--font-sans);
-  font-size: var(--step-0);
+  font-size: 1.0625rem;
   font-weight: 600;
-  line-height: 1.5;
-  margin: 20px 0 6px;
+  line-height: 1.45;
+  margin: 22px 0 6px;
 }
 [data-ui="next"] .prose h4 {
   font-size: var(--step-0);
