@@ -19,16 +19,14 @@
   font-variation-settings: "opsz" 96, "SOFT" 50;
 }
 .prose h2 {
-  font-size: var(--step-1);
+  font-size: 1.15rem;
   font-family: var(--font-sans);
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
   color: var(--accent);
   margin: 32px 0 12px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--rule);
-  font-size: var(--step--1);
 }
 .prose h3 {
   font-family: var(--font-title);
