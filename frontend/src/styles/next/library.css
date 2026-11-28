@@ -742,6 +742,9 @@
     flex-direction: row;
     align-items: center;
   }
+  [data-ui="next"] .form-step-head h2 {
+    text-align: left;
+  }
   [data-ui="next"] .advanced-toggle {
     grid-template-columns: 1fr;
   }

@@ -532,7 +532,15 @@
 .form-step-head {
   display: flex;
   flex-direction: column;
+  /* The number centred over the step's name. */
+  align-items: center;
+  align-self: start;
+  width: max-content;
+  max-width: 100%;
   gap: 10px;
+}
+.form-step-head h2 {
+  text-align: center;
 }
 .form-step-n {
   display: grid;
