@@ -846,3 +846,36 @@ export interface SecurityEvent {
   firstAt: number;
   lastAt: number;
 }
+
+/** Admin → Performance: how fast the site answers, and how long the work takes. */
+export type PerfWindow = "1h" | "24h" | "7d" | "30d";
+export interface PerfSummary {
+  count: number;
+  errors: number;
+  clientErrors: number;
+  meanMs: number | null;
+  maxMs: number | null;
+  p50: number | null;
+  p90: number | null;
+  p95: number | null;
+  p99: number | null;
+}
+export interface PerfSpread {
+  count: number;
+  p50: number | null;
+  p95: number | null;
+  max: number | null;
+}
+export interface PerfReport {
+  window: PerfWindow;
+  stepMs: number;
+  since: number;
+  until: number;
+  overall: PerfSummary;
+  series: { at: number; count: number; errors: number; p50: number | null; p95: number | null }[];
+  routes: (PerfSummary & { route: string })[];
+  pipeline: {
+    transcription: { done: number; failed: number; waitSec: PerfSpread; processSec: PerfSpread; realtimeFactor: PerfSpread };
+    summary: { done: number; failed: number; waitSec: PerfSpread; writeSec: PerfSpread };
+  };
+}

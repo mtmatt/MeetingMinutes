@@ -13,6 +13,7 @@ import "./styles/billing.css";
 import "./styles/usage.css";
 import "./styles/announcements.css";
 import "./styles/slides.css";
+import "./styles/perf.css";
 import "./styles/next/base.css";
 import "./styles/next/library.css";
 import "./styles/next/meeting.css";

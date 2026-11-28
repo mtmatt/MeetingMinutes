@@ -1,4 +1,6 @@
 import type {
+  PerfReport,
+  PerfWindow,
   Glossary,
   Slide,
   RefineInfo,
@@ -221,6 +223,7 @@ export const api = {
   refineMeeting: (id: string) => post<{ meeting: MeetingDetail }>(`/meetings/${id}/refine`, {}),
   undoRefineMeeting: (id: string) => post<{ restored: number; meeting: MeetingDetail }>(`/meetings/${id}/refine/undo`, {}),
   adminRefine: () => get<RefineState>("/admin/refine"),
+  adminPerf: (window: PerfWindow) => get<PerfReport>(`/admin/perf?window=${window}`),
   adminSaveRefine: (s: RefineSettings) => put<RefineState>("/admin/refine", s),
   adminResetRefine: () => del<RefineState>("/admin/refine"),
   updateMeeting: (id: string, b: { title?: string; occurredAt?: number | null }) =>

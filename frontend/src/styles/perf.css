@@ -1,0 +1,243 @@
+/* Admin → Performance. Series colours: the validated default categorical slots 1 and 2, stepped per mode. */
+.perf {
+  --series-1: #257de0;
+  --series-2: #f47230;
+  display: grid;
+  gap: var(--space-5);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .perf {
+    --series-1: #338ced;
+    --series-2: #e76624;
+  }
+}
+:root[data-theme="dark"] .perf {
+  --series-1: #338ced;
+  --series-2: #e76624;
+}
+
+.perf-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.perf-head .muted {
+  margin: 0;
+  max-width: 62ch;
+}
+
+.perf-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+.perf-tile {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+.perf-tile-label {
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.perf-tile-value {
+  font-size: var(--step-3);
+  line-height: 1.15;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.perf-tile-hint {
+  font-size: var(--step--2);
+  color: var(--ink-3);
+}
+
+.perf-card {
+  display: grid;
+  align-content: start;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+}
+@media (max-width: 560px) {
+  .perf-card {
+    padding: var(--space-3);
+  }
+}
+.perf-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0;
+  font-size: var(--h3-size);
+}
+.perf-h-sub {
+  font-size: var(--step--1);
+  font-weight: 400;
+}
+
+.perf-chart {
+  position: relative;
+  min-width: 0;
+}
+.perf-chart svg {
+  display: block;
+  overflow: visible;
+}
+.perf-legend {
+  display: flex;
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+  font-size: var(--step--1);
+  color: var(--ink-2);
+}
+.perf-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.perf-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+.perf-swatch.s1 {
+  background: var(--series-1);
+}
+.perf-swatch.s2 {
+  background: var(--series-2);
+}
+.perf-grid {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+.perf-axis {
+  fill: var(--ink-3);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+.perf-end {
+  fill: var(--ink-2);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+.perf-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.perf-line.s1 {
+  stroke: var(--series-1);
+}
+.perf-line.s2 {
+  stroke: var(--series-2);
+}
+.perf-dot.s1 {
+  fill: var(--series-1);
+}
+.perf-dot.s2 {
+  fill: var(--series-2);
+}
+.perf-dot.ring {
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+.perf-cross {
+  stroke: var(--ink-3);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.perf-tip {
+  position: absolute;
+  top: 28px;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 2px;
+  min-width: 150px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  font-size: var(--step--1);
+  color: var(--ink);
+  pointer-events: none;
+}
+.perf-tip .perf-swatch {
+  margin-right: 4px;
+}
+.perf-empty {
+  padding: var(--space-6) 0;
+  text-align: center;
+}
+
+.perf-pipeline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--space-5);
+}
+
+.perf-scroll {
+  overflow-x: auto;
+}
+.perf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--step--1);
+}
+.perf-table th,
+.perf-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--rule);
+  text-align: right;
+  white-space: nowrap;
+}
+.perf-table th:first-child,
+.perf-table td:first-child {
+  text-align: left;
+}
+.perf-table thead th {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.perf-table tbody th {
+  font-weight: 400;
+  color: var(--ink-2);
+  white-space: normal;
+  min-width: 7em;
+}
+.perf-table td.mono {
+  font-variant-numeric: tabular-nums;
+}
+.perf-route {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.perf-sort {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.perf-sort.on {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.perf-bad {
+  color: var(--danger);
+}
+.perf-more {
+  justify-self: start;
+}

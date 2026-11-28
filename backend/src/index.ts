@@ -1,3 +1,4 @@
+import { flushPerf, prunePerf } from "./services/perf";
 import { wakeSweep } from "./services/workerWake";
 import { config } from "./config";
 import { createApp } from "./app";
@@ -89,6 +90,9 @@ const internal = config.tls
   : null;
 
 setInterval(reapStaleJobs, 30_000);
+// Request timings are written once a minute, and kept for 30 days.
+setInterval(flushPerf, 60_000);
+setInterval(prunePerf, 60 * 60 * 1000);
 // Workers started on demand (Modal): called when queued work waits for them (also right after a job is queued).
 setInterval(() => {
   wakeSweep().catch((e) => console.error("[workers] wake-up check failed:", e));

@@ -530,4 +530,18 @@ export const migrations: string[] = [
   );
   CREATE INDEX glossaries_owner ON glossaries(owner_id, name);
   `,
+  // 22: how fast the site answers, per minute and route: counts and time buckets (see services/perf.ts).
+  `
+  CREATE TABLE request_stats (
+    minute        INTEGER NOT NULL,
+    route         TEXT NOT NULL,
+    count         INTEGER NOT NULL,
+    errors        INTEGER NOT NULL,
+    client_errors INTEGER NOT NULL,
+    sum_ms        REAL NOT NULL,
+    max_ms        REAL NOT NULL,
+    hist          TEXT NOT NULL,
+    PRIMARY KEY (minute, route)
+  );
+  `,
 ];

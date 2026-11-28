@@ -1,3 +1,4 @@
+import { AdminPerf } from "./AdminPerf";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, Coins, Cpu, HardDrive, KeyRound, Link2, MoreHorizontal, Plus, ShieldCheck, Trash2, UserCheck, UserMinus, UserX } from "lucide-react";
 import { useState } from "react";
@@ -580,7 +581,7 @@ function AdjustMinutes({ user, onClose, onDone }: { user: AdminUser; onClose: ()
   );
 }
 
-const TABS = ["users", "invites", "announcements", "asr", "model", "sales", "security", "system"] as const;
+const TABS = ["users", "invites", "announcements", "asr", "model", "sales", "perf", "security", "system"] as const;
 type Tab = (typeof TABS)[number];
 
 export function AdminPage() {
@@ -621,6 +622,7 @@ export function AdminPage() {
           </>
         )}
         {tab === "sales" && <AdminBilling />}
+        {tab === "perf" && <AdminPerf />}
         {tab === "security" && <AdminSecurity />}
         {tab === "system" && <System />}
       </div>
