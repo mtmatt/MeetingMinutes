@@ -71,8 +71,10 @@ describe("security monitor", () => {
     const admin = await adminClient();
     const overview = (await (await admin.get("/api/admin/security")).json()) as any;
     expect(overview.blocks.find((b: any) => b.ip === ip)).toMatchObject({ auto: true });
-    expect(overview.topIps[0]).toMatchObject({ ip, count: 25, blocked: true });
-    expect(overview.topIps[0].usernames).toHaveLength(5);
+    // Its own row: other test files' requests (all from "unknown") may rank above it.
+    const row = overview.topIps.find((r: any) => r.ip === ip);
+    expect(row).toMatchObject({ ip, count: 25, blocked: true });
+    expect(row.usernames).toHaveLength(5);
     expect(overview.last24h.login_failed.count).toBeGreaterThanOrEqual(20);
     // A blocked address's requests are counted, not stored one by one.
     await from(ip, "/");
