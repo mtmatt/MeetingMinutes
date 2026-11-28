@@ -90,7 +90,7 @@ function Users() {
   return (
     <>
       <p className="admin-hint">{t("admin.resetHint")}</p>
-      <div className="table-wrap card">
+      <div className="table-wrap card" tabIndex={0}>
         <table className="table">
           <thead>
             <tr>
@@ -146,7 +146,7 @@ function Users() {
                 <td style={{ textAlign: "right" }}>
                   <Menu
                     trigger={({ toggle }) => (
-                      <button className="icon-btn" onClick={toggle} aria-label="More">
+                      <button className="icon-btn" onClick={toggle} aria-label={t("common.more")}>
                         <MoreHorizontal />
                       </button>
                     )}

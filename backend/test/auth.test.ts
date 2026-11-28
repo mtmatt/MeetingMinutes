@@ -93,6 +93,38 @@ describe("invites and accounts", () => {
     expect((await new Client().post("/api/auth/login", { username: "erin", password: "brand new password" })).status).toBe(200);
   });
 
+  test("a reset link stops working once the password is changed another way", async () => {
+    const admin = await adminClient();
+    const gwen = await memberClient("gwen-r");
+    const users = (await (await admin.get("/api/admin/users")).json()) as any;
+    const gwenId = users.users.find((u: any) => u.username === "gwen-r").id;
+    const { url } = (await (await admin.post(`/api/admin/users/${gwenId}/reset-link`)).json()) as any;
+    const token = url.split("/invite/")[1];
+    expect((await new Client().get(`/api/auth/invites/${token}`)).status).toBe(200);
+    // Gwen changes her password herself (say, after hearing her mailbox was read).
+    expect((await gwen.post("/api/me/password", { current: "member password 123", next: "her own new password" })).status).toBe(200);
+    expect((await new Client().get(`/api/auth/invites/${token}`)).status).toBe(404);
+    expect((await new Client().post(`/api/auth/invites/${token}/accept`, { password: "attacker password 1" })).status).toBe(404);
+    expect((await new Client().post("/api/auth/login", { username: "gwen-r", password: "her own new password" })).status).toBe(200);
+  });
+
+  test("disabling an account stops its reset links, and a disabled account cannot be reset by link", async () => {
+    const admin = await adminClient();
+    await memberClient("ivan-r");
+    const users = (await (await admin.get("/api/admin/users")).json()) as any;
+    const ivanId = users.users.find((u: any) => u.username === "ivan-r").id;
+    const before = (await (await admin.post(`/api/admin/users/${ivanId}/reset-link`)).json()) as any;
+    expect((await admin.patch(`/api/admin/users/${ivanId}`, { disabled: true })).status).toBe(200);
+    const oldToken = before.url.split("/invite/")[1];
+    expect((await new Client().post(`/api/auth/invites/${oldToken}/accept`, { password: "some new password" })).status).toBe(404);
+    // A link made while it is disabled waits until the account is turned back on.
+    const during = (await (await admin.post(`/api/admin/users/${ivanId}/reset-link`)).json()) as any;
+    const token = during.url.split("/invite/")[1];
+    expect((await new Client().post(`/api/auth/invites/${token}/accept`, { password: "some new password" })).status).toBe(404);
+    expect((await admin.patch(`/api/admin/users/${ivanId}`, { disabled: false })).status).toBe(200);
+    expect((await new Client().post(`/api/auth/invites/${token}/accept`, { password: "some new password" })).status).toBe(200);
+  });
+
   test("change password keeps the current session and ends others", async () => {
     const a = await memberClient("frank");
     const b = new Client();

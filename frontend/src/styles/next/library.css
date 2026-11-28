@@ -950,7 +950,7 @@
   color: var(--ink);
   transition-duration: var(--dur-in);
 }
-[data-ui="next"] .menu-chip[aria-pressed="true"] {
+[data-ui="next"] .menu-chip[aria-checked="true"] {
   border-color: var(--ink);
   background: var(--surface-2);
   color: var(--ink);

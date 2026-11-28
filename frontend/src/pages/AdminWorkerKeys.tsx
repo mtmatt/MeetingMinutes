@@ -274,12 +274,12 @@ function EnrollCode({ created, onClose }: { created: { name: string; code: strin
         <ol className="worker-enroll-steps">
           <li>
             {t("workers.step1")}
-            <pre className="mono asr-env">scripts/install.sh --worker-only</pre>
+            <pre className="mono asr-env" tabIndex={0}>scripts/install.sh --worker-only</pre>
           </li>
           <li>
             {t("workers.step2")}
             <div className="worker-enroll-command">
-              <pre className="mono asr-env">{command}</pre>
+              <pre className="mono asr-env" tabIndex={0}>{command}</pre>
               <button className="btn btn-sm" onClick={copy}>
                 {copied ? <Check /> : <Copy />} {copied ? t("workers.copied") : t("workers.copy")}
               </button>
@@ -287,13 +287,13 @@ function EnrollCode({ created, onClose }: { created: { name: string; code: strin
           </li>
           <li>
             {t("workers.step3")}
-            <pre className="mono asr-env">{"scripts/worker.sh check\nscripts/restart.sh worker"}</pre>
+            <pre className="mono asr-env" tabIndex={0}>{"scripts/worker.sh check\nscripts/restart.sh worker"}</pre>
           </li>
         </ol>
         <details className="worker-enroll-modal">
           <summary>{t("workers.modalAlt")}</summary>
           <p className="field-hint">{t("workers.modalAltIntro")}</p>
-          <pre className="mono asr-env">{`modal secret create meetingminutes-worker HF_TOKEN=hf_... OPENROUTER_API_KEY=sk-or-...\nmodal run deploy/modal/app.py::enroll --server-url ${server} --code ${created.code}\nmodal deploy deploy/modal/app.py\nmodal run deploy/modal/app.py::prepare`}</pre>
+          <pre className="mono asr-env" tabIndex={0}>{`modal secret create meetingminutes-worker HF_TOKEN=hf_... OPENROUTER_API_KEY=sk-or-...\nmodal run deploy/modal/app.py::enroll --server-url ${server} --code ${created.code}\nmodal deploy deploy/modal/app.py\nmodal run deploy/modal/app.py::prepare`}</pre>
           <p className="field-hint">{t("workers.modalAltNext")}</p>
         </details>
         <p className="field-hint">{t("workers.codeOnce", { left: until(created.expiresAt, locale) })}</p>

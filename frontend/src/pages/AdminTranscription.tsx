@@ -346,7 +346,7 @@ function KeyStatus({ data, provider }: { data: TranscriberState; provider: ApiKe
       {(missing.length > 0 || data.workers.length === 0) && (
         <div className="asr-key-help">
           <p className="muted">{t("asr.keyHelp", { names: variables.join(" / ") })}</p>
-          <pre className="mono asr-env">{`${variables[0]}=${provider === "openrouter" ? "sk-or-v1-…" : provider === "pyannoteai" ? "sk_…" : "sk-…"}`}</pre>
+          <pre className="mono asr-env" tabIndex={0}>{`${variables[0]}=${provider === "openrouter" ? "sk-or-v1-…" : provider === "pyannoteai" ? "sk_…" : "sk-…"}`}</pre>
           <p className="faint">{t("asr.keyRestart")}</p>
         </div>
       )}

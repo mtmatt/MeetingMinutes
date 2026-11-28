@@ -277,7 +277,21 @@ scripts/worker.sh               # a worker for every GPU (or WORKER_GPUS=0,1)
 
 Open the site, enter the setup token (also saved in `data/setup.token`), and create the administrator. Invite everyone else from **Admin → Invitations**. You can also create an admin from the shell with `bun run admin create-admin <username>`.
 
-To keep the processes running as systemd user services, see `deploy/systemd/`. The unit files explain the `loginctl enable-linger` caveat.
+### Running the web server with systemd
+
+On a Linux server, let systemd run the web server: it starts at boot, comes back after a crash, and logs to the journal. Run once, as root:
+
+```bash
+sudo scripts/install-service.sh              # install, enable and start meetingminutes-web
+sudo scripts/install-service.sh --dry-run    # only show what it would do
+sudo scripts/install-service.sh --uninstall  # back to tmux
+```
+
+It installs `/etc/systemd/system/meetingminutes-web.service` from `deploy/systemd/system/meetingminutes-web.service.in`, running as the user who owns the project directory (root warns; see "Running as a normal user"), with systemd's sandboxing options that the server does not need to do without (no new privileges, private `/tmp`, read-only system directories, no kernel tunables). It stops the copy running in tmux (`mm-web`) and starts the service. For a user other than root it adds a sudoers rule that lets that user restart this one service and read its last log lines, and nothing else.
+
+Afterwards nothing changes in how you update: `scripts/restart.sh web` (and acme.sh after renewing a certificate) restarts the service and waits until the site answers, showing the last log lines if it does not come up. Look at it with `systemctl status meetingminutes-web` and `journalctl -u meetingminutes-web -f`. A crash restarts it after 3 seconds; five failed starts within 2 minutes (a broken `.env`, say) stop the retries until the next restart. The worker keeps running in tmux (`scripts/restart.sh worker`).
+
+The units in `deploy/systemd/` (without `system/`) are the other way: user services for an ordinary login account (`systemctl --user`); they explain the `loginctl enable-linger` caveat. Use one way, not both.
 
 ### Exposing it on a public IP
 
@@ -397,11 +411,7 @@ Afterwards, as root:
 1. Stop the services that still run as root: `tmux kill-session -t mm-web; tmux kill-session -t mm-worker`.
 2. Run `sudo -u minutes -H scripts/install.sh` once more, with the options you used before (`--no-gpu` for a server without a GPU). Bun and uv are installed in the home directory of whoever ran it, and the worker's Python environment points there. Things kept in root's home directory do not move: Ollama and its models, and Hugging Face downloads. Recordings, the database, the worker's CPU models and its enrollment are in the data directory and stay as they are.
 3. Start the services as that user: `sudo -u minutes -H scripts/restart.sh`. Look at them with `sudo -u minutes -H tmux attach -t mm-web` (or `mm-worker`).
-4. Start them at boot, one of:
-   - cron: `crontab -u minutes -e`, with the line `@reboot /opt/MeetingMinutes/scripts/restart.sh`;
-   - systemd system units with `User=minutes`: the script prints one for the web server (`ExecStart=…/scripts/start.sh`) and says what differs for the worker. The units in `deploy/systemd/` are user units for an ordinary login account (`systemctl --user`), which is the other way to do it.
-
-   Use tmux or systemd, not both.
+4. Start them at boot: `sudo scripts/install-service.sh` runs the web server as a systemd service as `minutes` (see "Running the web server with systemd"); for the worker, `crontab -u minutes -e` with the line `@reboot /opt/MeetingMinutes/scripts/restart.sh worker`. Without systemd, the same cron line without `worker` starts both.
 5. Update as that user from now on: `sudo -u minutes -H git -C /opt/MeetingMinutes pull`, then `sudo -u minutes -H scripts/restart.sh`.
 
 **Certificate renewal.** `scripts/install-cert.sh` gives acme.sh a reload command (`scripts/restart.sh web`), and acme.sh renews from the crontab of the account it was installed for. If that was root, renewals would write `data/tls` as root, in files the new user cannot read, and restart the web server as root. Move it: as the new user, install acme.sh, issue the certificate again and run `scripts/install-cert.sh <domain>`; then, as root, `~/.acme.sh/acme.sh --remove -d <domain>`. Whichever account runs acme.sh must be able to write `data/tls`.
@@ -538,7 +548,7 @@ It appears as a banner under the top bar, the most urgent first, at once in ever
 
 ## Performance (Admin → Performance)
 
-Every API request's time, from arriving to the answer being ready, is counted per minute and per route (`GET /api/meetings/:id`, never the ids) into fixed time buckets, written to the database once a minute and kept for 30 days (`backend/src/services/perf.ts`); the event stream, which stays open, is left out. The page shows, for the last hour, day, week or month: the number of requests, p50, p95 and p99 response times and the server error rate; p50 and p95 over time; and a table by route (sortable by count, percentiles, longest or 5xx). Percentiles are read from the summed buckets, so they are close (within a bucket) rather than exact. It also shows how long the work people wait for takes: transcriptions (waiting in the queue, processing, and processing time per minute of recording) and summaries (waiting, writing), as p50, p95 and the longest.
+Every API request's time, from arriving to the answer being ready, is counted per minute and per route (`GET /api/meetings/:id`, never the ids) into fixed time buckets, written to the database once a minute and kept for 30 days (`backend/src/services/perf.ts`); the event stream, which stays open, is left out, and so is the workers' API (`/internal/`), which they poll every few seconds. The page shows, for the last hour, day, week or month: the number of requests, p50, p95 and p99 response times and the server error rate; p50 and p95 over time; and a table by route (sortable by count, percentiles, longest or 5xx). Percentiles are read from the summed buckets, so they are close (within a bucket) rather than exact, and never above the longest request seen. It also shows how long the work people wait for takes: transcriptions (waiting in the queue, processing, and processing time per minute of recording) and summaries (waiting, writing), as p50, p95 and the longest.
 
 ### Load testing
 
@@ -715,6 +725,7 @@ What this changes, and what it does not:
 - **CSRF**: every state-changing API call must carry a custom `X-MM-Client` header, which cross-site forms cannot send and cross-origin scripts cannot send without a CORS preflight that is never granted. A foreign `Origin` header is also rejected.
 - **Brute force**: failed sign-ins are limited per IP (20 per 15 minutes) and per username (8 per 15 minutes). Setup and invite tokens are rate-limited too, and unknown usernames take the same time to fail as wrong passwords. An invitation link admits at most the number of people it was created for, even when they sign up at the same moment, and one for an administrator admits only one.
 - **Client addresses** (for these limits, blocking and the security log): the connection's own address. With `TRUST_PROXY=true`, `X-Forwarded-For` is believed only on connections from the proxy (this machine, a private network, or `TRUSTED_PROXIES`), and only its last entry, the one the proxy added; earlier entries are whatever the client sent. The host a request names is its `Host` header alone (`X-Forwarded-Host` is ignored).
+- **One-time links** (invitations, password resets, email confirmations) carry 192 random bits from the operating system's secure generator; only their SHA-256 hash is stored, and using one is checked and counted in a single statement, so it cannot be used twice. A password reset link lasts 24 hours when an administrator makes it and 1 hour when it is mailed through "Forgot password", and only the newest one for an account works. Unused reset links stop working as soon as the password is changed in any other way, the account's address changes (they went to the old mailbox), or the account is disabled; a disabled account cannot be reset by link at all. The security log keeps only the first 4 characters of a token in the paths it records.
 - **Links in email** (confirmations, password resets) use `PUBLIC_URL`. Without it, only a site limited to its own names (`ALLOWED_HOSTS`) uses the address the request came to; otherwise sign-up and password reset by email are off, since the `Host` header would be the sender's choice and a reset link mailed to someone else could point at the sender's site. Only the site's own links are clickable in these messages, never text someone typed (a name, an account name).
 - **Request sizes**: JSON bodies are refused (413) above 64 KB, counted as they arrive, except where one long text is expected (prompts, templates and terms: 1 MB; an edited summary: 4 MB). Payment notifications are read up to 16 KB.
 - **Sign-up**: off unless an administrator opens it, and only with email set up. An account cannot sign in until its address is confirmed through a single-use, 24-hour link (stored as a hash); the link does not sign anyone in by itself, so a mail scanner opening it gains nothing. Signing up with an address that already has an account answers exactly like a new sign-up and tells the owner instead, so the form does not reveal who has an account; "Forgot password" answers the same whether or not the address is known. Sign-ups are limited per IP (10 an hour), and mail to one address to 3 an hour. Unconfirmed accounts are removed after 7 days.
@@ -778,7 +789,7 @@ deploy/    Caddyfile, nginx.conf, systemd user units
 
 ## Operations
 
-- **Updating**: `git pull`, then restart `scripts/start.sh` and `scripts/worker.sh` (or the systemd services). `scripts/llm.sh install` updates Ollama. `start.sh` reinstalls JavaScript dependencies when `bun.lock` changed and rebuilds the web interface when its sources changed, so browsers get the new UI after a reload. If `worker/uv.lock` changed, run `scripts/install.sh` once (repeat `--vllm` if you use it).
+- **Updating**: `git pull`, then `scripts/restart.sh` (it restarts the systemd service when `scripts/install-service.sh` set one up). `scripts/llm.sh install` updates Ollama. `start.sh` reinstalls JavaScript dependencies when `bun.lock` changed and rebuilds the web interface when its sources changed, so browsers get the new UI after a reload. If `worker/uv.lock` changed, run `scripts/install.sh` once (repeat `--vllm` if you use it).
 - **Speaker diarization status**: the admin page shows a warning on a worker only after loading the diarization model actually failed, with the reason. Each meeting also records whether diarization ran; a transcript without speakers says why and offers **Separate speakers again**.
 - **Everyone appears as one speaker**: usually pyannote is not running. To enable it:
   1. With a Hugging Face account, accept the conditions of [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1).

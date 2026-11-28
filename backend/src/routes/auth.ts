@@ -40,7 +40,7 @@ import {
   verifyPassword,
 } from "../auth/service";
 import { checkSetupToken, clearSetupToken } from "../auth/setup";
-import { consumeInvite, createInvite, findInvite } from "../auth/invites";
+import { consumeInvite, createInvite, findInvite, revokeResetLinks } from "../auth/invites";
 import { httpError } from "../lib/util";
 import { knownAddress, recordEvent } from "../services/security";
 import { publicSummarizerInfo } from "../services/summarySettings";
@@ -353,10 +353,13 @@ authRoutes.post("/invites/:token/accept", async (c) => {
     if (p) httpError(422, p, "weak_password");
     const target = invite.target_user_id ? findUserById(invite.target_user_id) : null;
     if (!target) httpError(404, "The account no longer exists.", "invalid_invite");
+    // A disabled account's password stays as it is until an administrator turns it back on.
+    if (target.disabled) httpError(404, "This link is invalid or has expired.", "invalid_invite");
     const passwordHash = await hashPassword(input.password);
     db.transaction(() => {
       markUsed(target.id);
       db.query("UPDATE users SET password_hash = $h, updated_at = $t WHERE id = $id").run({ id: target.id, h: passwordHash, t: now() });
+      revokeResetLinks(target.id);
       deleteUserSessions(target.id);
     })();
     recordEvent("account", { ip, username: target.username, userId: target.id, detail: "password reset with a link" });

@@ -86,7 +86,7 @@ function TsLink({ sec, meeting, children }: { sec: number; meeting: MeetingDetai
             const sp = speaker(q.speaker);
             return (
               <span key={q.id} className="ts-quote-line">
-                <span className="ts-quote-who" style={{ color: `var(--spk-${(sp?.color ?? 8) % 10})` }}>
+                <span className="ts-quote-who" style={{ color: `color-mix(in oklab, var(--spk-${(sp?.color ?? 8) % 10}) var(--spk-text), var(--ink))` }}>
                   {sp?.name ?? t("meeting.speaker")} <span className="mono faint">{clock(q.start)}</span>
                 </span>
                 <span className="ts-quote-text">{q.text}</span>
@@ -148,7 +148,7 @@ function Markdown({ content, meeting }: { content: string; meeting: MeetingDetai
             },
             table({ children }) {
               return (
-                <div className="prose-table">
+                <div className="prose-table" tabIndex={0}>
                   <table>{children}</table>
                 </div>
               );
@@ -614,7 +614,7 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
               })}
           </span>
         </div>
-        {showPrompt && <pre className="summary-prompt mono">{current.prompt}</pre>}
+        {showPrompt && <pre className="summary-prompt mono" tabIndex={0}>{current.prompt}</pre>}
       </>
     );
   }
@@ -665,7 +665,7 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
             {current && (
               <Menu
                 trigger={({ toggle }) => (
-                  <button className="icon-btn" onClick={toggle} aria-label="More">
+                  <button className="icon-btn" onClick={toggle} aria-label={t("common.more")}>
                     <MoreHorizontal />
                   </button>
                 )}

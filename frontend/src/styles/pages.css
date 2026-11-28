@@ -35,7 +35,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  --accent: #e5664b;
+  --accent: #e76f56;
   --accent-ink: #1a0f0c;
 }
 .auth-hero-kicker {
@@ -60,7 +60,7 @@
 .auth-hero-body h1 em {
   display: block;
   font-style: italic;
-  color: #e5664b;
+  color: #e76f56;
   font-variation-settings: "opsz" 144, "SOFT" 100, "WONK" 1;
 }
 .auth-hero-body p {

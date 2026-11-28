@@ -192,7 +192,7 @@ export function TemplatesPage() {
                   <Copy /> {t("templates.duplicate")}
                 </button>
               </div>
-              <pre className="tpl-body mono">{selected.body}</pre>
+              <pre className="tpl-body mono" tabIndex={0}>{selected.body}</pre>
               <p className="faint" style={{ fontSize: "var(--step--1)" }}>{t("templates.readOnly")}</p>
             </>
           ) : (

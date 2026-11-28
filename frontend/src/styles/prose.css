@@ -136,6 +136,7 @@
 }
 .prose th {
   text-align: left;
+  white-space: nowrap;
   font-weight: 650;
   font-size: var(--step--2);
   letter-spacing: 0.06em;

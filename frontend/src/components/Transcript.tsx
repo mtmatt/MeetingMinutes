@@ -538,8 +538,8 @@ function SpeakerLegend({ meeting, turns, onScroll }: { meeting: MeetingDetail; t
                   maxLength={80}
                 />
               ) : (
-                <button className="legend-name" title={t("meeting.renameHint")} onClick={() => startEditing(sp)}>
-                  {sp.name}
+                <button className="legend-name" title={`${sp.name} · ${t("meeting.renameHint")}`} onClick={() => startEditing(sp)}>
+                  <span className="legend-name-text">{sp.name}</span>
                   <Pencil />
                 </button>
               )}

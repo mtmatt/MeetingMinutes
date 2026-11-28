@@ -34,6 +34,30 @@ interface PlayerValue {
   /** Subscribe to high-frequency time updates (animation frames while playing). */
   subscribe: (fn: (t: number) => void) => () => void;
   getTime: () => number;
+  /** Why playback failed, until it works again. */
+  error: PlayError | null;
+}
+
+/**
+ * Why the recording does not play, when it does not: shown in the player
+ * instead of a play button that silently does nothing.
+ */
+export type PlayError = "deleted" | "missing" | "signedOut" | "format" | "blocked" | "network";
+
+/** Asks the server about the file once the browser gave up on it: its answer says why. */
+async function diagnose(el: HTMLMediaElement): Promise<PlayError> {
+  const decode = el.error?.code === MediaError.MEDIA_ERR_DECODE || el.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED;
+  try {
+    const res = await fetch(el.currentSrc || el.src, { headers: { Range: "bytes=0-0" }, credentials: "same-origin" });
+    if (res.status === 410) return "deleted";
+    if (res.status === 404) return "missing";
+    if (res.status === 401 || res.status === 403) return "signedOut";
+    if (!res.ok) return "network";
+  } catch {
+    return "network";
+  }
+  // The server sends the file: the browser could not use it.
+  return decode ? "format" : "network";
 }
 
 const PlayerContext = createContext<PlayerValue | null>(null);
@@ -50,6 +74,21 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
   const listeners = useRef(new Set<(t: number) => void>());
   const pendingSeek = useRef<{ t: number; play: boolean } | null>(null);
   const lastState = useRef({ t: 0, playing: false, rate: 1 });
+  const [error, setError] = useState<PlayError | null>(null);
+
+  /** Start playing; a refusal is reported, not swallowed. */
+  const start = useCallback((el: HTMLMediaElement) => {
+    el.play().then(
+      () => setError(null),
+      (e: unknown) => {
+        const name = (e as { name?: string })?.name;
+        // Interrupted by a pause or a new source: not a failure.
+        if (name === "AbortError") return;
+        if (name === "NotAllowedError") setError("blocked");
+        else void diagnose(el).then(setError);
+      },
+    );
+  }, []);
 
   const emit = useCallback((t: number) => {
     for (const l of listeners.current) l(t);
@@ -111,6 +150,8 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
         sync();
       });
       el.addEventListener("seeked", sync);
+      el.addEventListener("error", () => void diagnose(el).then(setError));
+      el.addEventListener("canplay", () => setError(null));
       el.addEventListener("play", () => setPlaying(true));
       el.addEventListener("pause", () => setPlaying(false));
       el.addEventListener("ended", () => {
@@ -123,7 +164,7 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
         const p = pendingSeek.current;
         if (p) {
           el.currentTime = p.t;
-          if (p.play) void el.play().catch(() => undefined);
+          if (p.play) start(el);
           pendingSeek.current = null;
         }
       });
@@ -131,7 +172,7 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
       el.playbackRate = lastState.current.rate;
       if (prev) pendingSeek.current = { t: lastState.current.t, play: lastState.current.playing };
     },
-    [emit, endClip, setClip],
+    [emit, endClip, setClip, start],
   );
 
   /** Move the playhead, without counting as an explicit seek. */
@@ -148,12 +189,12 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
       }
       if (el.readyState >= 1) {
         el.currentTime = clamped;
-        if (autoplay) void el.play().catch(() => undefined);
+        if (autoplay) start(el);
       } else {
         pendingSeek.current = { t: clamped, play: autoplay };
       }
     },
-    [emit],
+    [emit, start],
   );
 
   const seek = useCallback(
@@ -185,9 +226,9 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
   const toggle = useCallback(() => {
     const el = elRef.current;
     if (!el) return;
-    if (el.paused) void el.play().catch(() => undefined);
+    if (el.paused) start(el);
     else el.pause();
-  }, []);
+  }, [start]);
 
   const skip = useCallback((d: number) => {
     const el = elRef.current;
@@ -210,8 +251,8 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
   const getTime = useCallback(() => elRef.current?.currentTime ?? 0, []);
 
   const value = useMemo(
-    () => ({ time, duration, playing, rate, seekCount, clip, seek, playClip, stopClip, toggle, skip, setRate, register, subscribe, getTime }),
-    [time, duration, playing, rate, seekCount, clip, seek, playClip, stopClip, toggle, skip, setRate, register, subscribe, getTime],
+    () => ({ time, duration, playing, rate, seekCount, clip, seek, playClip, stopClip, toggle, skip, setRate, register, subscribe, getTime, error }),
+    [time, duration, playing, rate, seekCount, clip, seek, playClip, stopClip, toggle, skip, setRate, register, subscribe, getTime, error],
   );
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
@@ -228,6 +269,13 @@ export function usePlayerShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
+      // A timestamp just clicked keeps the focus: Space then pauses, as everywhere else on
+      // the page, instead of pressing that timestamp again (which only jumps back to it).
+      if (target?.closest(".block-time, .ts-link") && (e.key === " " || e.key === "k") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        toggle();
+        return;
+      }
       if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName) || target.closest('[role="menu"]'))) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === " " || e.key === "k") {

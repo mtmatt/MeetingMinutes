@@ -338,7 +338,7 @@ function History({ ledger }: { ledger: LedgerEntry[] }) {
           {t("billing.seeUsage")} <ArrowRight className="inline-icon" />
         </Link>
       </div>
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0}>
         <table className="table billing-history">
           <thead>
             <tr>

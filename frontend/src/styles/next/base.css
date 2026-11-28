@@ -100,8 +100,8 @@
   --ink-4: #8f8b82;
   --rule: #e3ddd1;
   --rule-strong: #cdc6b7;
-  --accent: #c8412b;
-  --accent-hover: color-mix(in oklab, #c8412b 86%, #1c1b18);
+  --accent: #b13927;
+  --accent-hover: color-mix(in oklab, #b13927 86%, #1c1b18);
   --accent-ink: #ffffff;
   --accent-soft: #f8e3dc;
   --accent-wash: rgba(200, 65, 43, 0.07);
@@ -127,8 +127,8 @@
     --ink-4: #78756e;
     --rule: #33312c;
     --rule-strong: #47443e;
-    --accent: #e5664b;
-    --accent-hover: color-mix(in oklab, #e5664b 86%, #f5f2eb);
+    --accent: #e76f56;
+    --accent-hover: color-mix(in oklab, #e76f56 86%, #f5f2eb);
     --accent-ink: #1a0f0c;
     --accent-soft: #3a221c;
     --accent-wash: rgba(229, 102, 75, 0.1);
@@ -150,8 +150,8 @@
   --ink-4: #78756e;
   --rule: #33312c;
   --rule-strong: #47443e;
-  --accent: #e5664b;
-  --accent-hover: color-mix(in oklab, #e5664b 86%, #f5f2eb);
+  --accent: #e76f56;
+  --accent-hover: color-mix(in oklab, #e76f56 86%, #f5f2eb);
   --accent-ink: #1a0f0c;
   --accent-soft: #3a221c;
   --accent-wash: rgba(229, 102, 75, 0.1);

@@ -9,6 +9,8 @@
  *   bun run admin export-asr-eval <dir> [meeting id …] [--min-edited N] [--playback]
  *                                                            corrected segments and recordings, for comparing
  *                                                            speech recognition models (scripts/worker.sh compare-asr)
+ *   bun run admin media-check [meeting id …]                 which file the player gets for each meeting (the 10
+ *                                                            latest without ids), whether it is there, and its codec
  */
 import { config } from "./config";
 import {
@@ -22,6 +24,10 @@ import {
 import { ensureSetupToken } from "./auth/setup";
 import { db } from "./db";
 import { exportAsrEval } from "./services/asrEval";
+import { existsSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { PLAYBACK_FILE, mediaTypeFor, meetingDir, originalPath } from "./services/meetings";
+import type { MeetingRow } from "./types";
 
 async function readPassword(label: string): Promise<string> {
   if (process.env.MM_PASSWORD) return process.env.MM_PASSWORD;
@@ -117,8 +123,41 @@ switch (cmd) {
     console.log("Copy the folder to a GPU machine and run there:  scripts/worker.sh compare-asr <dir>");
     break;
   }
+  case "media-check": {
+    // The same choice as GET /api/meetings/:id/media/audio (routes/meetings.ts).
+    const rows = args.length
+      ? args.map((id) => db.query<MeetingRow, { id: string }>("SELECT * FROM meetings WHERE id = $id").get({ id }) ?? fail(`No meeting "${id}".`))
+      : db.query<MeetingRow, []>("SELECT * FROM meetings ORDER BY created_at DESC LIMIT 10").all();
+    const ffprobe = Bun.which("ffprobe");
+    const probe = (path: string) => {
+      if (!ffprobe) return "(ffprobe not installed)";
+      const r = Bun.spawnSync([ffprobe, "-v", "error", "-show_entries", "stream=codec_type,codec_name:format=duration", "-of", "compact=p=0:nk=1", path]);
+      return r.exitCode === 0 ? r.stdout.toString().trim().split("\n").join(" | ") : `ffprobe could not read it: ${r.stderr.toString().trim().slice(0, 200)}`;
+    };
+    const size = (path: string) => (existsSync(path) ? `${(statSync(path).size / 1e6).toFixed(1)} MB` : "MISSING");
+    for (const m of rows) {
+      console.log(`\n${m.id}  ${m.title}`);
+      console.log(`  status ${m.status}${m.stage ? ` (${m.stage})` : ""}, video ${m.has_video ? "yes" : "no"}, playback copy ${m.has_playback ? "yes" : "no"}`);
+      const playback = join(meetingDir(m.id), PLAYBACK_FILE);
+      const original = originalPath(m);
+      console.log(`  playback.m4a       ${m.has_playback || existsSync(playback) ? size(playback) : "(none)"}`);
+      console.log(`  original.${m.media_ext.padEnd(10)} ${size(original)}${m.compacted_at ? " (compacted to Opus)" : ""}`);
+      let verdict: string;
+      if (m.media_deleted_at != null) verdict = "deleted after its retention period: the player shows that, nothing to play";
+      else if (m.has_playback) {
+        verdict = existsSync(playback) ? `gets playback.m4a (audio/mp4): ${probe(playback)}` : "gets playback.m4a, but THE FILE IS MISSING (404): nothing plays";
+      } else if (m.status === "uploading") verdict = "still uploading: nothing to play yet";
+      else {
+        verdict = existsSync(original)
+          ? `gets the original as ${mediaTypeFor(m.media_ext)}: ${probe(original)}`
+          : "gets the original, but THE FILE IS MISSING (404): nothing plays";
+      }
+      console.log(`  the player ${verdict}`);
+    }
+    break;
+  }
   default:
-    console.log(`Commands: create-admin, reset-password, list-users, setup-token, worker-token, export-asr-eval`);
+    console.log(`Commands: create-admin, reset-password, list-users, setup-token, worker-token, export-asr-eval, media-check`);
     process.exit(cmd ? 1 : 0);
 }
 process.exit(0);

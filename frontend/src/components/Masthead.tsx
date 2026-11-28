@@ -48,7 +48,7 @@ export function Masthead() {
   return (
     <header className="masthead">
       <div className="masthead-inner">
-        <NavLink to="/" className="masthead-brand" aria-label="Minutes">
+        <NavLink to="/" className="masthead-brand">
           <Wordmark />
         </NavLink>
         <nav className="masthead-nav">
@@ -81,7 +81,7 @@ export function Masthead() {
           )}
           <Menu
             trigger={({ toggle, open }) => (
-              <button className="btn btn-primary btn-sm masthead-new" onClick={toggle} aria-expanded={open} aria-haspopup="menu">
+              <button className="btn btn-primary btn-sm masthead-new" onClick={toggle} aria-expanded={open} aria-haspopup="menu" aria-label={t("nav.add")}>
                 <Plus />
                 <span>{t("nav.add")}</span>
                 <ChevronDown className="chev-sm" />
@@ -146,7 +146,7 @@ export function Masthead() {
                 <div className="menu-label smallcaps">{t("nav.theme")}</div>
                 <div className="menu-row">
                   {themes.map(({ id, icon: Icon, label }) => (
-                    <button key={id} className="menu-chip" aria-pressed={theme === id} onClick={() => setTheme(id)} title={label}>
+                    <button key={id} className="menu-chip" role="menuitemradio" aria-checked={theme === id} onClick={() => setTheme(id)} title={label}>
                       <Icon />
                       <span>{label}</span>
                     </button>
@@ -156,10 +156,10 @@ export function Masthead() {
                   <Languages style={{ width: 12, height: 12, display: "inline", verticalAlign: "-1px" }} /> {t("nav.language")}
                 </div>
                 <div className="menu-row">
-                  <button className="menu-chip" aria-pressed={locale === "zh-TW"} onClick={() => switchLocale("zh-TW")}>
+                  <button className="menu-chip" role="menuitemradio" aria-checked={locale === "zh-TW"} onClick={() => switchLocale("zh-TW")}>
                     繁體中文
                   </button>
-                  <button className="menu-chip" aria-pressed={locale === "en"} onClick={() => switchLocale("en")}>
+                  <button className="menu-chip" role="menuitemradio" aria-checked={locale === "en"} onClick={() => switchLocale("en")}>
                     English
                   </button>
                 </div>

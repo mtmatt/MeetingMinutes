@@ -302,7 +302,10 @@
   top: var(--masthead-h);
   max-height: calc(100dvh - var(--masthead-h) - var(--player-h));
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* Not "contain": before the page has scrolled, the column has not stuck yet and its
+     end lies under the player; scrolling past the column's end then moves the page,
+     the column sticks, and its last lines come out from under the player. */
+  overscroll-behavior: auto;
   /* The last line (the prompt used, the token counts) clear of the player. */
   padding-bottom: 24px;
 }
@@ -394,6 +397,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* Takes the room the row has (flex basis 0): a long name is cut with an ellipsis
+     beside its colour dot instead of dropping, whole, to the next line. */
+  flex: 1 1 0;
+  text-align: left;
   border: 0;
   background: none;
   padding: 3px 6px;
@@ -406,7 +413,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.legend-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .legend-name svg {
+  flex-shrink: 0;
   width: 12px;
   height: 12px;
   color: var(--ink-3);
@@ -564,7 +578,7 @@
 }
 .legend-listen[aria-pressed="true"] {
   background: color-mix(in srgb, var(--spk) 16%, transparent);
-  color: var(--spk);
+  color: color-mix(in oklab, var(--spk) var(--spk-text), var(--ink));
 }
 .speaker-clips {
   /* Under the name, past the colour dot (9px) and the row gap (8px). */
@@ -709,7 +723,7 @@
   padding: 0 6px;
   border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--spk) 14%, transparent);
-  color: var(--spk);
+  color: color-mix(in oklab, var(--spk) var(--spk-text), var(--ink));
   font-size: var(--step--2);
   font-weight: 600;
   line-height: 1.6;
@@ -794,10 +808,12 @@
   font-size: var(--step--2);
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--spk);
+  color: color-mix(in oklab, var(--spk) var(--spk-text), var(--ink));
   text-align: left;
   line-height: 1.3;
   overflow-wrap: anywhere;
+  /* A long name (a guest with a title) breaks into even lines, never one character alone. */
+  text-wrap: balance;
 }
 .block-speaker:hover {
   text-decoration: underline;
@@ -1140,6 +1156,30 @@
   box-shadow: 0 -12px 32px -20px rgba(0, 0, 0, 0.25);
   animation: rise-in 400ms var(--ease-out);
 }
+/* Why the recording does not play: a strip on top of the player bar. */
+.player-error {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  margin: 0;
+  padding: 8px max(16px, calc((100% - var(--page-max)) / 2 + 28px));
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--warn-soft);
+  color: var(--ink);
+  border-top: 1px solid var(--rule-strong);
+  font-size: var(--step--1);
+  line-height: 1.5;
+}
+.player-error svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--warn);
+}
 .player-inner {
   max-width: var(--page-max);
   margin: 0 auto;
@@ -1232,7 +1272,7 @@
 .speaker-key-now {
   font-size: var(--step--2);
   font-weight: 600;
-  color: var(--spk);
+  color: color-mix(in oklab, var(--spk) var(--spk-text), var(--ink));
   border: 1px solid currentColor;
   border-radius: 999px;
   padding: 0 7px;

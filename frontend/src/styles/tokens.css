@@ -74,15 +74,15 @@
   --ink-4: #9a9488;
   --rule: #ddd7cb;
   --rule-strong: #c9c2b4;
-  --accent: #c8412b;
-  --accent-hover: #b0361f;
+  --accent: #b13927;
+  --accent-hover: #982f1f;
   --accent-ink: #fffaf5;
   --accent-soft: #f6e0d8;
   --accent-wash: rgba(200, 65, 43, 0.08);
   --focus: rgba(200, 65, 43, 0.45);
-  --ok: #3b7a55;
+  --ok: #356f4d;
   --ok-soft: #dcebdf;
-  --warn: #a8701a;
+  --warn: #875a15;
   --warn-soft: #f3e6cc;
   --danger: #b42318;
   --danger-soft: #f7dcd8;
@@ -104,6 +104,9 @@
   --spk-7: #b35f35;
   --spk-8: #56687a;
   --spk-9: #3b8a5a;
+  /* Speaker colours fill bars and dots as they are; as text, light mode mixes in
+     ink so small names stay readable (4.5:1) on the paper backgrounds. */
+  --spk-text: 60%;
 
   color-scheme: light;
 }
@@ -122,8 +125,8 @@
     --ink-4: #6f6a5f;
     --rule: #2e2b25;
     --rule-strong: #3d3a32;
-    --accent: #e5664b;
-    --accent-hover: #ef7b62;
+    --accent: #e76f56;
+    --accent-hover: #f08469;
     --accent-ink: #1a0f0c;
     --accent-soft: #3a211b;
     --accent-wash: rgba(229, 102, 75, 0.1);
@@ -151,6 +154,7 @@
     --spk-7: #e39068;
     --spk-8: #97a8b8;
     --spk-9: #74c28f;
+    --spk-text: 100%;
     color-scheme: dark;
   }
 }
@@ -167,8 +171,8 @@
   --ink-4: #6f6a5f;
   --rule: #2e2b25;
   --rule-strong: #3d3a32;
-  --accent: #e5664b;
-  --accent-hover: #ef7b62;
+  --accent: #e76f56;
+  --accent-hover: #f08469;
   --accent-ink: #1a0f0c;
   --accent-soft: #3a211b;
   --accent-wash: rgba(229, 102, 75, 0.1);
@@ -196,5 +200,6 @@
   --spk-7: #e39068;
   --spk-8: #97a8b8;
   --spk-9: #74c28f;
+  --spk-text: 100%;
   color-scheme: dark;
 }

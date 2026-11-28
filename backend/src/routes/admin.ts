@@ -6,7 +6,7 @@ import { statfsSync } from "node:fs";
 import { z } from "zod";
 import { config } from "../config";
 import { requireAdmin, requireUser } from "../auth/middleware";
-import { MAX_INVITE_USES, createInvite, inviteStatus, type InviteRow } from "../auth/invites";
+import { MAX_INVITE_USES, createInvite, inviteStatus, revokeResetLinks, type InviteRow } from "../auth/invites";
 import { deleteUserSessions, findUserById, publicUser } from "../auth/service";
 import { db, now } from "../db";
 import { httpError, parseJson } from "../lib/util";
@@ -133,7 +133,10 @@ adminRoutes.patch("/users/:id", async (c) => {
     dn: input.displayName ?? null,
     t: now(),
   });
-  if (input.disabled) deleteUserSessions(target.id);
+  if (input.disabled) {
+    deleteUserSessions(target.id);
+    revokeResetLinks(target.id);
+  }
   const by = `by ${me.username}`;
   if (input.role === "admin" && target.role !== "admin") {
     recordEvent("account", { ip: c.get("clientIp"), username: target.username, userId: target.id, detail: `admin granted to ${target.username} ${by}` });

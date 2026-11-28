@@ -156,6 +156,20 @@ describe("signing up", () => {
     expect((await new Client().post("/api/auth/login", { username: "forgetful", password: "a brand new password" })).status).toBe(200);
   });
 
+  test("reset links mailed to an old address stop working when the address changes", async () => {
+    const c = await signedUp("mover");
+    mailIpLimiter.reset("unknown");
+    expect((await new Client().post("/api/auth/forgot-password", { email: "mover@example.com", locale: "en" })).status).toBe(200);
+    const token = lastMailTo("mover@example.com").text.match(/\/invite\/([\w-]+)/)![1]!;
+    mailIpLimiter.reset("unknown");
+    expect((await c.post("/api/me/email", { email: "mover-new@example.com", password: PASSWORD })).status).toBe(200);
+    // Not yet: the change takes effect when the new address is confirmed.
+    expect((await new Client().get(`/api/auth/invites/${token}`)).status).toBe(200);
+    const verify = lastMailTo("mover-new@example.com").text.match(/\/verify-email\/([\w-]+)/)![1];
+    expect((await new Client().post("/api/auth/verify-email", { token: verify })).status).toBe(200);
+    expect((await new Client().get(`/api/auth/invites/${token}`)).status).toBe(404);
+  });
+
   test("trying names that are taken counts against the sign-up limit, so accounts cannot be listed freely", async () => {
     await openSignUp();
     registerLimiter.reset("unknown");

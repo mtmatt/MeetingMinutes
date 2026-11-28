@@ -6,6 +6,17 @@ import { clientIp } from "./middleware";
 /** Error codes that mean a link or code that does not exist was tried. */
 const BAD_TOKEN = new Set(["invalid_invite", "bad_setup_token", "invalid_link", "bad_enroll_code"]);
 
+/**
+ * The path as the event log keeps it: a path segment long enough to be a link
+ * token (invitation, password reset, email confirmation: 32 characters) is cut
+ * to its first 4 characters. A blocked or rate-limited address can still open
+ * a working link, and the log, which administrators read, must not hold one.
+ * Record IDs (at most 16 characters) are kept whole.
+ */
+export function redactPath(path: string): string {
+  return path.replace(/(^|\/)([A-Za-z0-9_-]{4})[A-Za-z0-9_-]{20,}(?=\/|$)/g, "$1$2…");
+}
+
 /** What a finished request says about the client, if anything suspicious. */
 function classify(c: Context<AppEnv>, path: string): EventKind | null {
   const status = c.res.status;
@@ -30,7 +41,7 @@ export const securityWatch: MiddlewareHandler<AppEnv> = async (c, next) => {
   const ip = clientIp(c);
   let path: string;
   try {
-    path = new URL(c.req.url).pathname;
+    path = redactPath(new URL(c.req.url).pathname);
   } catch {
     path = "";
   }

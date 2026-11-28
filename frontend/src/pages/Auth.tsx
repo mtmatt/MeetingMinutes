@@ -39,7 +39,7 @@ function AuthLayout({ children }: { children: ReactNode }) {
           {SAMPLE.map((line, i) => (
             <div className="auth-sample-line" key={i} style={{ animationDelay: `${300 + i * 450}ms` }}>
               <span className="mono auth-sample-time">{line.t}</span>
-              <span className="auth-sample-who" style={{ color: `var(--spk-${line.c})` }}>
+              <span className="auth-sample-who" style={{ color: `color-mix(in oklab, var(--spk-${line.c}) var(--spk-text), var(--ink))` }}>
                 {line.who}
               </span>
               <span className="auth-sample-text">{line.text}</span>

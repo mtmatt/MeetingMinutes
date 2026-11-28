@@ -289,7 +289,7 @@ function Pipeline({ p }: { p: PerfReport["pipeline"] }) {
         {title}
         <span className="faint perf-h-sub">{t("perf.doneFailed", { done: done.toLocaleString(locale), failed: failed.toLocaleString(locale) })}</span>
       </h2>
-      <div className="perf-scroll">
+      <div className="perf-scroll" tabIndex={0} data-scroll-x>
       <table className="perf-table">
         <thead>
           <tr>
@@ -352,7 +352,7 @@ function Routes({ routes }: { routes: (PerfSummary & { route: string })[] }) {
       {routes.length === 0 ? (
         <p className="faint">{t("perf.noRequests")}</p>
       ) : (
-        <div className="perf-scroll">
+        <div className="perf-scroll" tabIndex={0} data-scroll-x>
           <table className="perf-table perf-routes">
             <thead>
               <tr>

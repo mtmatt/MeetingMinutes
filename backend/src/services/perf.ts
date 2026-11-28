@@ -123,7 +123,9 @@ export function prunePerf(t = now()) {
 /** The route a request matched, as registered ("/api/meetings/:id"); null for what is not counted. */
 function routeOf(c: Parameters<MiddlewareHandler<AppEnv>>[0]): string | null {
   const path = c.req.path;
-  if (!path.startsWith("/api/") && !path.startsWith("/internal/")) return null;
+  // The API people's browsers call. Not /internal/: workers poll it every few
+  // seconds, which says nothing about how the site feels and drowns the rest.
+  if (!path.startsWith("/api/")) return null;
   // A stream that stays open as long as the page does: its "time" says nothing.
   if (path === "/api/events" || path.startsWith("/api/events/")) return null;
   // The route whose handler answered (Hono leaves its index on the request once it has run).
@@ -178,6 +180,10 @@ interface Row {
   hist: string;
 }
 
+function atMost(v: number | null, max: number): number | null {
+  return v == null ? null : Math.min(v, max);
+}
+
 function summarize(rows: Row[]) {
   const hist = new Array(BUCKETS_MS.length + 1).fill(0) as number[];
   let count = 0;
@@ -199,10 +205,11 @@ function summarize(rows: Row[]) {
     clientErrors,
     meanMs: count ? sum / count : null,
     maxMs: count ? max : null,
-    p50: percentile(hist, 0.5),
-    p90: percentile(hist, 0.9),
-    p95: percentile(hist, 0.95),
-    p99: percentile(hist, 0.99),
+    // A bucket's estimate can land above the slowest request actually seen.
+    p50: atMost(percentile(hist, 0.5), max),
+    p90: atMost(percentile(hist, 0.9), max),
+    p95: atMost(percentile(hist, 0.95), max),
+    p99: atMost(percentile(hist, 0.99), max),
   };
 }
 
@@ -273,7 +280,7 @@ export function perfReport(window: PerfWindow, t = now()) {
   const span = PERF_WINDOWS[window];
   const step = STEP[window];
   const since = Math.floor((t - span) / step) * step + step;
-  const rows = db.query<Row, { since: number }>("SELECT * FROM request_stats WHERE minute >= $since ORDER BY minute").all({ since });
+  const rows = db.query<Row, { since: number }>("SELECT * FROM request_stats WHERE minute >= $since AND route NOT LIKE '% /internal/%' ORDER BY minute").all({ since });
 
   const byRoute = new Map<string, Row[]>();
   const byStep = new Map<number, Row[]>();
