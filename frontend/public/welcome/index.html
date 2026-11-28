@@ -64,6 +64,18 @@ main > section.section.section.bg-band[data-moment="pinned-chapters"].is-live { 
 /* the real app's screens: a window edge and a soft shadow, the screenshot shown as it was taken */
 .shot { display: block; width: 100%; height: auto; max-width: none; border-radius: 10px; background: #f5f2eb; box-shadow: 0 0 0 1px rgb(28 27 24 / .12), 0 2px 4px -1px rgb(28 27 24 / .10), 0 24px 48px -24px rgb(28 27 24 / .35); }
 .frame:has(.shot), .panel:has(.shot) { background: var(--ground-bg); }
+.excard { background: #fffdf9; border-radius: 10px; padding: 20px 22px 18px; box-shadow: 0 0 0 1px rgb(28 27 24 / .12), 0 2px 4px -1px rgb(28 27 24 / .10), 0 24px 48px -24px rgb(28 27 24 / .35); font-size: 15px; line-height: 1.5; color: var(--p-ink); }
+.excard__head { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; padding-bottom: 12px; border-bottom: 1px solid rgb(28 27 24 / .12); }
+.excard__tag { font-size: 13px; font-weight: 500; color: var(--p-muted); }
+.excard__rows { list-style: none; margin: 0; padding: 0; }
+.excard__rows li { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 12px 0; border-bottom: 1px solid rgb(28 27 24 / .08); }
+.excard__what { display: grid; gap: 2px; }
+.excard__what b { font-weight: 600; }
+.excard__what small { font-size: 13px; color: var(--p-muted); }
+.excard__num { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.excard__foot { display: flex; justify-content: space-between; padding: 12px 0 4px; font-weight: 600; }
+.excard__note { margin: 8px 0 0; font-size: 13px; color: var(--p-muted); }
+.frame:has(.excard) { background: var(--ground-bg); }
 section[data-moment="pinned-chapters"] .mo-pc__visual.mo-pc__visual--lit { display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; }
 section[data-moment="pinned-chapters"] .mo-pc__visual > img.shot--fit { width: auto; height: auto; max-width: 100%; max-height: 100%; aspect-ratio: auto; }
 /* the meeting page: the screenshot runs across the wrap, cut by the frame's foot on a desktop, whole on a phone and a tablet */
@@ -170,12 +182,21 @@ section[data-moment="pinned-chapters"] .mo-pc__visual > img.shot--fit { width: a
               <p class="t-label">會議紀錄</p>
               <a href="#steps">範本<span>重點、決議、待辦事項</span></a>
               <a href="#search">搜尋<span>每一場會議都找得到</span></a>
-              <a href="#export">匯出<span>下載或存成 Google 文件</span></a>
+              <a href="#export">匯出<span>下載或貼到 Google 文件</span></a>
             </div>
             <a class="menu-card span-3 start-10" href="#billing">
-              <div class="panel"><div class="stage stage--fade-br"><div class="at-corner" style="--ax:20px;--ay:20px;width:360px"><img class="shot" src="shots/billing-1120.webp" srcset="shots/billing-600.webp 600w, shots/billing-1120.webp 1120w" sizes="360px" width="1120" height="871" alt="" loading="lazy" decoding="async"></div></div></div>
+              <div class="panel"><div class="stage stage--fade-br"><div class="at-corner" style="--ax:20px;--ay:20px;width:360px"><div class="excard" data-example role="group" aria-label="一場一小時會議的點數試算，依網站目前的方案與費率計算">
+            <div class="excard__head"><span>一場一小時的會議</span><span class="excard__tag">試算</span></div>
+            <ol class="excard__rows">
+              <li><span class="excard__what"><b>購買 <span data-ex-pack>100</span> 點</b><small><span data-ex-pack-price>NT$100</span></small></span><span class="excard__num">+<span data-ex-pack2>100</span></span></li>
+              <li><span class="excard__what"><b>轉錄</b><small>錄音 60 分鐘</small></span><span class="excard__num">−<span data-ex-asr>60</span></span></li>
+              <li><span class="excard__what"><b>會議紀錄摘要</b><small>讀取約 30,000、輸出約 8,000 token</small></span><span class="excard__num">−<span data-ex-sum>7</span></span></li>
+            </ol>
+            <div class="excard__foot"><span>剩餘點數</span><span class="excard__num" data-ex-left>33</span></div>
+            <p class="excard__note">依目前的方案與費率計算：一小時約 <span data-ex-total>67</span> 點，約 <span data-ex-ntd>NT$67</span></p>
+          </div></div></div></div>
               <span class="t-card">只收完成的工作</span>
-              <span class="t-small muted">每筆扣點都列在紀錄裡</span>
+              <span class="t-small muted">依目前的方案試算一小時會議</span>
             </a>
           </div>
         </div>
@@ -329,7 +350,16 @@ section[data-moment="pinned-chapters"] .mo-pc__visual > img.shot--fit { width: a
           </div>
         </div>
         <div class="frame frame--split span-6 start-7">
-          <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:520px;--ax:max(24px, 50% - 260px);--ay:40px;--ay-sm:20px"><img class="shot" src="shots/billing-1120.webp" srcset="shots/billing-600.webp 600w, shots/billing-1120.webp 1120w" sizes="(max-width: 639px) 310px, 520px" width="1120" height="871" alt="點數與購買頁的紀錄：產品週會摘要扣 3 點（讀取 18,240、輸出 2,106 token）、轉錄 52:14 扣 53 點，客戶訪談、設計評審各筆扣點與餘額" loading="lazy" decoding="async"></div></div>
+          <div class="stage stage--fade-b"><div class="at-rise fit" style="--fit-max:520px;--ax:max(24px, 50% - 260px);--ay:40px;--ay-sm:20px"><div class="excard" data-example role="group" aria-label="一場一小時會議的點數試算，依網站目前的方案與費率計算">
+            <div class="excard__head"><span>一場一小時的會議</span><span class="excard__tag">試算</span></div>
+            <ol class="excard__rows">
+              <li><span class="excard__what"><b>購買 <span data-ex-pack>100</span> 點</b><small><span data-ex-pack-price>NT$100</span></small></span><span class="excard__num">+<span data-ex-pack2>100</span></span></li>
+              <li><span class="excard__what"><b>轉錄</b><small>錄音 60 分鐘</small></span><span class="excard__num">−<span data-ex-asr>60</span></span></li>
+              <li><span class="excard__what"><b>會議紀錄摘要</b><small>讀取約 30,000、輸出約 8,000 token</small></span><span class="excard__num">−<span data-ex-sum>7</span></span></li>
+            </ol>
+            <div class="excard__foot"><span>剩餘點數</span><span class="excard__num" data-ex-left>33</span></div>
+            <p class="excard__note">依目前的方案與費率計算：一小時約 <span data-ex-total>67</span> 點，約 <span data-ex-ntd>NT$67</span></p>
+          </div></div></div></div></div></div>
         </div>
       </div>
     </div>
@@ -379,7 +409,6 @@ section[data-moment="pinned-chapters"] .mo-pc__visual > img.shot--fit { width: a
       <div class="footer__legal">
         <span>&copy; 2026 Minutes · 會議紀錄</span>
         <div class="socials"></div>
-        <span class="t-small muted">Google 文件是 Google LLC 的商標。</span>
       </div>
     </div>
   </div>
