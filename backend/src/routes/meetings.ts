@@ -37,6 +37,7 @@ import { getTemplateFor } from "../services/templates";
 import type { AppEnv, MeetingRow, SegmentRow, SpeakerRow, SummaryRow, TranscribeOptions } from "../types";
 import { JSON_LIMIT_BYTES, TEXT_JSON_LIMIT_BYTES, body } from "./validate";
 import { serveFile } from "../lib/serveFile";
+import { SLIDE_LIMITS, SlideError, addSlide, deleteSlide, getSlide, slidePath, slidePublic } from "../services/slides";
 
 export const meetingRoutes = new Hono<AppEnv>();
 meetingRoutes.use(requireUser);
@@ -57,6 +58,8 @@ export const summaryRequestSchema = z.object({
   templateId: z.string().max(64).nullable().default(null),
   prompt: z.string().trim().min(1, "The prompt cannot be empty.").max(20000),
   outputLanguage: z.enum(["zh-TW", "en", "auto"]).default("zh-TW"),
+  // Show the model the meeting's slides too (when it has any and the model reads pictures).
+  slides: z.boolean().default(true),
 });
 
 /** Queued or running summaries one person may have at once (they share the API quota or the local GPU). */
@@ -238,6 +241,52 @@ meetingRoutes.post("/:id/upload/complete", (c) => {
   }
   enqueueTranscription(m, requireTranscriptionCredits(c.get("user"), m.declared_sec, m.id));
   return c.json({ meeting: meetingSummary(getOwnedMeeting(m.id, c.get("user").id)!) });
+});
+
+// ---------------------------------------------------------------- slides
+
+/**
+ * One picture of what was on screen, picked in the browser from the video or
+ * the shared tab: a JPEG body, with the recording time it appeared at and the
+ * browser's own id for it (so a picture sent again after a dropped connection
+ * is stored once). Only while the recording is being uploaded.
+ */
+meetingRoutes.post("/:id/slides", async (c) => {
+  const m = owned(c, c.req.param("id"));
+  if (m.status !== "uploading") httpError(409, "Pictures can only be added while the recording is uploaded.", "not_uploading");
+  const at = Number(c.req.query("at"));
+  const key = c.req.query("key") ?? "";
+  if (!Number.isFinite(at) || at < 0 || at > 7 * 24 * 3600) httpError(422, "Give the time the picture appeared at.", "invalid_input");
+  if (!/^[\w-]{8,64}$/.test(key)) httpError(422, "Give the picture's id.", "invalid_input");
+  const declared = Number(c.req.header("content-length") ?? 0);
+  if (declared > SLIDE_LIMITS.maxBytes) httpError(413, "The picture is too large.", "too_large");
+  const data = new Uint8Array(await c.req.arrayBuffer());
+  try {
+    const slide = await addSlide(m.id, key, at, data);
+    return c.json({ slide: slidePublic(slide) }, 201);
+  } catch (e) {
+    if (e instanceof SlideError) httpError(e.status, e.message, e.code);
+    throw e;
+  }
+});
+
+meetingRoutes.get("/:id/slides/:sid", (c) => {
+  const m = owned(c, c.req.param("id"));
+  const s = getSlide(m.id, c.req.param("sid"));
+  if (!s) httpError(404, "Picture not found.", "not_found");
+  const res = serveFile(c, slidePath(s), "image/jpeg");
+  // A picture never changes once stored (a new one gets a new id).
+  res.headers.set("Cache-Control", "private, max-age=31536000, immutable");
+  return res;
+});
+
+meetingRoutes.delete("/:id/slides/:sid", async (c) => {
+  const m = owned(c, c.req.param("id"));
+  const s = getSlide(m.id, c.req.param("sid"));
+  if (!s) httpError(404, "Picture not found.", "not_found");
+  await deleteSlide(s);
+  touchMeeting(m);
+  return c.json({ ok: true });
 });
 
 // ---------------------------------------------------------------- detail
@@ -542,7 +591,7 @@ meetingRoutes.post("/:id/summaries", async (c) => {
     httpError(429, `You already have ${active} summaries in progress. Wait for one to finish.`, "too_many_summaries");
   }
   // A prepaid account: what the summary is likely to cost is set aside, and refused (402) when it cannot be paid.
-  const hold = requireSummaryCredits(user, summaryInputTokens(m, input.prompt));
+  const hold = requireSummaryCredits(user, summaryInputTokens(m, input.prompt, input.slides));
   const s = enqueueSummary(m, user.id, input, hold);
   return c.json({ summary: summaryPublic(s) }, 201);
 });
@@ -552,10 +601,10 @@ meetingRoutes.post("/:id/summaries/estimate", async (c) => {
   const user = c.get("user");
   const m = owned(c, c.req.param("id"));
   if (m.status !== "ready" || user.billing !== "prepaid") return c.json({ credits: null });
-  const input = await body(c, z.object({ prompt: z.string().max(20_000) }), TEXT_JSON_LIMIT_BYTES);
+  const input = await body(c, z.object({ prompt: z.string().max(20_000), slides: z.boolean().default(true) }), TEXT_JSON_LIMIT_BYTES);
   const r = rates();
   if (r.perKInput <= 0 && r.perKOutput <= 0) return c.json({ credits: 0 });
-  return c.json({ credits: summaryEstimate(summaryInputTokens(m, input.prompt), r), available: availableCredits(user.id) });
+  return c.json({ credits: summaryEstimate(summaryInputTokens(m, input.prompt, input.slides), r), available: availableCredits(user.id) });
 });
 
 meetingRoutes.post("/:id/summaries/:sid/cancel", (c) => {

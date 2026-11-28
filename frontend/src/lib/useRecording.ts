@@ -4,6 +4,7 @@ import type { TKey } from "../i18n";
 import { MeetingRecorder, RecorderError, extensionFor, type RecordSource, type SourceKind, type SourceState } from "./recorder";
 import { useAuth } from "./auth";
 import { deleteRecording, type RecordingMeta } from "./recordingStore";
+import type { CapturedSlide } from "./slides";
 
 export type RecordingPhase = "idle" | "starting" | "recording" | "paused" | "finishing";
 
@@ -29,6 +30,8 @@ export interface RecordedFile {
   startedAt: number;
   source: RecordSource;
   durationMs: number;
+  /** Slides picked from the shared tab (empty when that was off). */
+  slides: CapturedSlide[];
 }
 
 export const RECORDER_ERRORS: Record<RecorderError["code"], TKey> = {
@@ -81,6 +84,8 @@ export function useRecording() {
   const [dropped, setDropped] = useState<SourceKind[]>([]);
   /** A browser permission prompt (share dialog, microphone) is open. */
   const [awaiting, setAwaiting] = useState<SourceKind | null>(null);
+  /** Slides picked from the shared tab so far (null: not picking slides). */
+  const [slides, setSlides] = useState<CapturedSlide[] | null>(null);
 
   const active = phase === "recording" || phase === "paused" || phase === "finishing" || phase === "starting";
 
@@ -93,8 +98,11 @@ export function useRecording() {
   // Stop capturing if the page goes away mid-recording; saved chunks remain restorable.
   useEffect(() => () => void rec.current?.stop().catch(() => undefined), []);
 
-  /** `withMic: false` (meeting recordings) leaves the microphone out; it can be added later. */
-  const start = useCallback(async (src: RecordSource, micDeviceId?: string, withMic = true) => {
+  /**
+   * `withMic: false` (meeting recordings) leaves the microphone out; it can be added later.
+   * `captureSlides` (meeting recordings): also keep a picture of the shared tab at each new slide.
+   */
+  const start = useCallback(async (src: RecordSource, micDeviceId?: string, withMic = true, captureSlides = false) => {
     setError(null);
     setReconnectError(null);
     setSaveFailed(false);
@@ -102,6 +110,8 @@ export function useRecording() {
     setSources({});
     setDropped([]);
     setSource(src);
+    const slidesOn = src === "meeting" && captureSlides;
+    setSlides(slidesOn ? [] : null);
     setPhase("starting");
     try {
       rec.current = await MeetingRecorder.start({
@@ -109,6 +119,8 @@ export function useRecording() {
         micDeviceId,
         withMic,
         ownerId: ownerRef.current,
+        slides: slidesOn,
+        onSlides: (list) => setSlides([...list]),
         onSaved: (m) => {
           setSavedMs(m.durationMs);
           setSaveFailed(false);
@@ -125,6 +137,7 @@ export function useRecording() {
     } catch (e) {
       rec.current = null;
       setAwaiting(null);
+      setSlides(null);
       setPhase("idle");
       setError(e instanceof RecorderError ? RECORDER_ERRORS[e.code] : "recorder.errFailed");
     }
@@ -146,15 +159,23 @@ export function useRecording() {
     if (!r) return null;
     setPhase("finishing");
     try {
-      const { meta, blob } = await r.stop();
+      const { meta, blob, slides: picked } = await r.stop();
       rec.current = null;
       setPhase("idle");
+      setSlides(null);
       if (blob.size === 0) {
         setError("recorder.errEmpty");
         await deleteRecording(meta.id).catch(() => undefined);
         return null;
       }
-      return { file: await fileForRecording(blob, meta), recordingId: meta.id, startedAt: meta.startedAt, source: meta.source, durationMs: meta.durationMs };
+      return {
+        file: await fileForRecording(blob, meta),
+        recordingId: meta.id,
+        startedAt: meta.startedAt,
+        source: meta.source,
+        durationMs: meta.durationMs,
+        slides: picked,
+      };
     } catch {
       rec.current = null;
       setPhase("idle");
@@ -167,6 +188,7 @@ export function useRecording() {
     const r = rec.current;
     rec.current = null;
     setPhase("idle");
+    setSlides(null);
     if (r) {
       const { meta } = await r.stop();
       await deleteRecording(meta.id).catch(() => undefined);
@@ -213,6 +235,9 @@ export function useRecording() {
 
   const levels = useCallback(() => rec.current?.levels() ?? { mic: null, meeting: null }, []);
 
+  /** Leave out a slide picked during the recording. */
+  const removeSlide = useCallback((slot: string) => rec.current?.removeSlide(slot), []);
+
   return {
     phase,
     active,
@@ -234,6 +259,8 @@ export function useRecording() {
     reconnect,
     dropSource,
     levels,
+    slides,
+    removeSlide,
   };
 }
 

@@ -498,4 +498,23 @@ export const migrations: string[] = [
   CREATE INDEX refinements_status ON refinements(status, created_at);
   ALTER TABLE segments ADD COLUMN original_text TEXT;
   `,
+  // 20: pictures of what was on screen (slides, a shared screen), picked in the uploader's browser
+  // when the picture changed, with the recording time they appeared at. Summaries may read them:
+  // with_slides is what was asked for, slides_sent how many the model was actually shown.
+  `
+  CREATE TABLE slides (
+    id          TEXT PRIMARY KEY,
+    meeting_id  TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    client_key  TEXT NOT NULL,
+    at_sec      REAL NOT NULL,
+    width       INTEGER NOT NULL,
+    height      INTEGER NOT NULL,
+    bytes       INTEGER NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX slides_meeting ON slides(meeting_id, at_sec);
+  CREATE UNIQUE INDEX slides_client_key ON slides(meeting_id, client_key);
+  ALTER TABLE summaries ADD COLUMN with_slides INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE summaries ADD COLUMN slides_sent INTEGER;
+  `,
 ];

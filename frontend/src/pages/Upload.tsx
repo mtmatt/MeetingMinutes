@@ -11,6 +11,7 @@ import { Recorder, revealSource, sourceAlert, sourceScope } from "../components/
 import { Stepper } from "../components/Stepper";
 import { useRecording, type RecordedFile, type RecordingController } from "../lib/useRecording";
 import { useConfirm } from "../components/Modal";
+import { useToast } from "../components/Toast";
 import { deleteRecording } from "../lib/recordingStore";
 import { takePendingFile } from "../lib/pendingFile";
 import { classifyUploadError, type UploadFailure } from "../lib/errors";
@@ -18,6 +19,26 @@ import { useAuth } from "../lib/auth";
 import { downloadBlob } from "../lib/download";
 import { useBilling } from "../lib/billing";
 import { pointsText, transcriptionCost } from "../lib/format";
+import { SlideOption, useSlidesChoice } from "../components/SlideOption";
+import { SlideStrip } from "../components/SlideStrip";
+import { scanVideo, type CapturedSlide } from "../lib/slides";
+
+/** Slides picked from the chosen video, as the page shows them. */
+interface SlideScan {
+  status: "scanning" | "done" | "failed";
+  /** 0..1 of the video looked at. */
+  done: number;
+  slides: CapturedSlide[];
+}
+
+interface UploadProgress {
+  sent: number;
+  total: number;
+  startedAt: number;
+  finishing: boolean;
+  /** Sending the slides, after the recording (waiting: the video is still being looked through). */
+  slides?: { waiting: boolean; sent: number; total: number } | null;
+}
 
 const AUDIO = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "oga", "opus", "wma", "amr", "aiff", "aif", "caf", "weba"];
 const VIDEO = ["mp4", "mov", "mkv", "webm", "avi", "m4v", "wmv", "flv", "ts", "mts", "m2ts", "3gp", "mpeg", "mpg"];
@@ -54,6 +75,7 @@ function Step({ n, title, children }: { n: string; title: string; children: Reac
 export function UploadPage() {
   const { t, tMaybe, locale } = useI18n();
   const confirm = useConfirm();
+  const toast = useToast();
   const navigate = useNavigate();
   const { uploadLimitBytes: limit, helpContact, mediaPolicy, refine: refineInfo } = useAuth();
 
@@ -88,7 +110,7 @@ export function UploadPage() {
   const [recording, setRecording] = useState<{ id: string; durationMs: number } | null>(null);
   const { data: templates } = useTemplates();
   const [dragging, setDragging] = useState(false);
-  const [upload, setUpload] = useState<{ sent: number; total: number; startedAt: number; finishing: boolean } | null>(null);
+  const [upload, setUpload] = useState<UploadProgress | null>(null);
   /** Why the last upload attempt failed; decides what the page offers next. */
   const [failure, setFailure] = useState<UploadFailure | null>(null);
   /** The uploader is retrying on its own after a dropped connection. */
@@ -97,6 +119,16 @@ export function UploadPage() {
   /** The meeting created for this file; a retry resumes it instead of starting over. */
   const target = useRef<{ meetingId: string; chunkSize: number; file: File } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Slides: picked from a video file here, or from the shared tab while recording.
+  const [captureSlides, setCaptureSlides] = useSlidesChoice();
+  const [scan, setScan] = useState<SlideScan | null>(null);
+  /** The finished scan's slides (empty when it failed). */
+  const scanDone = useRef<Promise<CapturedSlide[]> | null>(null);
+  const [recordedSlides, setRecordedSlides] = useState<CapturedSlide[]>([]);
+  /** Slides the person left out (by slot). */
+  const [removedSlides, setRemovedSlides] = useState<Set<string>>(new Set());
+  /** Slides already sent for the meeting being uploaded, so a retry does not send them again. */
+  const sentSlides = useRef<{ meetingId: string; keys: Set<string> } | null>(null);
 
   const accept = (f: File) => {
     const ext = extOf(f.name);
@@ -113,6 +145,8 @@ export function UploadPage() {
     target.current = null;
     setFile(f);
     setRecording(null);
+    setRecordedSlides([]);
+    setRemovedSlides(new Set());
     if (!titleTouched) setTitle(titleFromFile(f.name));
     if (f.lastModified) setOccurredAt(toLocalInput(f.lastModified));
   };
@@ -162,6 +196,39 @@ export function UploadPage() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
+  // Go through a chosen video for its slides, in the background, while the rest of the form is filled in.
+  const scanTarget = file && !recording && captureSlides && VIDEO.includes(extOf(file.name)) ? file : null;
+  useEffect(() => {
+    setScan(null);
+    scanDone.current = null;
+    if (!scanTarget) return;
+    const ctrl = new AbortController();
+    setScan({ status: "scanning", done: 0, slides: [] });
+    scanDone.current = scanVideo(scanTarget, {
+      signal: ctrl.signal,
+      onProgress: (p) => {
+        if (!ctrl.signal.aborted) setScan({ status: "scanning", done: p.done, slides: p.slides });
+      },
+    }).then(
+      (slides) => {
+        if (!ctrl.signal.aborted) setScan({ status: "done", done: 1, slides });
+        return slides;
+      },
+      () => {
+        if (!ctrl.signal.aborted) setScan((s) => ({ status: "failed", done: s?.done ?? 0, slides: [] }));
+        return [];
+      },
+    );
+    return () => ctrl.abort();
+  }, [scanTarget]);
+
+  /** The slides that go with the recording. */
+  const slides = (recording ? recordedSlides : captureSlides ? (scan?.slides ?? []) : []).filter((s) => !removedSlides.has(s.slot));
+  const removeSlide = (slot: string) => setRemovedSlides((r) => new Set(r).add(slot));
+  // The upload reads these after waiting for the scan to finish, outside React's render.
+  const slideRefs = useRef({ recordedSlides, removedSlides });
+  slideRefs.current = { recordedSlides, removedSlides };
+
   const guard = !!upload || recordingBusy;
   useEffect(() => {
     if (!guard) return;
@@ -197,6 +264,8 @@ export function UploadPage() {
       // Known before sending anything: say so now rather than after a failed upload.
       setFailure(limit != null && r.file.size > limit ? { kind: "too-large", size: r.file.size, limit } : null);
       setRecording({ id: r.recordingId, durationMs: r.durationMs });
+      setRecordedSlides(r.slides);
+      setRemovedSlides(new Set());
       setFile(r.file);
       if (!titleTouched) {
         const when = `${monthDay(r.startedAt, locale)} ${time(r.startedAt, locale)}`;
@@ -292,7 +361,8 @@ export function UploadPage() {
         ctrl.signal,
         (attempt, max) => setAutoRetry({ attempt, max }),
       );
-      setUpload((u) => (u ? { ...u, finishing: true } : u));
+      await sendSlides(meetingId, ctrl.signal);
+      setUpload((u) => (u ? { ...u, slides: null, finishing: true } : u));
       await api.completeUpload(meetingId);
       // The server has the recording now; drop the browser's copy.
       if (recording) await deleteRecording(recording.id).catch(() => undefined);
@@ -318,6 +388,47 @@ export function UploadPage() {
       // Keep the file (and any browser recording) whatever happened.
       setFailure(classifyUploadError(err, file.size, limit, t));
     }
+  };
+
+  /**
+   * The slides go up before the recording is marked complete (the summary is
+   * written after transcription, with them). A slide that cannot be sent after
+   * a few tries is skipped: the recording matters more.
+   */
+  const sendSlides = async (meetingId: string, signal: AbortSignal) => {
+    let picked: CapturedSlide[] = [];
+    if (recording) picked = slideRefs.current.recordedSlides;
+    else if (captureSlides && scanDone.current) {
+      setUpload((u) => (u ? { ...u, slides: { waiting: true, sent: 0, total: 0 } } : u));
+      picked = await scanDone.current;
+    }
+    // Read after waiting: what the person left out meanwhile stays out.
+    const list = picked.filter((s) => !slideRefs.current.removedSlides.has(s.slot));
+    if (!list.length) return;
+    if (sentSlides.current?.meetingId !== meetingId) sentSlides.current = { meetingId, keys: new Set() };
+    const sent = sentSlides.current.keys;
+    let failed = 0;
+    for (const [i, s] of list.entries()) {
+      setUpload((u) => (u ? { ...u, slides: { waiting: false, sent: i, total: list.length } } : u));
+      if (sent.has(s.key)) continue;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await api.uploadSlide(meetingId, s, signal);
+          sent.add(s.key);
+          break;
+        } catch (e) {
+          if (signal.aborted) throw new ApiError(0, "Canceled.", "aborted");
+          // Refused for good (too many, not a picture), or the server is not taking them: move on.
+          const refused = e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429;
+          if (refused || attempt >= 2) {
+            failed++;
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        }
+      }
+    }
+    if (failed) toast.show(t("slides.uploadSomeFailed", { n: failed }));
   };
 
   const cancelUpload = async () => {
@@ -465,6 +576,10 @@ export function UploadPage() {
             <p className="field-hint upload-compact-note">
               {mediaPolicy.videoAudioOnly || mediaPolicy.afterDays === 0 ? t("upload.compactVideoNow") : t("upload.compactVideo", { n: mediaPolicy.afterDays })}
             </p>
+          )}
+          {file && isVideo && !recording && <SlideOption kind="video" checked={captureSlides} onChange={setCaptureSlides} />}
+          {file && (scan || (recording && recordedSlides.length > 0)) && (
+            <SlidesFound scan={recording ? null : scan} slides={slides} onRemove={upload ? undefined : removeSlide} />
           )}
         </Step>
 
@@ -624,6 +739,7 @@ export function UploadPage() {
               <span className="faint">
                 {bytes(file.size)}
                 {mediaDuration != null && <> · {clock(mediaDuration)}</>}
+                {slides.length > 0 && <> · {t("slides.countShort", { n: slides.length })}</>}
                 {autoSummary && <> · {t("upload.willSummarize")}</>}
               </span>
             </>
@@ -657,7 +773,7 @@ function SubmitBar({
   onSignIn,
 }: {
   stage: BarStage;
-  upload: { sent: number; total: number; startedAt: number; finishing: boolean } | null;
+  upload: UploadProgress | null;
   rec: RecordingController;
   error: string | null;
   failure: UploadFailure | null;
@@ -682,7 +798,15 @@ function SubmitBar({
     info = (
       <div className="bar-upload" aria-live="polite">
         <div className="bar-upload-line">
-          <strong>{upload.finishing ? t("upload.finishing") : t("upload.uploading", { pct })}</strong>
+          <strong>
+            {upload.finishing
+              ? t("upload.finishing")
+              : upload.slides?.waiting
+                ? t("slides.uploadWaiting")
+                : upload.slides
+                  ? t("slides.uploading", { n: upload.slides.sent + 1, total: upload.slides.total })
+                  : t("upload.uploading", { pct })}
+          </strong>
           {autoRetry ? (
             <span className="bar-warn">
               <RefreshCw className="spin" /> {t("upload.autoRetry", { n: autoRetry.attempt, max: autoRetry.max })}
@@ -816,6 +940,33 @@ function SubmitBar({
           {actions}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The slides found in the video (or the recording), while looking and after, with a way to leave some out. */
+function SlidesFound({ scan, slides, onRemove }: { scan: SlideScan | null; slides: CapturedSlide[]; onRemove?: (slot: string) => void }) {
+  const { t } = useI18n();
+  const scanning = scan?.status === "scanning";
+  const pct = Math.floor((scan?.done ?? 1) * 100);
+  let head: string;
+  if (scanning) head = t("slides.scanning", { pct, n: slides.length });
+  else if (scan?.status === "failed") head = t("slides.scanFailed");
+  else if (slides.length) head = t("slides.found", { n: slides.length });
+  else head = t("slides.none");
+  return (
+    <div className={`slides-found ${scan?.status === "failed" ? "is-failed" : ""}`} aria-live="polite">
+      <p className="slides-found-head">
+        {scanning && <span className="spinner" />}
+        <span>{head}</span>
+        {slides.length > 0 && onRemove && !scanning && <span className="faint">{t("slides.removeHint")}</span>}
+      </p>
+      {scanning && (
+        <div className="progress" style={{ height: 4 }}>
+          <span style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      <SlideStrip slides={slides} onRemove={onRemove} />
     </div>
   );
 }

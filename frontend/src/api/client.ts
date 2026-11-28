@@ -1,4 +1,5 @@
 import type {
+  Slide,
   RefineInfo,
   RefineSettings,
   RefineState,
@@ -178,8 +179,8 @@ export const api = {
   adminUnblockIp: (ip: string) => del<{ ok: true }>(`/admin/security/blocks/${encodeURIComponent(ip)}`),
   adminAdjustCredits: (userId: string, points: number, note: string) =>
     post<{ balance: number; user: User }>(`/admin/users/${encodeURIComponent(userId)}/credits`, { points, note }),
-  summaryEstimate: (meetingId: string, prompt: string) =>
-    post<{ credits: number | null; available?: number }>(`/meetings/${meetingId}/summaries/estimate`, { prompt }),
+  summaryEstimate: (meetingId: string, prompt: string, slides = true) =>
+    post<{ credits: number | null; available?: number }>(`/meetings/${meetingId}/summaries/estimate`, { prompt, slides }),
   login: (username: string, password: string) => post<{ user: User }>("/auth/login", { username, password }),
   logout: () => post<{ ok: true }>("/auth/logout"),
   setup: (b: { setupToken: string; username: string; displayName: string; password: string }) =>
@@ -208,6 +209,14 @@ export const api = {
     durationSec?: number | null;
   }) => post<{ meeting: MeetingSummary; chunkSize: number }>("/meetings", b),
   completeUpload: (id: string) => post<{ meeting: MeetingSummary }>(`/meetings/${id}/upload/complete`),
+  /** One picture of what was on screen (JPEG), while the recording is being uploaded; sent again, it is stored once. */
+  uploadSlide: (id: string, s: { key: string; at: number; blob: Blob }, signal?: AbortSignal) =>
+    request<{ slide: Slide }>("POST", `/meetings/${id}/slides?at=${s.at.toFixed(2)}&key=${encodeURIComponent(s.key)}`, undefined, {
+      body: s.blob,
+      headers: { "X-MM-Client": "1", Accept: "application/json", "Content-Type": "image/jpeg" },
+      signal,
+    }),
+  deleteSlide: (id: string, sid: string) => del<{ ok: true }>(`/meetings/${id}/slides/${encodeURIComponent(sid)}`),
   refineMeeting: (id: string) => post<{ meeting: MeetingDetail }>(`/meetings/${id}/refine`, {}),
   undoRefineMeeting: (id: string) => post<{ restored: number; meeting: MeetingDetail }>(`/meetings/${id}/refine/undo`, {}),
   adminRefine: () => get<RefineState>("/admin/refine"),

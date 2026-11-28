@@ -8,13 +8,16 @@
  * "mic" mode records only the microphone (an in-room meeting).
  *
  * Only audio is recorded. Chrome requires a video track for tab sharing; it is
- * requested at 1 fps and never recorded or stored.
+ * requested at 1 fps and never recorded or stored. With "slides" on, the same
+ * track is watched in the browser and a picture is kept each time it changes
+ * a lot (a new slide); only those pictures are stored, never the video.
  *
  * Either source can drop out mid-recording (sharing stopped, headset
  * unplugged). The mix keeps running, so the recording continues with whatever
  * is still connected, and a source can be reconnected into the same recording.
  */
-import { appendChunk, saveMeta, type RecordingMeta } from "./recordingStore";
+import { appendChunk, deleteStoredSlide, saveMeta, saveSlide, type RecordingMeta } from "./recordingStore";
+import { ScreenWatcher, SlideCollector, type CapturedSlide } from "./slides";
 
 export type RecordSource = "mic" | "meeting";
 export type SourceKind = "meeting" | "mic";
@@ -83,11 +86,14 @@ function rms(analyser: AnalyserNode, buf: Float32Array<ArrayBuffer>): number {
   return Math.max(0, Math.min(1, (db + 60) / 60));
 }
 
-async function captureTab(): Promise<MediaStream> {
+async function captureTab(slides = false): Promise<MediaStream> {
   let tab: MediaStream;
   try {
     tab = await navigator.mediaDevices.getDisplayMedia({
-      video: { displaySurface: "browser", frameRate: 1, width: 320 },
+      // Slides need a picture sharp enough to read; otherwise a token one.
+      video: slides
+        ? { displaySurface: "browser", frameRate: { ideal: 1, max: 2 }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        : { displaySurface: "browser", frameRate: 1, width: 320 },
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false } as MediaTrackConstraints,
       preferCurrentTab: false,
       selfBrowserSurface: "exclude",
@@ -130,6 +136,8 @@ export interface RecorderCallbacks {
   onSourceChange?: (kind: SourceKind, state: SourceState) => void;
   /** The browser is about to ask for this permission (share dialog / microphone prompt). */
   onAwaitPermission?: (what: SourceKind) => void;
+  /** The slides picked from the shared tab so far (slides on). */
+  onSlides?: (slides: CapturedSlide[]) => void;
 }
 
 interface Input {
@@ -145,6 +153,8 @@ interface StartOptions extends RecorderCallbacks {
   withMic?: boolean;
   /** Signed-in account; stored with the recording so only this account can restore it. */
   ownerId?: string;
+  /** Meeting recordings only: also keep a picture of the shared tab each time it changes a lot (a new slide). */
+  slides?: boolean;
 }
 
 export class MeetingRecorder {
@@ -162,6 +172,10 @@ export class MeetingRecorder {
   /** Every chunk also stays in memory, so stopping never depends on browser storage. */
   private chunks: Blob[] = [];
   private cb: RecorderCallbacks = {};
+  private collector: SlideCollector | null = null;
+  private watcher: ScreenWatcher | null = null;
+  /** The stored picture of each slide, by slot, so an updated picture replaces it. */
+  private storedSlides = new Map<string, string>();
 
   static async start(opts: StartOptions): Promise<MeetingRecorder> {
     const r = new MeetingRecorder();
@@ -180,7 +194,8 @@ export class MeetingRecorder {
     // Only a meeting tab can be recorded without a microphone.
     const withMic = opts.source === "mic" || opts.withMic !== false;
     if (opts.source === "meeting") opts.onAwaitPermission?.("meeting");
-    const tab = opts.source === "meeting" ? await captureTab() : null;
+    const slides = opts.source === "meeting" && !!opts.slides;
+    const tab = opts.source === "meeting" ? await captureTab(slides) : null;
     let mic: MediaStream | null = null;
     if (withMic) {
       try {
@@ -216,6 +231,7 @@ export class MeetingRecorder {
       bytes: 0,
       durationMs: 0,
       finished: false,
+      slides,
     };
     await saveMeta(this.meta).catch((e) => this.cb.onSaveError?.(e));
     this.recorder.ondataavailable = (e) => {
@@ -234,6 +250,39 @@ export class MeetingRecorder {
     };
     this.recorder.start(5000);
     this.segmentStart = performance.now();
+    if (slides && tab) this.watchSlides(tab);
+  }
+
+  /** Keep a picture of the shared tab each time it shows a new slide, timed on the recording's clock. */
+  private watchSlides(tab: MediaStream) {
+    const track = tab.getVideoTracks()[0];
+    if (!track) return;
+    if (!this.collector) {
+      this.collector = new SlideCollector((list) => this.cb.onSlides?.(list));
+      this.watcher = new ScreenWatcher(
+        this.collector,
+        // Paused: nothing is recorded, so nothing is looked at.
+        () => (this.recorder.state === "recording" ? this.elapsedMs() / 1000 : null),
+        (slide) => {
+          const replaces = this.storedSlides.get(slide.slot);
+          this.storedSlides.set(slide.slot, slide.key);
+          void saveSlide(this.meta.id, slide, replaces).catch((e) => this.cb.onSaveError?.(e));
+        },
+      );
+    }
+    this.watcher!.watch(track);
+  }
+
+  /** The slides picked so far. */
+  slides(): CapturedSlide[] {
+    return this.collector?.slides() ?? [];
+  }
+
+  /** Leave a slide out (now, and when its picture would be updated later). */
+  removeSlide(slot: string) {
+    this.collector?.remove(slot);
+    const stored = this.storedSlides.get(slot);
+    if (stored) void deleteStoredSlide(stored).catch(() => undefined);
   }
 
   /** Route a stream into the mix and watch it for dropouts. */
@@ -268,9 +317,10 @@ export class MeetingRecorder {
 
   /** Pick a (new) meeting tab and add it to the running recording. */
   async reconnectMeeting(): Promise<void> {
-    const tab = await captureTab();
+    const tab = await captureTab(!!this.meta.slides);
     this.attach("meeting", tab);
     this.source = "meeting";
+    if (this.meta.slides) this.watchSlides(tab);
   }
 
   async reconnectMic(deviceId?: string): Promise<void> {
@@ -319,8 +369,8 @@ export class MeetingRecorder {
     this.recorder.resume();
   }
 
-  /** Stop, flush the final chunk and release every device. Returns the full recording. */
-  async stop(): Promise<{ meta: RecordingMeta; blob: Blob }> {
+  /** Stop, flush the final chunk and release every device. Returns the full recording, and its slides. */
+  async stop(): Promise<{ meta: RecordingMeta; blob: Blob; slides: CapturedSlide[] }> {
     this.stopped ??= new Promise<void>((resolve) => {
       if (this.recorder.state === "recording") this.accumulated += performance.now() - this.segmentStart;
       if (this.recorder.state === "inactive") return resolve();
@@ -332,10 +382,12 @@ export class MeetingRecorder {
     this.release();
     this.meta = { ...this.meta, durationMs: this.accumulated, finished: true };
     await saveMeta(this.meta).catch((e) => this.cb.onSaveError?.(e));
-    return { meta: this.meta, blob: new Blob(this.chunks, { type: this.meta.mimeType.split(";")[0] }) };
+    return { meta: this.meta, blob: new Blob(this.chunks, { type: this.meta.mimeType.split(";")[0] }), slides: this.slides() };
   }
 
   private release() {
+    this.watcher?.stop();
+    this.collector?.dispose();
     for (const kind of Object.keys(this.inputs) as SourceKind[]) this.drop(kind);
     void this.ctx?.close().catch(() => undefined);
   }

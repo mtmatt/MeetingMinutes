@@ -8,7 +8,8 @@ import { chargeSummary } from "./credits";
 import { PROVIDER_INFO, providerKey, providerKeyValues } from "./summaryApis";
 import { publish } from "./events";
 import { currentSpeakerNames, parseNameMap, reconcileSpeakerNames, type NameMap } from "./speakerNames";
-import { summarySettings, type SummarySettings } from "./summarySettings";
+import { summarySettings, summaryVision, type SummarySettings } from "./summarySettings";
+import { slideBase64, slideTokens, slidesForSummary } from "./slides";
 import { getTemplateFor } from "./templates";
 import { toTaiwanTraditional } from "./zhTW";
 
@@ -65,6 +66,17 @@ export interface SummaryPromptParts {
   metadata: string;
   /** One line per speaker turn: "[hh:mm:ss] Name: text". */
   transcript: string[];
+  /** What was on screen, in order (empty when the summary is not shown pictures). */
+  slides: SummarySlide[];
+}
+
+/** A slide as a summary is shown it: read from disk only when it is sent. */
+export interface SummarySlide {
+  /** Recording time it appeared at. */
+  at: number;
+  label: string;
+  tokens: number;
+  load: () => string;
 }
 
 export function summaryPromptParts(
@@ -72,6 +84,7 @@ export function summaryPromptParts(
   userPrompt: string,
   outputLanguage: OutputLanguage,
   speakers: SpeakerRow[] = db.query<SpeakerRow, { m: string }>("SELECT * FROM speakers WHERE meeting_id = $m ORDER BY key").all({ m: meeting.id }),
+  withSlides = false,
 ): SummaryPromptParts {
   const segments = db
     .query<SegmentRow, { m: string }>("SELECT * FROM segments WHERE meeting_id = $m ORDER BY idx")
@@ -100,13 +113,26 @@ Participants: ${speakers.length ? speakers.map((s) => s.name).join(", ") : "not 
 Detected language: ${meeting.language ?? "unknown"}
 </meeting_metadata>`,
     transcript: transcript ? transcript.split("\n") : [],
+    slides: withSlides
+      ? slidesForSummary(meeting.id).map((sl, i) => ({
+          at: sl.at_sec,
+          label: `Slide ${i + 1}, on screen from [${formatClock(sl.at_sec)}]:`,
+          tokens: slideTokens(sl.width, sl.height),
+          load: () => slideBase64(sl),
+        }))
+      : [],
   };
 }
 
-/** About how many tokens a summary of this meeting makes the model read, before it is written. */
-export function summaryInputTokens(meeting: MeetingRow, userPrompt: string): number {
-  const p = summaryPromptParts(meeting, userPrompt, "auto");
-  return estimateTokens([p.system, p.instructions, p.metadata, ...p.transcript].join("\n"));
+/** Whether a summary asked for this way is shown the meeting's slides: asked for (the default), and the model reads pictures. */
+export function summaryUsesSlides(req: { slides?: boolean } | null | undefined, settings: SummarySettings = summarySettings()): boolean {
+  return req?.slides !== false && summaryVision(settings);
+}
+
+/** About how many tokens a summary of this meeting makes the model read, before it is written (slides included when it is shown them). */
+export function summaryInputTokens(meeting: MeetingRow, userPrompt: string, withSlides = false): number {
+  const p = summaryPromptParts(meeting, userPrompt, "auto", undefined, withSlides && summaryVision());
+  return estimateTokens([p.system, p.instructions, p.metadata, ...p.transcript].join("\n")) + p.slides.reduce((n, sl) => n + sl.tokens + 16, 0);
 }
 
 export function summaryPublic(s: SummaryRow) {
@@ -124,6 +150,9 @@ export function summaryPublic(s: SummaryRow) {
     usage: s.usage ? JSON.parse(s.usage) : null,
     provider: s.provider,
     speakerNames: parseNameMap(s.speaker_names),
+    /** The slides were asked for; how many the model was shown (null until written, or none were). */
+    withSlides: s.with_slides !== 0,
+    slidesSent: s.slides_sent,
     createdAt: s.created_at,
     startedAt: s.started_at,
     finishedAt: s.finished_at,
@@ -139,9 +168,10 @@ export function enqueueSummary(meeting: MeetingRow, userId: string, req: Summary
   const tpl = req.templateId ? getTemplateFor(userId, req.templateId) : null;
   const id = newId(12);
   db.query(
-    `INSERT INTO summaries (id, meeting_id, created_by, template_id, template_name, prompt, output_language, status, created_at, hold, error, finished_at)
-     VALUES ($id, $m, $u, $tid, $tname, $prompt, $lang, $status, $t, $hold, $error, $finished)`,
+    `INSERT INTO summaries (id, meeting_id, created_by, template_id, template_name, prompt, output_language, status, created_at, hold, error, finished_at, with_slides)
+     VALUES ($id, $m, $u, $tid, $tname, $prompt, $lang, $status, $t, $hold, $error, $finished, $slides)`,
   ).run({
+    slides: req.slides === false ? 0 : 1,
     status: refused ? "failed" : "queued",
     hold,
     error: refused,
@@ -248,21 +278,30 @@ async function write(
   summary: SummaryRow,
   speakers: SpeakerRow[],
   signal: AbortSignal,
-): Promise<{ text: string; model: string | null; usage: Record<string, number> | null }> {
+): Promise<{ text: string; model: string | null; usage: Record<string, number> | null; slidesSent: number }> {
   const target = chatTarget(settings);
   if (target.provider && !target.apiKey) {
     const vars = PROVIDER_INFO[target.provider].keyVariables.join(" or ");
     throw new LlmError(`Summaries are set to ${PROVIDER_INFO[target.provider].label}, but this server has no API key: set ${vars} in its .env and restart it.`);
   }
-  const parts = summaryPromptParts(meeting, summary.prompt, summary.output_language, speakers);
+  const parts = summaryPromptParts(meeting, summary.prompt, summary.output_language, speakers, summary.with_slides !== 0 && summaryVision(settings));
   const timeout = AbortSignal.timeout(config.llm.timeoutSeconds * 1000);
   // Keep the model loaded when another summary is waiting for it.
   const waiting = (db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM summaries WHERE status = 'queued'").get()?.n ?? 0) > 0;
   try {
-    const result = await summarizeLocally(parts, target, {
+    const opts = {
       signal: AbortSignal.any([signal, timeout]),
       keepAliveSec: waiting ? Math.max(settings.local.keepAliveSec, 120) : settings.local.keepAliveSec,
-    });
+    };
+    let result;
+    try {
+      result = await summarizeLocally(parts, target, opts);
+    } catch (e) {
+      // A model that turns out not to read pictures (or refuses these): write it from the transcript alone.
+      if (!(parts.slides.length && e instanceof LlmError && e.status === 400 && /image|vision|multimodal|content/i.test(e.message))) throw e;
+      console.warn(`[summarizer] ${target.model} refused the slides (${e.message.slice(0, 200)}); writing summary ${summary.id} without them`);
+      result = await summarizeLocally({ ...parts, slides: [] }, target, opts);
+    }
     if (containsSecret(result.text)) throw new LlmError("The output contained server credentials, so it was discarded.");
     return result;
   } catch (e) {
@@ -294,10 +333,12 @@ async function execute(summary: SummaryRow, ctrl: AbortController) {
     db.transaction(() => {
       const done = db
         .query(
-          `UPDATE summaries SET status = 'done', content = $content, speaker_names = $names, model = $model, usage = $usage, error = NULL, finished_at = $t
+          `UPDATE summaries SET status = 'done', content = $content, speaker_names = $names, model = $model, usage = $usage, error = NULL, finished_at = $t,
+             slides_sent = $slides
            WHERE id = $id AND status = 'running'`,
         )
         .run({
+          slides: result.slidesSent || null,
           id: summary.id,
           content,
           names: JSON.stringify(names),
@@ -307,7 +348,7 @@ async function execute(summary: SummaryRow, ctrl: AbortController) {
         });
       // A prepaid person pays for the tokens the model reported (estimated when it reported none).
       if (done.changes && summary.hold != null && summary.created_by) {
-        const input = result.usage?.input_tokens ?? summaryInputTokens(meeting, summary.prompt);
+        const input = result.usage?.input_tokens ?? summaryInputTokens(meeting, summary.prompt, result.slidesSent > 0);
         const output = result.usage?.output_tokens ?? estimateTokens(result.text);
         const cost = chargeSummary(summary.created_by, meeting, input, output);
         if (cost != null) db.query("UPDATE summaries SET charged = $c WHERE id = $id").run({ id: summary.id, c: cost });

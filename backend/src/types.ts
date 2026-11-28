@@ -61,6 +61,21 @@ export interface SummaryRequest {
   templateId: string | null;
   prompt: string;
   outputLanguage: OutputLanguage;
+  /** Show the model the meeting's slides too (when it has any and the model can read pictures). Absent: yes. */
+  slides?: boolean;
+}
+
+export interface SlideRow {
+  id: string;
+  meeting_id: string;
+  /** The browser's own id for it, so an upload sent twice is stored once. */
+  client_key: string;
+  /** Recording time it first appeared at. */
+  at_sec: number;
+  width: number;
+  height: number;
+  bytes: number;
+  created_at: number;
 }
 
 export interface MeetingRow {
@@ -192,6 +207,10 @@ export interface SummaryRow {
   speaker_names: string | null;
   /** Which kind of model wrote it (set when it starts); null while queued. "codex": written before Codex was removed. */
   provider: SummaryProvider | "codex" | null;
+  /** 1: the slides were asked for. */
+  with_slides: number;
+  /** How many slides the model was shown (null: none were, or written before slides existed). */
+  slides_sent: number | null;
   created_at: number;
   started_at: number | null;
   finished_at: number | null;

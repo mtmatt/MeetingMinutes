@@ -109,6 +109,20 @@ function SummaryDocument({ x, t }: { x: SummaryExport; t: TFn }) {
       >
         {linkTimestamps(summary.content ?? "", meeting.durationSec ?? 0)}
       </ReactMarkdown>
+      {x.slides && x.slides.length > 0 && (
+        <>
+          <hr />
+          <h2>{x.slidesHeading}</h2>
+          {x.slides.map((sl, i) => (
+            <figure key={i} className="doc-slide">
+              <img src={sl.url} width={sl.width} height={sl.height} alt={`[${stamp(sl.at)}]`} />
+              <figcaption>
+                <a href={at(sl.at)}>[{stamp(sl.at)}]</a>
+              </figcaption>
+            </figure>
+          ))}
+        </>
+      )}
       {x.withTranscript && meeting.segments.length > 0 && (
         <>
           <hr />

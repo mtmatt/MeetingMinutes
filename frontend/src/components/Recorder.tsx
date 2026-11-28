@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useI18n, type TKey } from "../i18n";
 import { clock, dateTime } from "../lib/format";
 import { listMicrophones, recorderSupport, type RecordSource, type SourceKind, type SourceState } from "../lib/recorder";
-import { deleteRecording, listRecordings, loadRecording, type RecordingMeta } from "../lib/recordingStore";
+import { deleteRecording, listRecordings, loadRecording, loadSlides, type RecordingMeta } from "../lib/recordingStore";
+import { SlideOption, useSlidesChoice } from "./SlideOption";
+import { SlideStrip } from "./SlideStrip";
 import { fileForRecording, type RecordedFile, type RecordingController, type SourceHealth } from "../lib/useRecording";
 import { useAuth } from "../lib/auth";
 import { useConfirm } from "./Modal";
@@ -183,6 +185,7 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
   // "No microphone" exists only for meeting recordings; a microphone recording always needs one.
   const noMic = source === "meeting" && micId === NO_MIC;
   const [pending, setPending] = useState<RecordingMeta[]>([]);
+  const [captureSlides, setCaptureSlides] = useSlidesChoice();
 
   const refreshMics = useCallback(async () => {
     setMics(await listMicrophones().catch(() => []));
@@ -209,7 +212,8 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
       setPending((p) => p.filter((x) => x.id !== m.id));
       return;
     }
-    onRecorded({ file: await fileForRecording(blob, m), recordingId: m.id, startedAt: m.startedAt, source: m.source, durationMs: m.durationMs });
+    const slides = await loadSlides(m.id).catch(() => []);
+    onRecorded({ file: await fileForRecording(blob, m), recordingId: m.id, startedAt: m.startedAt, source: m.source, durationMs: m.durationMs, slides });
   };
 
   const dropPending = async (m: RecordingMeta) => {
@@ -277,6 +281,15 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
           <div className="callout warn" role="alert">
             <AlertTriangle />
             <div>{t("recorder.allEnded")}</div>
+          </div>
+        )}
+        {rec.slides && (
+          <div className="rec-slides" aria-live="polite">
+            <p className="rec-slides-head">
+              <strong>{t("slides.recordingCount", { n: rec.slides.length })}</strong>
+              <span className="faint">{rec.slides.length ? t("slides.recordingRemoveHint") : t("slides.recordingWaiting")}</span>
+            </p>
+            <SlideStrip slides={rec.slides} onRemove={rec.removeSlide} live />
           </div>
         )}
         {saveLine}
@@ -347,7 +360,7 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
 
           {source === "meeting" && (
             <div className="rec-howto">
-              <p className="rec-audio-only">{t("recorder.audioOnly")}</p>
+              <p className="rec-audio-only">{t(captureSlides ? "slides.audioAndSlides" : "recorder.audioOnly")}</p>
               <ol className="rec-steps">
                 <li>{t("recorder.step1")}</li>
                 <li>{t("recorder.step2")}</li>
@@ -359,6 +372,7 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
                 )}
               </ol>
               {noMic && <p className="rec-nomic-note">{t("recorder.noMicNote")}</p>}
+              <SlideOption kind="record" checked={captureSlides} onChange={setCaptureSlides} />
             </div>
           )}
 
@@ -401,7 +415,7 @@ export function Recorder({ rec, onRecorded }: { rec: RecordingController; onReco
           )}
 
           <div className="rec-start">
-            <button type="button" className="btn btn-primary btn-lg" onClick={() => void rec.start(source, micId && micId !== NO_MIC ? micId : undefined, !noMic)} disabled={rec.phase === "starting"}>
+            <button type="button" className="btn btn-primary btn-lg" onClick={() => void rec.start(source, micId && micId !== NO_MIC ? micId : undefined, !noMic, captureSlides)} disabled={rec.phase === "starting"}>
               {rec.phase === "starting" ? <span className="spinner" /> : <span className="rec-dot static" />}
               {rec.error ? t("recorder.tryAgain") : source === "meeting" ? t("recorder.startMeeting") : t("recorder.startMic")}
             </button>

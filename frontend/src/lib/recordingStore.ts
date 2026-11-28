@@ -5,8 +5,11 @@
  * stays here until it is uploaded or explicitly discarded.
  */
 
+import type { CapturedSlide } from "./slides";
+
 const DB_NAME = "mm-recordings";
-const DB_VERSION = 1;
+/** 2: slides picked from the shared tab, kept with their recording. */
+const DB_VERSION = 2;
 
 export interface RecordingMeta {
   id: string;
@@ -20,6 +23,8 @@ export interface RecordingMeta {
   finished: boolean;
   /** Account that made the recording; on a shared computer, others must not see it. */
   ownerId?: string;
+  /** Slides were being picked from the shared tab. */
+  slides?: boolean;
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -27,11 +32,17 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 function open(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (e) => {
       const db = req.result;
-      db.createObjectStore("meta", { keyPath: "id" });
-      const chunks = db.createObjectStore("chunks", { autoIncrement: true });
-      chunks.createIndex("rec", "rec");
+      if (e.oldVersion < 1) {
+        db.createObjectStore("meta", { keyPath: "id" });
+        const chunks = db.createObjectStore("chunks", { autoIncrement: true });
+        chunks.createIndex("rec", "rec");
+      }
+      if (e.oldVersion < 2) {
+        const slides = db.createObjectStore("slides", { keyPath: "key" });
+        slides.createIndex("rec", "rec");
+      }
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -90,18 +101,47 @@ export async function loadRecording(id: string): Promise<Blob | null> {
 
 export async function deleteRecording(id: string): Promise<void> {
   const db = await open();
-  const tx = db.transaction(["meta", "chunks"], "readwrite");
+  const tx = db.transaction(["meta", "chunks", "slides"], "readwrite");
   tx.objectStore("meta").delete(id);
-  const idx = tx.objectStore("chunks").index("rec");
-  const req = idx.openKeyCursor(IDBKeyRange.only(id));
-  req.onsuccess = () => {
-    const cursor = req.result;
-    if (cursor) {
-      tx.objectStore("chunks").delete(cursor.primaryKey);
-      cursor.continue();
-    }
-  };
+  for (const store of ["chunks", "slides"]) {
+    const req = tx.objectStore(store).index("rec").openKeyCursor(IDBKeyRange.only(id));
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor) {
+        tx.objectStore(store).delete(cursor.primaryKey);
+        cursor.continue();
+      }
+    };
+  }
   await done(tx);
+}
+
+/** Keep a slide with its recording; `replaces`: an earlier picture of the same slide, removed. */
+export async function saveSlide(recordingId: string, slide: CapturedSlide, replaces?: string): Promise<void> {
+  const db = await open();
+  const tx = db.transaction("slides", "readwrite");
+  if (replaces) tx.objectStore("slides").delete(replaces);
+  tx.objectStore("slides").put({ ...slide, rec: recordingId });
+  await done(tx);
+}
+
+/** Forget one stored slide picture (the person removed it). */
+export async function deleteStoredSlide(key: string): Promise<void> {
+  const db = await open();
+  const tx = db.transaction("slides", "readwrite");
+  tx.objectStore("slides").delete(key);
+  await done(tx);
+}
+
+/** The slides kept with a recording, in the order they appeared. */
+export async function loadSlides(recordingId: string): Promise<CapturedSlide[]> {
+  const db = await open();
+  const tx = db.transaction("slides", "readonly");
+  const req = tx.objectStore("slides").index("rec").getAll(IDBKeyRange.only(recordingId));
+  await done(tx);
+  return (req.result as (CapturedSlide & { rec: string })[])
+    .map(({ rec: _rec, ...s }) => s)
+    .sort((a, b) => a.at - b.at);
 }
 
 /** Recordings kept in this browser at this address, whoever made them (0 when storage cannot be read). */

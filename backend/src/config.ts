@@ -404,6 +404,8 @@ export const config = {
     contextTokens: Math.round(num("LLM_CONTEXT_TOKENS", 65536, 4096, 1_048_576)),
     /** Let reasoning models (Qwen3) think before answering: better on hard material, several times slower. */
     think: bool("LLM_THINK", false),
+    /** The model reads pictures too (Qwen-VL, Gemma 3, LLaVA…): summaries are then shown the meeting's slides. */
+    vision: bool("LLM_VISION", false),
     /** Ollama only: seconds the model stays in GPU memory after a summary (0 frees it at once, for transcription). */
     keepAliveSec: Math.round(num("LLM_KEEP_ALIVE_SEC", 0, 0, 86_400)),
     concurrency: Math.max(1, int("LLM_CONCURRENCY", 1)),
