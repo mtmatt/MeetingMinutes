@@ -266,8 +266,7 @@
   padding: 24px 32px;
   background: var(--bg);
 }
-[data-ui="next"] .auth-form,
-[data-ui="next"] .auth-pricing {
+[data-ui="next"] .auth-form {
   animation: none;
 }
 [data-ui="next"] .auth-form h2 {
@@ -276,25 +275,6 @@
   font-weight: 400;
   letter-spacing: -0.025em;
   line-height: 1.15;
-}
-[data-ui="next"] .auth-pricing {
-  gap: 10px;
-  padding: 18px 20px;
-  border-radius: var(--radius-m);
-}
-[data-ui="next"] .auth-pricing-head h3 {
-  font-size: var(--step-0);
-  font-weight: 600;
-}
-[data-ui="next"] .auth-pricing-list li {
-  padding: 9px 0;
-}
-[data-ui="next"] .auth-pricing-note {
-  font-size: var(--step--2);
-}
-[data-ui="next"] .auth-pricing-more {
-  font-size: var(--step--1);
-  font-weight: 500;
 }
 [data-ui="next"] .auth-foot {
   font-size: var(--step--1);
