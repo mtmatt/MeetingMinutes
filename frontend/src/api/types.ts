@@ -400,6 +400,8 @@ export interface MediaPolicy {
   compact: boolean;
   /** Days after transcription. */
   afterDays: number;
+  /** A video is turned into audio once transcribed (its picture is not kept), whatever the policy. */
+  videoAudioOnly?: boolean;
   /** Recordings are deleted this many days after transcription (0: kept). People may choose shorter. */
   retentionDays?: 0 | 7 | 30;
 }
@@ -663,6 +665,10 @@ export interface UsageReport {
   from: number;
   to: number;
   showPoints: boolean;
+  /** The account pays with points (what it shows was charged; otherwise counted at the rates). */
+  prepaid?: boolean;
+  /** The rates uncharged work is counted at. */
+  rates?: { perMinute: number; perKInput: number; perKOutput: number };
   totals: {
     sec: number;
     transcriptions: number;
@@ -675,6 +681,8 @@ export interface UsageReport {
     pointsSummary: number;
     failedTranscriptions: number;
     failedSummaries: number;
+    /** Work that was not charged, counted at the current rates. */
+    estimatedItems?: number;
   };
   series: { key: string; sec: number; transcriptions: number; summaries: number; points: number }[];
   languages: UsageGroup[];

@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 import { api } from "../api/client";
 import { METHOD_LABEL, PackageCard, Pitch, Rates } from "../components/Pricing";
-import { Wordmark } from "../components/Seal";
+import { PublicHeader } from "../components/PublicHeader";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
 import { pointsPerMeetingHour } from "../lib/format";
+import { useForceNewUi } from "../lib/newUi";
 
 /**
  * What the site sells and for how much, in NT$: open to anyone, signed in or
@@ -15,6 +16,8 @@ import { pointsPerMeetingHour } from "../lib/format";
  * get in touch, without an account.
  */
 export function PricingPage() {
+  // The landing page's look, for everyone: this page is where it sends visitors.
+  useForceNewUi();
   const { t } = useI18n();
   const { user, registration, helpContact } = useAuth();
   const q = useQuery({ queryKey: ["pricing"], queryFn: api.pricing, retry: false });
@@ -31,16 +34,8 @@ export function PricingPage() {
 
   return (
     <div className="terms-page">
-      <header className="terms-head">
-        <Link to="/" reloadDocument={!user} className="terms-brand" aria-label="Minutes">
-          <Wordmark />
-        </Link>
-        <Link to={user ? "/" : "/login"} className="btn btn-sm btn-ghost">
-          <ArrowLeft /> {user ? t("pricing.backToApp") : t("auth.backToSignIn")}
-        </Link>
-      </header>
+      <PublicHeader back={{ to: "/", label: t("pricing.backToApp") }} />
       <main className="terms-body pricing">
-        <p className="smallcaps pricing-kicker">{t("pricing.kicker")}</p>
         <h1 className="pricing-title">{t("pricing.title")}</h1>
         <p className="pricing-intro">{t("pricing.intro")}</p>
 

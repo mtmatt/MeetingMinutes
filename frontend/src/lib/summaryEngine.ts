@@ -1,4 +1,4 @@
-import type { SummarizerInfo } from "../api/types";
+import type { ApiProvider, SummarizerInfo } from "../api/types";
 import { useI18n } from "../i18n";
 import { useAuth } from "./auth";
 
@@ -17,7 +17,20 @@ export function modelDisplayName(model: string): string {
   return `${nice}:${tag}`;
 }
 
-/** Name of the model that writes summaries, for sentences such as "{engine} is writing the summary". */
+/** The companies behind the hosted summary APIs. */
+export const VENDOR_NAMES: Record<ApiProvider, string> = { anthropic: "Anthropic", openai: "OpenAI", openrouter: "OpenRouter", gemini: "Google Gemini" };
+
+/**
+ * Who writes summaries, as people are told: the company the transcript is
+ * sent to ("Anthropic"), or, for a model the site runs itself, `fallback`
+ * ("AI"). Which model it is stays with the administrators.
+ */
+export function engineWho(info: SummarizerInfo | null, fallback: string): string {
+  if (info?.provider === "api" && info.vendor) return VENDOR_NAMES[info.vendor];
+  return fallback;
+}
+
+/** Name of the model that writes summaries (administrators' pages). */
 export function engineName(info: SummarizerInfo | null, fallback: string): string {
   if (!info) return fallback;
   if (!info.model) return fallback;
@@ -26,8 +39,8 @@ export function engineName(info: SummarizerInfo | null, fallback: string): strin
   return modelDisplayName(info.model);
 }
 
-export function useSummaryEngine(): { name: string; info: SummarizerInfo | null } {
+export function useSummaryEngine(): { name: string; model: string; info: SummarizerInfo | null } {
   const { summarizer } = useAuth();
   const { t } = useI18n();
-  return { name: engineName(summarizer, t("summary.engineFallback")), info: summarizer };
+  return { name: engineWho(summarizer, t("summary.engineFallback")), model: engineName(summarizer, t("summary.engineFallback")), info: summarizer };
 }

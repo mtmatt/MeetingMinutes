@@ -28,6 +28,7 @@ import {
 } from "./transcriberSettings";
 import { scheduleWakeCheck } from "./workerWake";
 import { mediaRetention } from "./mediaRetention";
+import { enqueueCompactions } from "./mediaCompaction";
 import { LOCAL_PROFILE, effectiveSettings, fallbackDelaySec } from "./workerProfiles";
 
 export const SPEAKER_COLORS = 10;
@@ -591,6 +592,11 @@ export function completeJob(jobId: string, workerId: string, result: TranscriptR
     // Auto-summarise only once: the first successful transcription.
     const hasSummary = db.query<{ n: number }, { m: string }>("SELECT COUNT(*) AS n FROM summaries WHERE meeting_id = $m").get({ m: m.id })?.n;
     if (auto && auto.prompt.trim() && !hasSummary) enqueueAutoSummary(m, auto);
+    // A video becomes audio only now that it is transcribed (when nothing else needs it first).
+    if (m.has_video) {
+      enqueueCompactions();
+      scheduleWakeCheck();
+    }
   }
   return true;
 }

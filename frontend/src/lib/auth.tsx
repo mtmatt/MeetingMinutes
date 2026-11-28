@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, type ReactNode } from "react";
 import { api, setUnauthorizedHandler } from "../api/client";
 import type { MediaPolicy, SummarizerInfo, TranscriberInfo, User } from "../api/types";
 import { useI18n } from "../i18n";
-import { currentTheme, isThemePref, setTheme, setThemePersister } from "./theme";
+import { currentTheme, isThemePref, setTheme, setThemePersister, themeChosenHere } from "./theme";
 import { setNewUi } from "./newUi";
 
 interface AuthValue {
@@ -84,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // An account from before themes were kept with it: this browser's choice becomes the account's.
   const themeUnset = signedIn && user?.theme == null;
   useEffect(() => {
-    if (themeUnset && currentTheme() !== "system") setTheme(currentTheme());
+    if (themeUnset && themeChosenHere()) setTheme(currentTheme());
   }, [themeUnset]);
 
   const value: AuthValue = {

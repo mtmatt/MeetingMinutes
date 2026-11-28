@@ -88,6 +88,25 @@
       show('[data-hour-wrap]', hour > 0);
     }
 
+    // the one-hour example beside the packages: the real rates, and the smallest package that covers the hour
+    if (typeof r.perMinute === 'number' && pkgs.length) {
+      var asr = r.perMinute * 60;
+      var sum = 30 * (r.perKInput || 0) + 8 * (r.perKOutput || 0);
+      var total = asr + sum;
+      var bySize = pkgs.slice().sort(function (x, y) { return x.points - y.points; });
+      var pack = bySize.filter(function (p) { return p.points >= total; })[0] || bySize[bySize.length - 1];
+      var pts = function (n) { return new Intl.NumberFormat('zh-TW', { maximumFractionDigits: 1 }).format(Math.round(n * 10) / 10); };
+      setText('[data-ex-pack]', nf.format(pack.points));
+      setText('[data-ex-pack2]', nf.format(pack.points));
+      setText('[data-ex-pack-price]', ntd(pack.price));
+      setText('[data-ex-asr]', pts(asr));
+      setText('[data-ex-sum]', pts(sum));
+      setText('[data-ex-left]', pts(pack.points - total));
+      setText('[data-ex-total]', pts(total));
+      setText('[data-ex-ntd]', ntd(total * pack.price / pack.points));
+    }
+    show('[data-example]', pkgs.length > 0);
+
     // payment methods: 信用卡、ATM 轉帳或超商代碼
     if (Array.isArray(b.methods) && b.methods.length) {
       var names = b.methods.map(function (m) { return METHOD[m] || String(m); });

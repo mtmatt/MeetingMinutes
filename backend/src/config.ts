@@ -360,6 +360,12 @@ export const config = {
     compactAfterDays: Math.round(num("MEDIA_COMPACT_AFTER_DAYS", 7, 0, 3650)),
     compactKbps: Math.round(num("MEDIA_COMPACT_KBPS", 32, 12, 256)),
     /**
+     * Keep a video's picture. Off by default: once a video has been
+     * transcribed, it is replaced by the audio-only copy at once, whatever
+     * the compacting policy says (that policy is for audio).
+     */
+    keepVideo: bool("MEDIA_KEEP_VIDEO", false),
+    /**
      * Recordings are deleted this many days after their transcription
      * (0: kept; 7 or 30), keeping the transcript and summaries. The site's
      * maximum: each person may choose a shorter period in Settings.

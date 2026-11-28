@@ -4,8 +4,45 @@
  * accountant before taking real payments: it is a draft, not legal advice.
  */
 
-export function termsTemplate(locale: "en" | "zh-TW", rates: { perMinute: number; perKInput: number; perKOutput: number }, noExpiry = false): string {
+/** How the site handles recordings and transcripts, as it is set up now (filled into section 6). */
+export interface DataPractice {
+  /** Recordings are deleted this many days after transcription (null: kept until the meeting is deleted). */
+  retentionDays: number | null;
+  /** A video is kept as audio only once transcribed. */
+  videoAudioOnly: boolean;
+  /** The company summaries are sent to (e.g. "Anthropic"); null: written on this site's own server. */
+  summaryVendor: string | null;
+}
+
+export function termsTemplate(
+  locale: "en" | "zh-TW",
+  rates: { perMinute: number; perKInput: number; perKOutput: number },
+  noExpiry = false,
+  data: DataPractice = { retentionDays: null, videoAudioOnly: true, summaryVendor: null },
+): string {
   const n = (x: number) => String(Number(x.toFixed(4)));
+  const enData = [
+    data.retentionDays
+      ? `Recordings are deleted automatically ${data.retentionDays} days after they are transcribed (you may choose a shorter period in Settings); transcripts and summaries are kept until you delete the meeting.`
+      : "Recordings, transcripts and summaries are kept until you delete the meeting.",
+    data.videoAudioOnly ? "A video you upload is used only for its sound: once it is transcribed, only the audio is kept." : "",
+    data.summaryVendor
+      ? `When a summary is written, the meeting's transcript, speaker names and title are sent to ${data.summaryVendor}, which writes it under its API terms; nothing else is sent.`
+      : "Summaries are written on this site's own server; transcripts are not sent to anyone else for them.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const zhData = [
+    data.retentionDays
+      ? `錄音檔會在轉錄完成 ${data.retentionDays} 天後自動刪除（您可以在「設定」選擇更短的期限）；逐字稿與摘要會保留到您刪除會議為止。`
+      : "錄音、逐字稿與摘要會保留到您刪除會議為止。",
+    data.videoAudioOnly ? "上傳的錄影檔只用於轉錄：轉錄完成後只保留聲音，不保留影片畫面。" : "",
+    data.summaryVendor
+      ? `產生摘要時，該場會議的逐字稿、發言者名稱與標題會送到 ${data.summaryVendor} 撰寫，並適用其 API 條款；不會送出其他資料。`
+      : "摘要在本網站自己的伺服器上產生，逐字稿不會為此送往其他地方。",
+  ]
+    .filter(Boolean)
+    .join("");
   if (locale === "en") {
     return `# Terms of sale and refund policy
 
@@ -44,7 +81,7 @@ Even so: 【for example: unused points bought within the last 【14】 days can 
 
 We aim to keep the service available but cannot promise it never stops. If it stops for 【more than 【period】】 because of us, 【what you offer, e.g. a refund of unused points】.
 
-Recordings, transcripts and summaries are handled as described in 【the privacy policy / link】. You are responsible for having the consent of the people you record.
+${enData} More is in 【the privacy policy / link】. You are responsible for having the consent of the people you record.
 
 ## 7. Disputes
 
@@ -88,7 +125,7 @@ ${noExpiry ? "點數無使用期限。" : "點數【無使用期限／自購買�
 
 我們會盡力維持服務穩定，但無法保證服務永不中斷。如因可歸責於我們的原因，服務中斷【超過【期間】】，【您提供的補償，例如：退還未使用的點數】。
 
-錄音、逐字稿與摘要的處理方式，請見【隱私權政策／連結】。錄音前請取得與會者的同意。
+${zhData}其他細節請見【隱私權政策／連結】。錄音前請取得與會者的同意。
 
 ## 七、爭議處理
 

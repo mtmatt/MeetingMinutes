@@ -457,9 +457,9 @@ export function UploadPage() {
             </div>
           )}
           {/* The video picture is not kept: say so before it is uploaded. */}
-          {file && isVideo && !recording && mediaPolicy?.compact && (
+          {file && isVideo && !recording && (mediaPolicy?.videoAudioOnly || mediaPolicy?.compact) && (
             <p className="field-hint upload-compact-note">
-              {mediaPolicy.afterDays === 0 ? t("upload.compactVideoNow") : t("upload.compactVideo", { n: mediaPolicy.afterDays })}
+              {mediaPolicy.videoAudioOnly || mediaPolicy.afterDays === 0 ? t("upload.compactVideoNow") : t("upload.compactVideo", { n: mediaPolicy.afterDays })}
             </p>
           )}
         </Step>

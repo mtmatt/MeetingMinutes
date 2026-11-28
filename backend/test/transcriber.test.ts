@@ -98,11 +98,14 @@ describe("where transcription runs", () => {
       engine: "api",
       diarization: "local",
       provider: "openrouter",
-      model: "qwen/qwen3-asr-1.7b",
+      // People are told where their recording goes, not which model: that is for administrators.
+      model: null,
       onServer: false,
       host: "openrouter.ai",
       mixed: false,
     });
+    const adminState = (await (await admin.get("/api/auth/state")).json()) as any;
+    expect(adminState.transcriber.model).toBe("qwen/qwen3-asr-1.7b");
     // A transcription server on this machine (a vLLM serving Qwen3-ASR) keeps the recording here.
     await admin.req("PUT", "/api/admin/transcriber", { json: { engine: "api", api: { provider: "openai", baseUrl: "http://127.0.0.1:8000/v1", model: "Qwen/Qwen3-ASR-1.7B" } } });
     state = (await (await member.get("/api/auth/state")).json()) as any;
