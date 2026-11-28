@@ -138,7 +138,9 @@ $NAME ALL=(root) NOPASSWD: $SYSTEMCTL restart $UNIT, $SYSTEMCTL start $UNIT, $SY
       rm -f "$tmp"
     fi
   else
-    echo "warning: sudo is not installed; only root can restart the service (systemctl restart ${UNIT%.service})." >&2
+    echo "note: sudo is not installed, so only root can restart the service. As root, scripts/restart.sh web" >&2
+    echo "      does it (and acme.sh's renewals, run by root, too). For $NAME to do it as well: apt install sudo," >&2
+    echo "      then run this script again." >&2
   fi
 fi
 
@@ -153,21 +155,14 @@ say "Enabling it at boot and starting it"
 run "$SYSTEMCTL" daemon-reload
 run "$SYSTEMCTL" enable "$UNIT"
 if [ "$DRY" = 1 ]; then
-  echo "    $PROJECT_DIR/scripts/restart.sh web   (as $NAME: stops the tmux copy, mm-web, and starts the service)"
+  echo "    $PROJECT_DIR/scripts/restart.sh web   (stops the tmux copies, mm-web, and starts the service)"
   echo
   echo "Dry run: nothing was changed."
   exit 0
 fi
-# A copy root started in tmux (before scripts/setup-user.sh, say) would hold the port.
-if [ "$NAME" != root ] && command -v tmux >/dev/null && tmux has-session -t mm-web 2>/dev/null; then
-  tmux kill-session -t mm-web && say "Stopped root's tmux copy of the web server (mm-web)"
-fi
-# restart.sh stops the copy in tmux (as its owner) and waits until the site answers.
-if [ "$NAME" = root ]; then
-  "$PROJECT_DIR/scripts/restart.sh" web
-else
-  runuser -u "$NAME" -- "$PROJECT_DIR/scripts/restart.sh" web
-fi
+# As root: restart.sh stops the copies in tmux (root's and the owner's), restarts
+# the service with systemctl (no sudo needed) and waits until the site answers.
+"$PROJECT_DIR/scripts/restart.sh" web
 
 cat <<EOF
 
