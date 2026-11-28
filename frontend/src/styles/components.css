@@ -687,8 +687,15 @@
 .modal-body {
   padding: 10px 24px 8px;
   display: grid;
+  /* One column that may shrink below its content, so a long link wraps instead of
+     widening the dialog. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   color: var(--ink-2);
+}
+.modal-body:last-child {
+  /* No footer: keep the same space below the content as a footer would. */
+  padding-bottom: 24px;
 }
 .modal-foot {
   padding: 16px 24px 22px;
@@ -851,6 +858,7 @@
 }
 
 .copy-field {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -862,12 +870,16 @@
 .copy-field code {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Show the whole link, broken anywhere, so it can be read and checked. */
+  overflow-wrap: anywhere;
+  line-height: 1.5;
   font-family: var(--font-mono);
   font-size: var(--step--1);
   color: var(--ink);
+}
+.copy-field .btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .empty {
