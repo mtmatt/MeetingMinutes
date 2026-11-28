@@ -8,6 +8,7 @@ import { Seal, Wordmark } from "../components/Seal";
 import { PublicAnnouncements } from "../components/Announcements";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
+import { useForceNewUi } from "../lib/newUi";
 import { twd } from "../lib/format";
 
 /** A few lines of a fictional transcript, typeset on the hero panel. */
@@ -18,6 +19,8 @@ const SAMPLE = [
 ];
 
 function AuthLayout({ children }: { children: ReactNode }) {
+  // The landing page's look, for everyone: these pages are where it sends visitors.
+  useForceNewUi();
   const { t, locale, setLocale } = useI18n();
   return (
     <div className="auth">

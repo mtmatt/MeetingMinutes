@@ -104,8 +104,8 @@ export const en = {
     setPassword: "Set password",
     invalidLink: "This link is invalid, has expired, or has been used up.",
     goToSignIn: "Go to sign in",
-    heroLine1: "Record the meeting.",
-    heroLine2: "Keep the minutes.",
+    heroLine1: "Record the meeting",
+    heroLine2: "Keep the minutes",
     heroBody: "Speech is transcribed on your own GPUs, and a language model writes the summary you ask for from the transcript. Everything that was said stays searchable.",
   },
   library: {
