@@ -397,6 +397,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* Takes the room the row has (flex basis 0): a long name is cut with an ellipsis
+     beside its colour dot instead of dropping, whole, to the next line. */
+  flex: 1 1 0;
+  text-align: left;
   border: 0;
   background: none;
   padding: 3px 6px;
@@ -409,7 +413,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.legend-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .legend-name svg {
+  flex-shrink: 0;
   width: 12px;
   height: 12px;
   color: var(--ink-3);
@@ -1144,6 +1155,30 @@
   border-top: 1px solid var(--rule-strong);
   box-shadow: 0 -12px 32px -20px rgba(0, 0, 0, 0.25);
   animation: rise-in 400ms var(--ease-out);
+}
+/* Why the recording does not play: a strip on top of the player bar. */
+.player-error {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  margin: 0;
+  padding: 8px max(16px, calc((100% - var(--page-max)) / 2 + 28px));
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--warn-soft);
+  color: var(--ink);
+  border-top: 1px solid var(--rule-strong);
+  font-size: var(--step--1);
+  line-height: 1.5;
+}
+.player-error svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--warn);
 }
 .player-inner {
   max-width: var(--page-max);

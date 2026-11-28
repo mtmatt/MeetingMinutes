@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Pause, Play, RotateCcw, RotateCw } from "lucide-react";
+import { AlertTriangle, Pause, Play, RotateCcw, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { api, mediaUrl } from "../api/client";
 import type { MeetingDetail } from "../api/types";
@@ -282,7 +282,7 @@ function SpeakerKey({ meeting }: { meeting: MeetingDetail }) {
 
 export function PlayerBar({ meeting, videoMode }: { meeting: MeetingDetail; videoMode: boolean }) {
   const { t } = useI18n();
-  const { time, duration, playing, rate, toggle, skip, setRate, register } = usePlayer();
+  const { time, duration, playing, rate, toggle, skip, setRate, register, error } = usePlayer();
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
@@ -308,6 +308,12 @@ export function PlayerBar({ meeting, videoMode }: { meeting: MeetingDetail; vide
   return (
     <div className="player" ref={barRef}>
       {!videoMode && <audio ref={audioRef} src={mediaUrl.audio(meeting.id)} preload="metadata" />}
+      {error && (
+        <p className="player-error" role="alert">
+          <AlertTriangle aria-hidden="true" />
+          {t(`meeting.playError.${error}`)}
+        </p>
+      )}
       <div className="player-inner">
         <div className="player-controls">
           {/* Named by its visible text ("−15 秒"), so what is seen is what speech control says; the title explains. */}
