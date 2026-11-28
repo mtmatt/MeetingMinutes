@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { availableCredits, rates, requireSummaryCredits, requireTranscriptionCredits, summaryEstimate } from "../services/credits";
+import { CreditsError, availableCredits, insufficient, rates, requireSummaryCredits, requireTranscriptionCredits, summaryEstimate } from "../services/credits";
+import { activeRefinement, enqueueRefinement, refineAvailable, undoRefinement } from "../services/refine";
 import { estimateTokens } from "../services/localSummary";
 import { existsSync, statSync } from "node:fs";
 import { open } from "node:fs/promises";
@@ -48,6 +49,8 @@ export const optionsSchema = z.object({
   maxSpeakers: z.number().int().min(1).max(32).nullable().default(null),
   vocabulary: z.string().max(2000).default(""),
   script: z.enum(["zh-TW", "zh-CN", "none"]).default("zh-TW"),
+  // Correct the transcript from the meeting's topic once it is transcribed (when the site offers it).
+  refine: z.boolean().default(false),
 });
 
 export const summaryRequestSchema = z.object({
@@ -296,6 +299,31 @@ meetingRoutes.post("/:id/retranscribe", async (c) => {
   }
   enqueueTranscription(m, hold);
   return c.json({ meeting: meetingSummary(getOwnedMeeting(m.id, c.get("user").id)!) });
+});
+
+// ------------------------------------------------------- AI correction
+
+/** Correct the transcript from the meeting's topic with a hosted model (paid like a summary). */
+meetingRoutes.post("/:id/refine", (c) => {
+  const m = owned(c, c.req.param("id"));
+  if (!refineAvailable()) httpError(409, "Transcript correction is not available on this site.", "refine_unavailable");
+  if (m.status !== "ready") httpError(409, "The transcript is not ready yet.", "not_ready");
+  if (activeRefinement(m.id)) httpError(409, "The transcript is already being corrected.", "refine_running");
+  try {
+    enqueueRefinement(m, c.get("user"));
+  } catch (e) {
+    if (e instanceof CreditsError) insufficient(e, "refine");
+    throw e;
+  }
+  return c.json({ meeting: meetingDetail(getOwnedMeeting(m.id, c.get("user").id)!) });
+});
+
+/** Put the transcript back as it was before it was corrected. */
+meetingRoutes.post("/:id/refine/undo", (c) => {
+  const m = owned(c, c.req.param("id"));
+  if (activeRefinement(m.id)) httpError(409, "The transcript is being corrected; wait for it to finish.", "refine_running");
+  const restored = undoRefinement(m.id);
+  return c.json({ restored, meeting: meetingDetail(getOwnedMeeting(m.id, c.get("user").id)!) });
 });
 
 // ------------------------------------------------------------------ media

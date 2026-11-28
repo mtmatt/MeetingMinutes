@@ -14,7 +14,9 @@ import {
   Trash2,
   Upload,
   Users,
+  Undo2,
   Video,
+  Wand2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
@@ -33,6 +35,7 @@ import { PAGE_DATA_FRESH_MS } from "../lib/prefetch";
 import { bytes, dateLong, dateTime, duration, monthDay } from "../lib/format";
 import { setPageContext } from "../lib/pageContext";
 import { PlayerProvider, usePlayer, usePlayerShortcuts } from "../lib/player";
+import { useAuth } from "../lib/auth";
 import { apiErrorMessage, describeFailure } from "../lib/errors";
 
 const PIPELINE: { key: string; label: TKey; stages: string[] }[] = [
@@ -273,6 +276,31 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
     }
   };
 
+  // AI correction of the transcript (a hosted model, from the meeting's topic).
+  const { refine: refineInfo } = useAuth();
+  const refinement = meeting.refinement ?? null;
+  const refining = refinement?.status === "queued" || refinement?.status === "running";
+  const corrected = meeting.segments.filter((s) => s.original != null).length;
+  const startRefine = async () => {
+    if (!(await confirm({ title: t("refine.confirmTitle"), body: t("refine.confirmBody", { vendor: refineInfo?.vendor ?? "", host: refineInfo?.host ?? "" }), confirmLabel: t("refine.confirm") })))
+      return;
+    try {
+      qc.setQueryData(["meeting", meeting.id], await api.refineMeeting(meeting.id));
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+  const undoRefine = async () => {
+    if (!(await confirm({ title: t("refine.undoTitle"), body: t("refine.undoBody", { n: corrected }), confirmLabel: t("refine.undo") }))) return;
+    try {
+      const r = await api.undoRefineMeeting(meeting.id);
+      qc.setQueryData(["meeting", meeting.id], { meeting: r.meeting });
+      toast.show(t("refine.undone", { n: r.restored }));
+    } catch (e) {
+      toast.error(e);
+    }
+  };
+
   const remove = async () => {
     if (!(await confirm({ title: t("meeting.deleteTitle"), body: t("meeting.deleteBody"), confirmLabel: t("common.delete"), danger: true }))) return;
     try {
@@ -403,6 +431,29 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
                       <RefreshCw /> {t("meeting.retranscribe")}
                     </button>
                   )}
+                  {ready && refineInfo?.available && (
+                    <button
+                      className="menu-item"
+                      disabled={refining}
+                      onClick={() => {
+                        close();
+                        void startRefine();
+                      }}
+                    >
+                      <Wand2 /> {refining ? t("refine.running") : t("refine.menu")}
+                    </button>
+                  )}
+                  {ready && corrected > 0 && !refining && (
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        close();
+                        void undoRefine();
+                      }}
+                    >
+                      <Undo2 /> {t("refine.undoMenu")}
+                    </button>
+                  )}
                   {ready && !mediaGone && (
                     <button
                       className="menu-item"
@@ -454,6 +505,29 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
             </div>
           )}
           {!mediaGone && <DiarizationNotice meeting={meeting} />}
+          {refining && (
+            <div className="callout refine-note" role="status">
+              <span className="spinner" />
+              <div>{t("refine.runningNote")}</div>
+            </div>
+          )}
+          {!refining && refinement?.status === "failed" && (
+            <div className="callout warn refine-note" role="note">
+              <Wand2 />
+              <div>{t("refine.failedNote", { error: refinement.error ?? "" })}</div>
+            </div>
+          )}
+          {!refining && refinement?.status === "done" && corrected > 0 && (
+            <div className="callout refine-note" role="note">
+              <Wand2 />
+              <div>
+                {t("refine.doneNote", { n: corrected })}{" "}
+                <button type="button" className="link-btn" onClick={() => void undoRefine()}>
+                  {t("refine.undo")}
+                </button>
+              </div>
+            </div>
+          )}
           <div className="meeting-tabs tabs" role="tablist">
             <button role="tab" aria-selected={tab === "transcript"} onClick={() => setTab("transcript")}>
               {t("meeting.transcript")}

@@ -474,4 +474,28 @@ export const migrations: string[] = [
   ALTER TABLE meetings ADD COLUMN media_deleted_at INTEGER;
   ALTER TABLE users ADD COLUMN media_retention_days INTEGER;
   `,
+  // 19: correcting a transcript with a hosted model from the meeting's topic: each run, and each
+  // sentence's text before it was corrected (NULL: not corrected), so a correction can be undone.
+  `
+  CREATE TABLE refinements (
+    id           TEXT PRIMARY KEY,
+    meeting_id   TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    created_by   TEXT REFERENCES users(id) ON DELETE SET NULL,
+    status       TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed', 'canceled')),
+    error        TEXT,
+    model        TEXT,
+    usage        TEXT,
+    topic        TEXT,
+    changed      INTEGER,
+    hold         INTEGER,
+    charged      INTEGER,
+    then_summary TEXT,
+    created_at   INTEGER NOT NULL,
+    started_at   INTEGER,
+    finished_at  INTEGER
+  );
+  CREATE INDEX refinements_meeting ON refinements(meeting_id, created_at DESC);
+  CREATE INDEX refinements_status ON refinements(status, created_at);
+  ALTER TABLE segments ADD COLUMN original_text TEXT;
+  `,
 ];

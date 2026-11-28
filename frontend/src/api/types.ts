@@ -37,6 +37,41 @@ export interface TranscribeOptions {
   maxSpeakers: number | null;
   vocabulary: string;
   script: Script;
+  /** Correct the transcript with a hosted model from the meeting's topic once it is transcribed. */
+  refine?: boolean;
+}
+
+/** Correcting transcripts with a hosted model: whether the site offers it, and where the transcript then goes. */
+export interface RefineInfo {
+  available: boolean;
+  vendor: string;
+  host: string;
+}
+
+/** A meeting's latest AI correction. */
+export interface Refinement {
+  id: string;
+  status: "queued" | "running" | "done" | "failed" | "canceled";
+  error: string | null;
+  /** Sentences it changed. */
+  changed: number | null;
+  createdAt: number;
+  finishedAt: number | null;
+}
+
+export interface RefineSettings {
+  enabled: boolean;
+  model: string;
+}
+
+export interface RefineState {
+  settings: RefineSettings;
+  defaults: RefineSettings;
+  saved: boolean;
+  updatedAt: number | null;
+  updatedBy: string | null;
+  /** The server has an Anthropic API key. */
+  hasKey: boolean;
 }
 
 export interface SummaryRequest {
@@ -174,6 +209,8 @@ export interface Segment {
   speaker: string | null;
   text: string;
   edited: boolean;
+  /** The text before an AI correction (absent when not corrected). */
+  original?: string;
 }
 
 export interface Summary {
@@ -204,6 +241,8 @@ export interface MeetingDetail extends MeetingSummary {
   speakers: Speaker[];
   segments: Segment[];
   summaries: Summary[];
+  /** The latest AI correction of the transcript (absent from older servers). */
+  refinement?: Refinement | null;
 }
 
 export interface Template {

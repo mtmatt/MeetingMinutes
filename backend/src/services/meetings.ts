@@ -29,6 +29,7 @@ import {
 import { scheduleWakeCheck } from "./workerWake";
 import { mediaRetention } from "./mediaRetention";
 import { enqueueCompactions } from "./mediaCompaction";
+import { activeRefinement, enqueueRefinementAfterTranscription, latestRefinement, refineAvailable } from "./refine";
 import { LOCAL_PROFILE, effectiveSettings, fallbackDelaySec } from "./workerProfiles";
 
 export const SPEAKER_COLORS = 10;
@@ -41,6 +42,7 @@ export const DEFAULT_OPTIONS: TranscribeOptions = {
   maxSpeakers: null,
   vocabulary: "",
   script: "zh-TW",
+  refine: false,
 };
 
 export const AUDIO_EXTENSIONS = ["mp3", "wav", "m4a", "aac", "flac", "ogg", "oga", "opus", "wma", "amr", "aiff", "aif", "caf", "weba"];
@@ -305,7 +307,10 @@ export function meetingDetail(m: MeetingRow) {
       speaker: s.speaker,
       text: s.text,
       edited: !!s.edited,
+      /** The text before an AI correction (absent when not corrected). */
+      ...(s.original_text != null ? { original: s.original_text } : {}),
     })),
+    refinement: latestRefinement(m.id),
     summaries: summaries.map(summaryPublic),
   };
 }
@@ -591,7 +596,11 @@ export function completeJob(jobId: string, workerId: string, result: TranscriptR
     const auto = parseJson<SummaryRequest | null>(m.auto_summary, null);
     // Auto-summarise only once: the first successful transcription.
     const hasSummary = db.query<{ n: number }, { m: string }>("SELECT COUNT(*) AS n FROM summaries WHERE meeting_id = $m").get({ m: m.id })?.n;
-    if (auto && auto.prompt.trim() && !hasSummary) enqueueAutoSummary(m, auto);
+    const wantsSummary = auto && auto.prompt.trim() && !hasSummary ? auto : null;
+    // Correct the transcript first when asked (the summary then reads the corrected one); else summarise now.
+    const opts = parseJson<Partial<TranscribeOptions>>(m.options, {});
+    const refining = !!opts.refine && refineAvailable() && !activeRefinement(m.id) && enqueueRefinementAfterTranscription(m, wantsSummary);
+    if (wantsSummary && !refining) enqueueAutoSummary(m, wantsSummary);
     // A video becomes audio only now that it is transcribed (when nothing else needs it first).
     if (m.has_video) {
       enqueueCompactions();
@@ -614,7 +623,7 @@ function chargeJob(job: JobRow, durationSec: number) {
 }
 
 /** The summary asked for when the recording was added: paid for like one asked for later, or recorded as refused. */
-function enqueueAutoSummary(m: MeetingRow, req: SummaryRequest) {
+export function enqueueAutoSummary(m: MeetingRow, req: SummaryRequest) {
   const owner = db.query<UserRow, { id: string }>("SELECT * FROM users WHERE id = $id").get({ id: m.owner_id });
   if (!owner) return;
   try {

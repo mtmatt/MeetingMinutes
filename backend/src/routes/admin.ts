@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { defaultRefineSettings, refineSettings, refineSettingsMeta, refineSettingsSchema, resetRefineSettings, saveRefineSettings } from "../services/refine";
 import { retentionStats, sweepMediaRetention } from "../services/mediaRetention";
 import { statfsSync } from "node:fs";
 import { z } from "zod";
@@ -425,6 +426,25 @@ adminRoutes.put("/media", async (c) => {
 adminRoutes.delete("/media", (c) => {
   resetMediaSettings();
   return c.json(mediaState());
+});
+
+// ------------------------------------------------------- transcript correction
+
+function refineState() {
+  return { settings: refineSettings(), defaults: defaultRefineSettings(), ...refineSettingsMeta(), hasKey: providerKey("anthropic") !== null };
+}
+
+adminRoutes.get("/refine", (c) => c.json(refineState()));
+
+adminRoutes.put("/refine", async (c) => {
+  const input = await body(c, refineSettingsSchema);
+  saveRefineSettings(input, c.get("user").id);
+  return c.json(refineState());
+});
+
+adminRoutes.delete("/refine", (c) => {
+  resetRefineSettings();
+  return c.json(refineState());
 });
 
 // ------------------------------------------------------- workers on other machines

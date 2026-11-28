@@ -51,6 +51,8 @@ export interface TranscribeOptions {
   vocabulary: string;
   /** Chinese script normalisation applied after ASR. */
   script: "zh-TW" | "zh-CN" | "none";
+  /** Correct the transcript with a hosted model from the meeting's topic once it is transcribed. */
+  refine: boolean;
 }
 
 export type OutputLanguage = "zh-TW" | "en" | "auto";
@@ -143,6 +145,27 @@ export interface SegmentRow {
   speaker: string | null;
   text: string;
   edited: number;
+  /** The text before the transcript was corrected with a hosted model (null: not corrected). */
+  original_text: string | null;
+}
+
+export interface RefinementRow {
+  id: string;
+  meeting_id: string;
+  created_by: string | null;
+  status: "queued" | "running" | "done" | "failed" | "canceled";
+  error: string | null;
+  model: string | null;
+  usage: string | null;
+  topic: string | null;
+  changed: number | null;
+  hold: number | null;
+  charged: number | null;
+  /** The automatic summary to write once the transcript is corrected (JSON SummaryRequest). */
+  then_summary: string | null;
+  created_at: number;
+  started_at: number | null;
+  finished_at: number | null;
 }
 
 export type SummaryProvider = "local" | "api";

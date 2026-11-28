@@ -65,7 +65,11 @@ export function heldCredits(userId: string, exceptMeeting?: string): number {
     db
       .query<{ n: number | null }, { u: string }>("SELECT SUM(hold) AS n FROM summaries WHERE created_by = $u AND status IN ('queued', 'running') AND hold IS NOT NULL")
       .get({ u: userId })?.n ?? 0;
-  return jobs + summaries;
+  const refinements =
+    db
+      .query<{ n: number | null }, { u: string }>("SELECT SUM(hold) AS n FROM refinements WHERE created_by = $u AND status IN ('queued', 'running') AND hold IS NOT NULL")
+      .get({ u: userId })?.n ?? 0;
+  return jobs + summaries + refinements;
 }
 
 export function balanceOf(userId: string): number {
@@ -77,13 +81,15 @@ export function availableCredits(userId: string, exceptMeeting?: string): number
   return Math.max(0, balanceOf(userId) - heldCredits(userId, exceptMeeting));
 }
 
-function insufficient(e: CreditsError, what: "transcription" | "summary"): never {
+export function insufficient(e: CreditsError, what: "transcription" | "summary" | "refine"): never {
   const points = (n: number) => (n / MILLI).toFixed(1);
   httpError(
     402,
     what === "transcription"
       ? `Not enough points: this recording needs about ${points(e.needed)}, ${points(e.available)} left.`
-      : `Not enough points: this summary needs about ${points(e.needed)}, ${points(e.available)} left.`,
+      : what === "refine"
+        ? `Not enough points: correcting this transcript needs about ${points(e.needed)}, ${points(e.available)} left.`
+        : `Not enough points: this summary needs about ${points(e.needed)}, ${points(e.available)} left.`,
     "insufficient_credits",
     { availableCredits: e.available, neededCredits: e.needed, what },
   );
@@ -254,5 +260,14 @@ export function chargeSummary(userId: string, meeting: { id: string; title: stri
   const cost = summaryCost(inputTokens, outputTokens);
   if (cost <= 0) return null;
   addCredits(userId, -cost, { kind: "summary", meetingId: meeting.id, title: meeting.title, quantity: { input: inputTokens, output: outputTokens } });
+  return cost;
+}
+
+/** A prepaid person pays for correcting a transcript at the summary rates (it is the same kind of work: tokens read and written). */
+export function chargeRefinement(userId: string, meeting: { id: string; title: string }, inputTokens: number, outputTokens: number): number | null {
+  if (!prepaid(userId)) return null;
+  const cost = summaryCost(inputTokens, outputTokens);
+  if (cost <= 0) return null;
+  addCredits(userId, -cost, { kind: "summary", meetingId: meeting.id, title: `${meeting.title} · 逐字稿修正`, quantity: { input: inputTokens, output: outputTokens } });
   return cost;
 }

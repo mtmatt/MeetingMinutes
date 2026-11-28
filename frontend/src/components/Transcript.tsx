@@ -597,8 +597,10 @@ const SegmentText = memo(function SegmentText({
 }) {
   return (
     <span
-      className={`seg ${active ? "active" : ""} ${seg.edited ? "edited" : ""}`}
+      className={`seg ${active ? "active" : ""} ${seg.edited ? "edited" : ""} ${seg.original != null ? "refined" : ""}`}
       data-seg={seg.id}
+      // Corrected by AI: the words as they were heard, on hover.
+      title={seg.original != null ? seg.original : undefined}
       onClick={() => onSeek(seg)}
       onDoubleClick={() => onEdit(seg)}
     >

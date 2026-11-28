@@ -55,7 +55,7 @@ export function UploadPage() {
   const { t, tMaybe, locale } = useI18n();
   const confirm = useConfirm();
   const navigate = useNavigate();
-  const { uploadLimitBytes: limit, helpContact, mediaPolicy } = useAuth();
+  const { uploadLimitBytes: limit, helpContact, mediaPolicy, refine: refineInfo } = useAuth();
 
   const [file, setFile] = useState<File | null>(null);
   const [mediaDuration, setMediaDuration] = useState<number | null>(null);
@@ -69,6 +69,8 @@ export function UploadPage() {
   const [vocabulary, setVocabulary] = useState("");
   const [script, setScript] = useState<Script>("zh-TW");
   const [autoSummary, setAutoSummary] = useState(true);
+  // Correct the transcript with a hosted model once it is transcribed (offered only when the site has it on).
+  const [refine, setRefine] = useState(false);
   const [summary, setSummary] = useState<SummaryRequest>({
     templateId: "builtin-minutes",
     prompt: "",
@@ -214,8 +216,9 @@ export function UploadPage() {
       maxSpeakers: speakerMode === "range" ? range[1] : null,
       vocabulary: vocabulary.trim(),
       script,
+      refine: refine && !!refineInfo?.available,
     }),
-    [language, speakerMode, exact, range, vocabulary, script],
+    [language, speakerMode, exact, range, vocabulary, script, refine, refineInfo?.available],
   );
 
   const presetValue: PresetValue = useMemo(() => ({ options, summary: autoSummary ? summary : null }), [options, autoSummary, summary]);
@@ -236,6 +239,7 @@ export function UploadPage() {
     } else setSpeakerMode("auto");
     setVocabulary(o.vocabulary);
     setScript(o.script);
+    setRefine(!!o.refine);
     setAutoSummary(!!p.summary);
     if (p.summary) setSummary(p.summary);
   }, []);
@@ -488,6 +492,16 @@ export function UploadPage() {
         </Step>
 
         <Step n="3" title={t("upload.step4")}>
+          {refineInfo?.available && (
+            <div className="field upload-refine">
+              <label className="switch">
+                <input type="checkbox" checked={refine} onChange={(e) => setRefine(e.target.checked)} />
+                <span className="switch-track" />
+                <span className="switch-label">{t("refine.uploadSwitch")}</span>
+              </label>
+              <span className="field-hint">{t("refine.uploadHint", { vendor: refineInfo.vendor, host: refineInfo.host })}</span>
+            </div>
+          )}
           <label className="switch">
             <input type="checkbox" checked={autoSummary} onChange={(e) => setAutoSummary(e.target.checked)} />
             <span className="switch-track" />

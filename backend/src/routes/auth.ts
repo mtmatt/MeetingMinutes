@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { publicRefineInfo } from "../services/refine";
 import { siteRetentionDays } from "../services/mediaRetention";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
@@ -105,6 +106,8 @@ authRoutes.get("/state", (c) => {
     summarizer: resolved ? withoutModel(publicSummarizerInfo(), resolved.user.role === "admin") : null,
     // Where recordings are transcribed, for the same reason.
     transcriber: resolved ? withoutModel(publicTranscriberInfo(), resolved.user.role === "admin") : null,
+    // Whether transcripts can be corrected with a hosted model (and where they then go).
+    refine: resolved ? publicRefineInfo() : null,
     // Whether originals are later kept as audio only, so a video's uploader is told.
     mediaPolicy: resolved ? publicMediaPolicy() : null,
     // Recordings may be processed on other machines an administrator connected.
