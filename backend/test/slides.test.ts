@@ -166,6 +166,27 @@ describe("slides", () => {
     expect(readFileSync(process.env.FAKE_ANTHROPIC_PROMPT_FILE!, "utf8")).not.toContain("<<image");
   });
 
+  test("slides the model shows are linked to the stored slides; others and outside pictures are dropped", async () => {
+    const admin = await adminClient();
+    await admin.del("/api/admin/summarizer");
+    const c = await memberClient("slides-shown");
+    const id = await uploading(c);
+    await sendSlide(c, id, 5, "slide-key-3001", jpeg(1280, 720));
+    await sendSlide(c, id, 60, "slide-key-3002", jpeg(1280, 720));
+    expect((await c.post(`/api/meetings/${id}/upload/complete`)).status).toBe(200);
+    await transcribe(id);
+    const res = await c.post(`/api/meetings/${id}/summaries`, { templateId: null, prompt: "SHOW_SLIDES_PLEASE minutes", outputLanguage: "zh-TW" });
+    expect(res.status).toBe(201);
+    const s = await waitSummary(c, id);
+    const { meeting } = (await (await c.get(`/api/meetings/${id}`)).json()) as any;
+    const second = meeting.slides.find((x: any) => x.at === 60).id;
+    expect(s.content).toContain(`![The cost table](slide:${second})`);
+    expect(s.content).not.toContain("slide:9");
+    expect(s.content).not.toContain("evil.example");
+    // The prompt asked for it.
+    expect(readFileSync(process.env.FAKE_ANTHROPIC_PROMPT_FILE!, "utf8")).toContain("![short description](slide:N)");
+  });
+
   test("a model that refuses pictures writes the summary from the transcript alone", async () => {
     const admin = await adminClient();
     await admin.del("/api/admin/summarizer");

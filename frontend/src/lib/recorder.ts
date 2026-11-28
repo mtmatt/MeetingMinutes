@@ -92,7 +92,7 @@ async function captureTab(slides = false): Promise<MediaStream> {
     tab = await navigator.mediaDevices.getDisplayMedia({
       // Slides need a picture sharp enough to read; otherwise a token one.
       video: slides
-        ? { displaySurface: "browser", frameRate: { ideal: 1, max: 2 }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        ? { displaySurface: "browser", frameRate: { ideal: 1, max: 2 }, width: { ideal: 1920 }, height: { ideal: 1080 } }
         : { displaySurface: "browser", frameRate: 1, width: 320 },
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false } as MediaTrackConstraints,
       preferCurrentTab: false,
@@ -267,6 +267,12 @@ export class MeetingRecorder {
           const replaces = this.storedSlides.get(slide.slot);
           this.storedSlides.set(slide.slot, slide.key);
           void saveSlide(this.meta.id, slide, replaces).catch((e) => this.cb.onSaveError?.(e));
+          // Where the slide is on screen, kept with the recording: a recording restored later is cut the same way.
+          const region = this.collector?.region() ?? undefined;
+          if (JSON.stringify(region) !== JSON.stringify(this.meta.slideRegion)) {
+            this.meta = { ...this.meta, slideRegion: region };
+            void saveMeta(this.meta).catch(() => undefined);
+          }
         },
       );
     }
@@ -382,7 +388,9 @@ export class MeetingRecorder {
     this.release();
     this.meta = { ...this.meta, durationMs: this.accumulated, finished: true };
     await saveMeta(this.meta).catch((e) => this.cb.onSaveError?.(e));
-    return { meta: this.meta, blob: new Blob(this.chunks, { type: this.meta.mimeType.split(";")[0] }), slides: this.slides() };
+    // Cut to the slide and made compact, now that where it is on screen is known.
+    const slides = this.collector ? await this.collector.finish() : [];
+    return { meta: this.meta, blob: new Blob(this.chunks, { type: this.meta.mimeType.split(";")[0] }), slides };
   }
 
   private release() {

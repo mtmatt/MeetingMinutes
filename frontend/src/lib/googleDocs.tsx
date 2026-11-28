@@ -1,11 +1,12 @@
 import type { CSSProperties, ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import type { Slide } from "../api/types";
 import remarkGfm from "remark-gfm";
 import type { TFn } from "../i18n";
 import { dateTime, duration } from "./format";
-import { linkTimestamps, nameColon, stamp, transcriptRuns, type SummaryExport } from "./summaryExport";
+import { linkTimestamps, nameColon, stamp, transcriptRuns, type SummaryExport, type TranscriptRun } from "./summaryExport";
 
 /*
  * Export to Google Docs.
@@ -48,8 +49,34 @@ export class GoogleDocsError extends Error {
 const cell: CSSProperties = { border: "1px solid #b7b7b7", padding: "4px 8px", verticalAlign: "top" };
 
 /** The summary as Google Docs should show it: a title, the meeting details, the summary, and optionally the transcript. */
+/** A slide in the document: the picture, and when it appeared (a link to that moment). */
+function SlideFigure({ url, at, alt, link, small = false }: { url: string; at: number; alt: string; link: string; small?: boolean }) {
+  return (
+    <span className={`doc-slide${small ? " small" : ""}`}>
+      <img src={url} alt={alt || `[${stamp(at)}]`} />
+      <span className="doc-slide-caption">
+        <a href={link}>[{stamp(at)}]</a>
+        {alt ? ` ${alt}` : ""}
+      </span>
+    </span>
+  );
+}
+
+/** Transcript paragraphs with each slide before the first paragraph that starts after it appeared. */
+function transcriptWithSlides(runs: TranscriptRun[], slides: Slide[]): ({ run: TranscriptRun } | { slide: Slide })[] {
+  const out: ({ run: TranscriptRun } | { slide: Slide })[] = [];
+  let k = 0;
+  for (const run of runs) {
+    while (k < slides.length && slides[k]!.at <= run.start + 0.5) out.push({ slide: slides[k++]! });
+    out.push({ run });
+  }
+  while (k < slides.length) out.push({ slide: slides[k++]! });
+  return out;
+}
+
 function SummaryDocument({ x, t }: { x: SummaryExport; t: TFn }) {
   const { meeting, summary, locale } = x;
+  const slideById = new Map((meeting.slides ?? []).map((s) => [s.id, s]));
   const page = `${window.location.origin}/m/${encodeURIComponent(meeting.id)}`;
   // Timestamps open the recording at that moment (the meeting page reads ?t=).
   const at = (sec: number) => `${page}?t=${Math.floor(sec)}`;
@@ -102,41 +129,40 @@ function SummaryDocument({ x, t }: { x: SummaryExport; t: TFn }) {
           },
           // A summary is written by a model that read the transcript: an image there would be fetched
           // from wherever it points when the document is opened. Its description is kept instead.
-          img({ alt }) {
+          // A slide it shows is a picture in a PDF, and a line of text elsewhere.
+          img({ src, alt }) {
+            const id = typeof src === "string" && src.startsWith("slide:") ? src.slice(6) : null;
+            const slide = id ? slideById.get(id) : undefined;
+            if (slide && x.slideImages) return <SlideFigure url={x.slideImages(slide.id)} at={slide.at} alt={alt ?? ""} link={at(slide.at)} />;
+            if (slide) return <em>({x.slideWord ?? "Slide"} [{stamp(slide.at)}]{alt ? `: ${alt}` : ""})</em>;
             return alt ? <span>{alt}</span> : null;
           },
         }}
+        urlTransform={(url) => (url.startsWith("slide:") ? url : defaultUrlTransform(url))}
       >
         {linkTimestamps(summary.content ?? "", meeting.durationSec ?? 0)}
       </ReactMarkdown>
-      {x.slides && x.slides.length > 0 && (
-        <>
-          <hr />
-          <h2>{x.slidesHeading}</h2>
-          {x.slides.map((sl, i) => (
-            <figure key={i} className="doc-slide">
-              <img src={sl.url} width={sl.width} height={sl.height} alt={`[${stamp(sl.at)}]`} />
-              <figcaption>
-                <a href={at(sl.at)}>[{stamp(sl.at)}]</a>
-              </figcaption>
-            </figure>
-          ))}
-        </>
-      )}
       {x.withTranscript && meeting.segments.length > 0 && (
         <>
           <hr />
           <h2>{x.transcriptHeading}</h2>
-          {transcriptRuns(meeting).map((r, i) => (
-            <p key={i}>
-              <b>
-                <a href={at(r.start)}>[{stamp(r.start)}]</a>
-                {r.who ? ` ${r.who}` : ""}
-                {colon}
-              </b>
-              {r.text}
-            </p>
-          ))}
+          {transcriptWithSlides(
+            transcriptRuns(meeting, x.slideImages ? (meeting.slides ?? []).map((sl) => sl.at) : []),
+            x.slideImages ? (meeting.slides ?? []) : [],
+          ).map((item, i) =>
+            "slide" in item ? (
+              <SlideFigure key={`s${i}`} url={x.slideImages!(item.slide.id)} at={item.slide.at} alt="" link={at(item.slide.at)} small />
+            ) : (
+              <p key={i}>
+                <b>
+                  <a href={at(item.run.start)}>[{stamp(item.run.start)}]</a>
+                  {item.run.who ? ` ${item.run.who}` : ""}
+                  {colon}
+                </b>
+                {item.run.text}
+              </p>
+            ),
+          )}
         </>
       )}
     </>

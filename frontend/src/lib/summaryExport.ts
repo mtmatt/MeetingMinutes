@@ -42,8 +42,14 @@ export interface TranscriptRun {
   text: string;
 }
 
-/** Consecutive lines by the same speaker become one paragraph. */
-export function transcriptRuns(meeting: MeetingDetail): TranscriptRun[] {
+/**
+ * Consecutive lines by the same speaker become one paragraph. `breaks`: times
+ * at which a new paragraph starts anyway (where a slide appeared, so it can sit
+ * between them).
+ */
+export function transcriptRuns(meeting: MeetingDetail, breaks: number[] = []): TranscriptRun[] {
+  const cuts = [...breaks].sort((a, b) => a - b);
+  let nextCut = 0;
   const names = new Map(meeting.speakers.map((s) => [s.key, s.name]));
   const runs: TranscriptRun[] = [];
   let run: { speaker: string | null; start: number; parts: string[] } | null = null;
@@ -55,7 +61,12 @@ export function transcriptRuns(meeting: MeetingDetail): TranscriptRun[] {
     run = null;
   };
   for (const s of meeting.segments as Segment[]) {
-    if (run && run.speaker === s.speaker) run.parts.push(s.text);
+    let cut = false;
+    while (nextCut < cuts.length && cuts[nextCut]! <= s.start + 0.5) {
+      nextCut++;
+      cut = true;
+    }
+    if (run && run.speaker === s.speaker && !cut) run.parts.push(s.text);
     else {
       flush();
       run = { speaker: s.speaker, start: s.start, parts: [s.text] };
@@ -111,9 +122,28 @@ export interface SummaryExport {
   transcriptHeading: string;
   /** Lead with YAML front matter carrying the meeting details (default true; a file needs it, pasted text does not). */
   frontMatter?: boolean;
-  /** The meeting's slides, with their addresses (PDF only: a Google Doc cannot fetch them, they need the sign-in). */
-  slides?: { url: string; at: number; width: number; height: number }[];
-  slidesHeading?: string;
+  /**
+   * Show the meeting's slides as pictures (PDF only: a Google Doc or a
+   * Markdown file cannot fetch them, they need the sign-in): the ones the
+   * summary shows where it shows them, and all of them in the transcript, where
+   * they appeared. Otherwise a slide the summary shows becomes a line of text.
+   */
+  slideImages?: (id: string) => string;
+  /** "Slide" in the reader's language, for those lines. */
+  slideWord?: string;
+}
+
+/** A slide the summary shows: ![description](slide:<id>). */
+export const SLIDE_REF = /!\[([^\]\n]*)\]\(slide:([\w-]+)\)/g;
+
+/** Slides the summary shows, as a line of text: "(Slide [00:12:34]: the cost table)". */
+export function slideRefsAsText(md: string, meeting: MeetingDetail, word: string): string {
+  const at = new Map((meeting.slides ?? []).map((s) => [s.id, s.at]));
+  return md.replace(SLIDE_REF, (_m, alt: string, id: string) => {
+    const t = at.get(id);
+    if (t == null) return "";
+    return `*(${word} [${stamp(t)}]${alt.trim() ? `: ${alt.trim()}` : ""})*`;
+  });
 }
 
 /**
@@ -139,7 +169,8 @@ export function summaryMarkdown(x: SummaryExport): string {
     `link: ${q(`${window.location.origin}/m/${meeting.id}`)}`,
     "---",
   );
-  let out = `${x.frontMatter === false ? "" : `${fm.join("\n")}\n\n`}${(summary.content ?? "").trim()}\n`;
+  const body = slideRefsAsText((summary.content ?? "").trim(), meeting, x.slideWord ?? "Slide");
+  let out = `${x.frontMatter === false ? "" : `${fm.join("\n")}\n\n`}${body}\n`;
   if (x.withTranscript && meeting.segments.length) {
     out += `\n---\n\n## ${x.transcriptHeading}\n\n${transcriptMarkdown(meeting, x.locale)}\n`;
   }

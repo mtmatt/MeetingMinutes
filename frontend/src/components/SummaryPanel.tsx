@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Coins, ChevronDown, ClipboardCopy, Copy, ExternalLink, FileText, MoreHorizontal, Pencil, RefreshCw, ScrollText, Sparkles, Square, Trash2, Users } from "lucide-react";
+import { AlertTriangle, Check, Coins, ChevronDown, ClipboardCopy, Copy, ExternalLink, FileText, MoreHorizontal, Pencil, RefreshCw, ScrollText, Sparkles, Square, Trash2, Users, FileImage } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "../api/client";
 import type { MeetingDetail, Summary, SummaryRequest } from "../api/types";
@@ -12,7 +12,7 @@ import { usePlayer } from "../lib/player";
 import { copyRichText, exportToGoogleDocs, GoogleDocsError, loadGoogleSignIn, NEW_GOOGLE_DOC, summaryDocument, type GoogleDocsFailure } from "../lib/googleDocs";
 import { downloadText, linkTimestamps, safeFileName, summaryMarkdown, type SummaryExport } from "../lib/summaryExport";
 import { printAsPdf } from "../lib/printPdf";
-import { slideUrl } from "./MeetingSlides";
+import { SlideViewer, slideUrl } from "./MeetingSlides";
 import { segmentAt } from "./Player";
 import { Menu } from "./Menu";
 import { Modal, useConfirm } from "./Modal";
@@ -99,6 +99,28 @@ function TsLink({ sec, meeting, children }: { sec: number; meeting: MeetingDetai
   );
 }
 
+/** A slide the summary shows, where it shows it: click to see it large (and the others). */
+function SummarySlide({ meeting, index, alt }: { meeting: MeetingDetail; index: number; alt: string }) {
+  const { t } = useI18n();
+  const [viewing, setViewing] = useState<number | null>(null);
+  const slide = meeting.slides![index]!;
+  const long = (meeting.durationSec ?? 0) >= 3600;
+  return (
+    <span className="summary-slide">
+      <button type="button" className="summary-slide-img" onClick={() => setViewing(index)} aria-label={t("slides.open", { n: index + 1 })}>
+        <img src={slideUrl(meeting.id, slide.id)} alt={alt || t("slides.thumbAlt", { t: clock(slide.at, long) })} width={slide.width} height={slide.height} loading="lazy" decoding="async" />
+      </button>
+      <span className="summary-slide-caption">
+        <TsLink sec={slide.at} meeting={meeting}>
+          {clock(slide.at, long)}
+        </TsLink>
+        {alt && <span>{alt}</span>}
+      </span>
+      {viewing != null && <SlideViewer meeting={meeting} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} />}
+    </span>
+  );
+}
+
 function Markdown({ content, meeting }: { content: string; meeting: MeetingDetail }) {
   const { duration } = usePlayer();
   // The player context changes several times a second during playback. Build
@@ -131,7 +153,15 @@ function Markdown({ content, meeting }: { content: string; meeting: MeetingDetai
                 </div>
               );
             },
+            // A slide the summary shows; a picture from anywhere else is not loaded, its description is kept.
+            img({ src, alt }) {
+              const id = typeof src === "string" && src.startsWith("slide:") ? src.slice(6) : null;
+              const index = id ? (meeting.slides ?? []).findIndex((x) => x.id === id) : -1;
+              if (index >= 0) return <SummarySlide meeting={meeting} index={index} alt={alt ?? ""} />;
+              return alt ? <span>{alt}</span> : null;
+            },
           }}
+          urlTransform={(url) => (url.startsWith("slide:") ? url : defaultUrlTransform(url))}
         >
           {linkTimestamps(content, duration)}
         </ReactMarkdown>
@@ -368,6 +398,7 @@ export function useSummaryInfo(meeting: MeetingDetail) {
     return s.templateName ?? t("summary.custom");
   };
   const exportOf = (s: Summary, withTranscript: boolean): SummaryExport => ({
+    slideWord: t("slides.word"),
     meeting,
     summary: s,
     version: versionOf(s),
@@ -420,14 +451,14 @@ export function useSummaryInfo(meeting: MeetingDetail) {
       },
     );
   };
-  /** A print-ready document with the meeting's slides, through the browser's print dialog ("Save as PDF"). */
-  const exportPdf = (s: Summary, withTranscript: boolean) => {
-    const x: SummaryExport = {
-      ...exportOf(s, withTranscript),
-      slides: (meeting.slides ?? []).map((sl) => ({ url: slideUrl(meeting.id, sl.id), at: sl.at, width: sl.width, height: sl.height })),
-      slidesHeading: t("slides.docHeading"),
-    };
-    printAsPdf(summaryDocument(x, t).body, nameOf(s, withTranscript)).catch((e: unknown) => toast.error(e));
+  /**
+   * The summary and the transcript as one print-ready document, through the
+   * browser's print dialog ("Save as PDF"): the slides the summary shows where
+   * it shows them, and every slide in the transcript where it appeared.
+   */
+  const exportPdf = (s: Summary) => {
+    const x: SummaryExport = { ...exportOf(s, true), slideImages: (id) => slideUrl(meeting.id, id) };
+    printAsPdf(summaryDocument(x, t).body, nameOf(s, true)).catch((e: unknown) => toast.error(e));
   };
   return { versionOf, labelOf, exportMarkdown, exportGoogleDoc, exportPdf };
 }
@@ -441,7 +472,7 @@ export function SummaryExportItems({
 }: {
   onExport: (withTranscript: boolean) => void;
   onGoogleDoc: (withTranscript: boolean) => void;
-  onPdf: (withTranscript: boolean) => void;
+  onPdf: () => void;
   /** The meeting's slides, which the PDF includes. */
   slideCount?: number;
 }) {
@@ -470,14 +501,12 @@ export function SummaryExportItems({
         <span className="end mono">.md</span>
       </button>
       <div className="menu-sep" />
-      <div className="menu-label smallcaps">PDF</div>
-      <p className="menu-note">{slideCount > 0 ? t("slides.pdfNoteWithSlides", { n: slideCount }) : t("slides.pdfNote")}</p>
-      <button className="menu-item" onClick={() => onPdf(false)}>
-        <FileText /> {t("summary.exportSummaryOnly")}
-        <span className="end mono">.pdf</span>
-      </button>
-      <button className="menu-item" onClick={() => onPdf(true)}>
-        <ScrollText /> {t("summary.exportWithTranscript")}
+      <button className="menu-item menu-item-rich" onClick={onPdf}>
+        <FileImage />
+        <span>
+          <span className="menu-item-title">{t("slides.pdfTitle")}</span>
+          <span className="menu-item-desc">{slideCount > 0 ? t("slides.pdfNoteWithSlides", { n: slideCount }) : t("slides.pdfNote")}</span>
+        </span>
         <span className="end mono">.pdf</span>
       </button>
       <div className="menu-sep" />
