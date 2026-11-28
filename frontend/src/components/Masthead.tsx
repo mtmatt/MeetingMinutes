@@ -1,4 +1,4 @@
-import { AudioLines, BarChart3, ChevronDown, Megaphone, Coins, FileText, Languages, Library, LogOut, Mic, Monitor, Moon, Plus, Settings, Shield, Sun, Upload } from "lucide-react";
+import { AudioLines, BarChart3, ChevronDown, Megaphone, Coins, FileText, Languages, Library, LogOut, Mic, Monitor, Moon, Plus, Settings, Shield, Sun, Upload, BookA } from "lucide-react";
 import { NavLink, useNavigate } from "react-router";
 import { api } from "../api/client";
 import { useAnnouncements } from "../lib/announcements";
@@ -56,6 +56,7 @@ export function Masthead() {
             {t("nav.library")}
           </NavLink>
           <NavLink to="/templates">{t("nav.templates")}</NavLink>
+          <NavLink to="/glossaries">{t("nav.glossaries")}</NavLink>
           <NavLink to="/voices">{t("nav.voices")}</NavLink>
           {user?.role === "admin" && <NavLink to="/admin">{t("nav.admin")}</NavLink>}
         </nav>
@@ -133,6 +134,9 @@ export function Masthead() {
                   </NavLink>
                   <NavLink className="menu-item" to="/templates" onClick={close}>
                     <FileText /> {t("nav.templates")}
+                  </NavLink>
+                  <NavLink className="menu-item" to="/glossaries" onClick={close}>
+                    <BookA /> {t("nav.glossaries")}
                   </NavLink>
                   <NavLink className="menu-item" to="/voices" onClick={close}>
                     <AudioLines /> {t("nav.voices")}

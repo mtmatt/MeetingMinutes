@@ -20,6 +20,7 @@ import { downloadBlob } from "../lib/download";
 import { useBilling } from "../lib/billing";
 import { pointsText, transcriptionCost } from "../lib/format";
 import { SlideOption, useSlidesChoice } from "../components/SlideOption";
+import { GlossaryPicker } from "../components/GlossaryPicker";
 import { SlideStrip } from "../components/SlideStrip";
 import { scanVideo, type CapturedSlide } from "../lib/slides";
 
@@ -677,6 +678,7 @@ export function UploadPage() {
                     {t("upload.vocabulary")} <span className="faint">· {t("common.optional")}</span>
                   </span>
                 </label>
+                <GlossaryPicker vocabulary={vocabulary} onChange={setVocabulary} />
                 <textarea
                   id="vocab"
                   className="textarea"

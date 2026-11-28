@@ -517,4 +517,17 @@ export const migrations: string[] = [
   ALTER TABLE summaries ADD COLUMN with_slides INTEGER NOT NULL DEFAULT 1;
   ALTER TABLE summaries ADD COLUMN slides_sent INTEGER;
   `,
+  // 21: named lists of terms (names, products, acronyms) a person keeps to help speech recognition,
+  // added to a recording's vocabulary in one click.
+  `
+  CREATE TABLE glossaries (
+    id          TEXT PRIMARY KEY,
+    owner_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    terms       TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  );
+  CREATE INDEX glossaries_owner ON glossaries(owner_id, name);
+  `,
 ];

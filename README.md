@@ -522,6 +522,10 @@ The container runs the worker code from the checkout you deployed: after `git pu
 
 The worker side is ordinary: `python -m mm_worker run --exit-when-idle 60` (or `MM_EXIT_WHEN_IDLE_SEC`) makes any worker exit after a minute without work, and a remote worker's token may also be given as `WORKER_TOKEN` (with `MM_SERVER_URL`) instead of an enrollment file.
 
+## Term lists
+
+**Terms** (next to Templates) keeps named lists of the names, products, courses and acronyms that come up in someone's meetings. On the upload page, under **Transcription settings → Terms**, each list is a button that adds its terms to the recording's vocabulary (or takes them out again), and terms typed there can be saved as a new list. The vocabulary is what speech recognition is given, so these words come out spelled right. Each person sees only their own lists (at most 100, of up to 2,000 characters each).
+
 ## Presets for adding a recording
 
 Settings people reuse can be kept as named presets: the language, the number of speakers, the vocabulary (names and terms the recogniser should spell your way, such as `NTU COOL、資工系`), the script, and whether and how to summarise. On **New recording**, choose a preset to fill all of them in; after changing settings, **Update** keeps them in that preset, or **Save as preset** makes a new one. The preset marked default is filled in whenever the page opens. **Settings → Presets** lists them, to change the default, rename or delete one. Presets are per person (up to 30), and changing one never touches recordings already added.

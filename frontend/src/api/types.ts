@@ -262,6 +262,15 @@ export interface MeetingDetail extends MeetingSummary {
   slides?: Slide[];
 }
 
+/** A named list of terms (names, products, acronyms) that help speech recognition. */
+export interface Glossary {
+  id: string;
+  name: string;
+  terms: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Template {
   id: string;
   builtin: boolean;
