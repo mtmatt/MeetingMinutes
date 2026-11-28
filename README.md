@@ -522,6 +522,10 @@ The container runs the worker code from the checkout you deployed: after `git pu
 
 The worker side is ordinary: `python -m mm_worker run --exit-when-idle 60` (or `MM_EXIT_WHEN_IDLE_SEC`) makes any worker exit after a minute without work, and a remote worker's token may also be given as `WORKER_TOKEN` (with `MM_SERVER_URL`) instead of an enrollment file.
 
+## Term lists
+
+**Terms** (next to Templates) keeps named lists of the names, products, courses and acronyms that come up in someone's meetings. On the upload page, under **Transcription settings → Terms**, each list is a button that adds its terms to the recording's vocabulary (or takes them out again), and terms typed there can be saved as a new list. The vocabulary is what speech recognition is given, so these words come out spelled right. Each person sees only their own lists (at most 100, of up to 2,000 characters each).
+
 ## Presets for adding a recording
 
 Settings people reuse can be kept as named presets: the language, the number of speakers, the vocabulary (names and terms the recogniser should spell your way, such as `NTU COOL、資工系`), the script, and whether and how to summarise. On **New recording**, choose a preset to fill all of them in; after changing settings, **Update** keeps them in that preset, or **Save as preset** makes a new one. The preset marked default is filled in whenever the page opens. **Settings → Presets** lists them, to change the default, rename or delete one. Presets are per person (up to 30), and changing one never touches recordings already added.
@@ -594,7 +598,7 @@ A few limits to know about:
 People can have Minutes keep a picture of what was on screen each time it changes a lot, as when a slide changes. The pictures are picked **in their own browser**: only the pictures are uploaded, never the video for this.
 
 - **A video file**: turn on **Capture slides** under the file. The browser steps through the video (one frame a second for up to an hour, then every two or three seconds), in the background while the rest of the form is filled in. The slides found are shown as thumbnails; any can be removed before uploading. They are sent after the recording and before it is marked complete, so the automatic summary has them.
-- **An online meeting recorded in the browser**: turn on **Capture slides** before starting. The shared tab is then captured at up to 1080p, one frame a second, and the pictures are kept in the browser with the recording (restoring an interrupted recording restores its slides too).
+- **An online meeting recorded in the browser**: turn on **Capture slides** before starting. The shared tab is then captured at up to 720p. A shared tab sends a frame only when its picture changes, so the newest frame is looked at once a second on a clock kept in a Web Worker (a background tab's own timers are slowed down to once a minute), and the pictures are kept in the browser with the recording (restoring an interrupted recording restores its slides too).
 
 Each frame is shrunk on the GPU with WebGL to a 160×90 grey picture and compared with the slide kept last. Measuring how much of the slide's *content* (whatever is not its background) changed, rather than how much of the screen, tells two text slides of the same template apart. Parts of the screen that keep moving (a speaker's camera, a playing clip) are learned and ignored; a transition is waited out until the picture holds still; a slide that only gains something (a bullet appearing) keeps one picture, as it finally looked; going back to an earlier slide keeps no second copy; black frames are skipped. Browsers without WebGL fall back to a 2D canvas.
 
@@ -604,7 +608,7 @@ On the meeting page the slides sit in the transcript where they appeared; click 
 
 **Exporting a summary as PDF** (Export → PDF) lays out the summary, the meeting's slides with their times, and optionally the transcript, and opens the browser's print dialog: choose **Save as PDF**. Doing it there keeps the text selectable and the Chinese fonts right without embedding several megabytes of font in the page.
 
-Limits: 300 slides a meeting, JPEG only, at most 1.5 MB and 2560 pixels a side each.
+Pictures are JPEG at quality 0.72, at most 1280 pixels on the longer side: typically 15–40 KB each, with slide text still sharp. Limits: 300 slides a meeting, JPEG only, at most 1.5 MB and 2560 pixels a side each.
 
 ## Configuration
 

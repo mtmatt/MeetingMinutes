@@ -20,6 +20,7 @@ import { internalRoutes } from "./routes/internal";
 import { meetingRoutes } from "./routes/meetings";
 import { presetRoutes } from "./routes/presets";
 import { templateRoutes } from "./routes/templates";
+import { glossaryRoutes } from "./routes/glossaries";
 import { voiceRoutes } from "./routes/voices";
 import type { AppEnv } from "./types";
 
@@ -113,6 +114,7 @@ export function createApp() {
   api.route("/me", meRoutes);
   api.route("/meetings", meetingRoutes);
   api.route("/templates", templateRoutes);
+  api.route("/glossaries", glossaryRoutes);
   api.route("/presets", presetRoutes);
   api.route("/billing", billingRoutes);
   api.route("/usage", usageRoutes);

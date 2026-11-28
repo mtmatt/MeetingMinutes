@@ -1,4 +1,5 @@
 import type {
+  Glossary,
   Slide,
   RefineInfo,
   RefineSettings,
@@ -255,6 +256,10 @@ export const api = {
 
   // templates
   templates: () => get<{ templates: Template[] }>("/templates"),
+  glossaries: () => get<{ glossaries: Glossary[] }>("/glossaries"),
+  createGlossary: (b: { name: string; terms: string }) => post<{ glossary: Glossary }>("/glossaries", b),
+  updateGlossary: (id: string, b: { name: string; terms: string }) => put<{ glossary: Glossary }>(`/glossaries/${encodeURIComponent(id)}`, b),
+  deleteGlossary: (id: string) => del<{ ok: true }>(`/glossaries/${encodeURIComponent(id)}`),
   presets: () => get<{ presets: Preset[] }>("/presets"),
   createPreset: (b: PresetInput) => post<{ preset: Preset; presets: Preset[] }>("/presets", b),
   updatePreset: (id: string, b: PresetInput) => put<{ preset: Preset; presets: Preset[] }>(`/presets/${id}`, b),

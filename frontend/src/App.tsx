@@ -19,6 +19,7 @@ const pages = {
   meeting: () => import("./pages/Meeting"),
   upload: () => import("./pages/Upload"),
   templates: () => import("./pages/Templates"),
+  glossaries: () => import("./pages/Glossaries"),
   voices: () => import("./pages/Voices"),
   settings: () => import("./pages/Settings"),
   admin: () => import("./pages/Admin"),
@@ -39,7 +40,7 @@ export function preloadPages(pathname: string) {
     ? pages.meeting
     : pathname === "/new"
       ? pages.upload
-      : ({ "/templates": pages.templates, "/voices": pages.voices, "/settings": pages.settings, "/admin": pages.admin, "/billing": pages.billing, "/usage": pages.usage } as Record<string, () => Promise<unknown>>)[pathname];
+      : ({ "/templates": pages.templates, "/glossaries": pages.glossaries, "/voices": pages.voices, "/settings": pages.settings, "/admin": pages.admin, "/billing": pages.billing, "/usage": pages.usage } as Record<string, () => Promise<unknown>>)[pathname];
   first?.().catch(() => {});
   const later = () => void pages.meeting().catch(() => {});
   if ("requestIdleCallback" in window) window.requestIdleCallback(later, { timeout: 4000 });
@@ -109,6 +110,7 @@ export const router = createBrowserRouter([
         { path: "/new", lazy: async () => ({ Component: (await pages.upload()).UploadPage }) },
         { path: "/m/:id", lazy: async () => ({ Component: (await pages.meeting()).MeetingPage }) },
         { path: "/templates", lazy: async () => ({ Component: (await pages.templates()).TemplatesPage }) },
+        { path: "/glossaries", lazy: async () => ({ Component: (await pages.glossaries()).GlossariesPage }) },
         { path: "/voices", lazy: async () => ({ Component: (await pages.voices()).VoicesPage }) },
         { path: "/settings", lazy: async () => ({ Component: (await pages.settings()).SettingsPage }) },
         { path: "/billing", lazy: async () => ({ Component: (await pages.billing()).BillingPage }) },

@@ -49,8 +49,8 @@ const MIN_STILL = 0.2;
 /** Pictures kept at most (the server takes 300). */
 export const MAX_SLIDES = 200;
 /** Longest side of a kept picture. */
-const MAX_EDGE = 1600;
-const JPEG_QUALITY = 0.82;
+const MAX_EDGE = 1280;
+const JPEG_QUALITY = 0.72;
 
 export interface CapturedSlide {
   /** Unique id: an upload sent twice is stored once. */
@@ -545,18 +545,35 @@ export async function scanVideo(
 
 // ------------------------------------------------------- shared screens
 
+/** Calls `fn` every `ms` milliseconds, from a worker where possible (not slowed down in a background tab). */
+function backgroundClock(ms: number, fn: () => void): () => void {
+  try {
+    const worker = new Worker(new URL("./tick.worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = fn;
+    worker.postMessage({ start: ms });
+    return () => worker.terminate();
+  } catch {
+    const id = window.setInterval(fn, ms);
+    return () => clearInterval(id);
+  }
+}
+
 /**
- * Watch a shared tab's video track during a recording. Frames are read as
- * they arrive (MediaStreamTrackProcessor where the browser has it, so a
- * background tab is not slowed down by timer throttling), at most one a second.
- * `timeAt` gives the recording time for a frame, or null while paused.
+ * Watch a shared tab's video track during a recording. A shared tab sends a
+ * frame only when its picture changes, so frames cannot be the clock: the
+ * newest one is kept, and looked at once a second whether or not another came
+ * (a slide that holds still is how a new one is confirmed). Frames are read
+ * with MediaStreamTrackProcessor where the browser has it, else from a muted
+ * video element showing the track. `timeAt` gives the recording time, or null
+ * while paused.
  */
 export class ScreenWatcher {
-  private stopped = false;
   private reader: ReadableStreamDefaultReader<VideoFrame> | null = null;
+  private latest: VideoFrame | null = null;
   private video: HTMLVideoElement | null = null;
-  private timer: number | null = null;
-  private lastAt = -Infinity;
+  private stopClock: (() => void) | null = null;
+  private busy = false;
+  private generation = 0;
 
   constructor(
     private collector: SlideCollector,
@@ -566,27 +583,27 @@ export class ScreenWatcher {
 
   watch(track: MediaStreamTrack) {
     this.release();
-    this.stopped = false;
+    const gen = ++this.generation;
     const Processor = (window as unknown as { MediaStreamTrackProcessor?: new (o: { track: MediaStreamTrack }) => { readable: ReadableStream<VideoFrame> } })
       .MediaStreamTrackProcessor;
     if (Processor) {
       const reader = new Processor({ track }).readable.getReader();
       this.reader = reader;
-      void this.pump(reader);
-      return;
+      void this.pump(reader, gen);
+    } else {
+      const video = document.createElement("video");
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = new MediaStream([track]);
+      void video.play().catch(() => undefined);
+      this.video = video;
     }
-    // Elsewhere: a muted video element showing the track, sampled once a second.
-    const video = document.createElement("video");
-    video.muted = true;
-    video.playsInline = true;
-    video.srcObject = new MediaStream([track]);
-    void video.play().catch(() => undefined);
-    this.video = video;
-    this.timer = window.setInterval(() => void this.look(video), 1000);
+    this.stopClock = backgroundClock(1000, () => void this.tick());
   }
 
-  private async pump(reader: ReadableStreamDefaultReader<VideoFrame>) {
-    while (!this.stopped) {
+  /** Keep only the newest frame. */
+  private async pump(reader: ReadableStreamDefaultReader<VideoFrame>, gen: number) {
+    while (gen === this.generation) {
       let r: ReadableStreamReadResult<VideoFrame>;
       try {
         r = await reader.read();
@@ -594,38 +611,48 @@ export class ScreenWatcher {
         return;
       }
       if (r.done) return;
-      const frame = r.value;
-      try {
-        await this.look(frame);
-      } finally {
-        frame.close();
+      if (gen !== this.generation) {
+        r.value.close();
+        return;
       }
+      this.latest?.close();
+      this.latest = r.value;
     }
   }
 
-  private busy = false;
-  private async look(src: Source) {
-    if (this.busy || this.stopped) return;
+  private async tick() {
+    if (this.busy) return;
     const at = this.timeAt();
-    if (at == null || at - this.lastAt < 1) return;
+    if (at == null) return;
+    // A copy: a newer frame may replace (and close) the newest one while this one is read.
+    let copy: VideoFrame | null = null;
+    try {
+      copy = this.latest?.clone() ?? null;
+    } catch {
+      copy = null;
+    }
+    const src: Source | null = copy ?? (this.video && this.video.readyState >= 2 ? this.video : null);
+    if (!src) return;
     this.busy = true;
-    this.lastAt = at;
     try {
       const slide = await this.collector.frame(src, at);
       if (slide) this.onSlide(slide);
     } catch {
       // One unreadable frame is not worth stopping for.
     } finally {
+      copy?.close();
       this.busy = false;
     }
   }
 
   private release() {
-    this.stopped = true;
+    this.generation++;
+    this.stopClock?.();
+    this.stopClock = null;
     void this.reader?.cancel().catch(() => undefined);
     this.reader = null;
-    if (this.timer != null) clearInterval(this.timer);
-    this.timer = null;
+    this.latest?.close();
+    this.latest = null;
     if (this.video) this.video.srcObject = null;
     this.video = null;
   }

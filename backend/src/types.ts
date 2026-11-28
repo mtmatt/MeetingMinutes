@@ -216,6 +216,17 @@ export interface SummaryRow {
   finished_at: number | null;
 }
 
+/** A named list of terms that help speech recognition (names, products, acronyms). */
+export interface GlossaryRow {
+  id: string;
+  owner_id: string;
+  name: string;
+  /** Terms separated by commas or new lines, as typed. */
+  terms: string;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface TemplateRow {
   id: string;
   owner_id: string | null;

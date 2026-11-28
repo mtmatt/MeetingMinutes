@@ -225,6 +225,11 @@
   width: 14px;
   height: 14px;
 }
+/* A name that wraps splits evenly ("準備模型 / 與錄音"), never leaving one character alone. */
+.pipeline-label {
+  min-width: 0;
+  text-wrap: balance;
+}
 .pipeline-step.done {
   color: var(--ink-2);
 }
