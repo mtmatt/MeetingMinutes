@@ -583,6 +583,7 @@
 }
 .speaker-clips-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   min-width: 0;
@@ -637,6 +638,7 @@
 }
 .speaker-clips-count {
   min-width: 3.4em;
+  white-space: nowrap;
   text-align: center;
   font-size: var(--step--2);
   color: var(--ink-2);
@@ -664,9 +666,6 @@
   color: var(--accent);
 }
 .speaker-clips-length {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   color: var(--ink-3);
 }
 .speaker-clips-length::before {
@@ -676,6 +675,19 @@
 }
 .speaker-clips-close {
   margin-left: auto;
+}
+/* A narrow column: the time and length move to a row of their own (below the controls, under the
+   counter) instead of being cut off; the close button stays at the end of the first row. */
+.speaker-clips {
+  container-type: inline-size;
+}
+@container (max-width: 340px) {
+  .speaker-clips-where {
+    order: 1;
+    flex-basis: 100%;
+    margin-left: 0;
+    padding-left: 36px;
+  }
 }
 .speaker-clips-progress {
   display: block;
