@@ -250,7 +250,8 @@
     break-inside: avoid;
   }
   .print-doc .doc-slide {
-    margin: 0 0 12pt;
+    display: block;
+    margin: 6pt 0 12pt;
     break-inside: avoid;
   }
   .print-doc .doc-slide img {
@@ -261,9 +262,49 @@
     object-fit: contain;
     border: 0.5pt solid #bbb;
   }
-  .print-doc .doc-slide figcaption {
+  /* In the transcript: every slide, so smaller. */
+  .print-doc .doc-slide.small img {
+    width: 62%;
+    max-height: 70mm;
+  }
+  .print-doc .doc-slide-caption {
+    display: block;
     margin-top: 3pt;
     font-size: 9pt;
     color: #555;
   }
+}
+
+/* A slide the summary shows, where it shows it. */
+.summary-slide {
+  display: block;
+  margin: var(--space-3) 0 var(--space-4);
+}
+.summary-slide-img {
+  display: block;
+  width: 100%;
+  max-width: 520px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+.summary-slide-img:hover {
+  border-color: var(--rule-strong);
+}
+.summary-slide-img img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0;
+}
+.summary-slide-caption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--space-2);
+  margin-top: 6px;
+  font-size: var(--step--1);
+  color: var(--ink-3);
 }

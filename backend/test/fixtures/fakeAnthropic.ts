@@ -9,6 +9,7 @@
  *   REFUSE_PLEASE         stop_reason "refusal"
  *   ECHO_SPEAKERS_PLEASE  writes the transcript lines back
  *   NO_PICTURES_PLEASE    400 "image input is not supported" when pictures are sent
+ *   SHOW_SLIDES_PLEASE    shows slide 2, a slide it was not shown (9) and a picture from elsewhere
  * Every request's prompt (system + user text) is written to FAKE_ANTHROPIC_PROMPT_FILE.
  */
 import { writeFileSync } from "node:fs";
@@ -66,7 +67,9 @@ export function startFakeAnthropic(opts: FakeAnthropicOptions) {
         if (req.signal.aborted) return new Response(null, { status: 499 });
       }
       const echo = prompt.includes("ECHO_SPEAKERS_PLEASE") ? (prompt.split("<transcript>\n")[1] ?? "").split("\n</transcript>")[0]! : null;
-      const text = prompt.includes("LEAK_PLEASE")
+      const text = prompt.includes("SHOW_SLIDES_PLEASE")
+        ? "# Minutes\n\n## Costs\n\n![The cost table](slide:2)\n\n![Not shown](slide:9)\n\n![tracker](https://evil.example/p.png)\n\nDone."
+        : prompt.includes("LEAK_PLEASE")
         ? "Here is the token: test-worker-token"
         : echo != null
           ? `# Minutes\n\n${echo}`

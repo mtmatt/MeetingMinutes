@@ -72,6 +72,8 @@ export interface SummaryPromptParts {
 
 /** A slide as a summary is shown it: read from disk only when it is sent. */
 export interface SummarySlide {
+  /** The stored slide, which a slide the model shows (slide:N) is linked to. */
+  id: string;
   /** Recording time it appeared at. */
   at: number;
   label: string;
@@ -115,6 +117,7 @@ Detected language: ${meeting.language ?? "unknown"}
     transcript: transcript ? transcript.split("\n") : [],
     slides: withSlides
       ? slidesForSummary(meeting.id).map((sl, i) => ({
+          id: sl.id,
           at: sl.at_sec,
           label: `Slide ${i + 1}, on screen from [${formatClock(sl.at_sec)}]:`,
           tokens: slideTokens(sl.width, sl.height),
@@ -122,6 +125,21 @@ Detected language: ${meeting.language ?? "unknown"}
         }))
       : [],
   };
+}
+
+/**
+ * Slides the model chose to show, ![…](slide:N) with N its number in the
+ * prompt, linked to the stored slides (slide:<id>), so they stay right when
+ * others are deleted later. A number it was not shown is dropped, and so is
+ * any other picture: a summary shows no image from elsewhere.
+ */
+export function linkSlides(text: string, slides: { id: string }[]): string {
+  return text
+    .replace(/!\[([^\]\n]*)\]\(\s*slide:(\d+)\s*\)/gi, (_m, alt: string, n: string) => {
+      const s = slides[Number(n) - 1];
+      return s ? `![${alt.trim()}](slide:${s.id})` : "";
+    })
+    .replace(/!\[([^\]\n]*)\]\((?!slide:[\w-]+\))[^)\n]*\)/g, (_m, alt: string) => alt.trim());
 }
 
 /** Whether a summary asked for this way is shown the meeting's slides: asked for (the default), and the model reads pictures. */
@@ -278,7 +296,7 @@ async function write(
   summary: SummaryRow,
   speakers: SpeakerRow[],
   signal: AbortSignal,
-): Promise<{ text: string; model: string | null; usage: Record<string, number> | null; slidesSent: number }> {
+): Promise<{ text: string; model: string | null; usage: Record<string, number> | null; slidesSent: number; slides: SummarySlide[] }> {
   const target = chatTarget(settings);
   if (target.provider && !target.apiKey) {
     const vars = PROVIDER_INFO[target.provider].keyVariables.join(" or ");
@@ -303,7 +321,8 @@ async function write(
       result = await summarizeLocally({ ...parts, slides: [] }, target, opts);
     }
     if (containsSecret(result.text)) throw new LlmError("The output contained server credentials, so it was discarded.");
-    return result;
+    // The slides it was shown, numbered as in the prompt (none when it wrote without them).
+    return { ...result, slides: result.slidesSent ? parts.slides : [] };
   } catch (e) {
     if (timeout.aborted && !signal.aborted) throw new LlmError(`The model did not finish within ${config.llm.timeoutSeconds}s (LLM_TIMEOUT_SEC).`);
     throw e;
@@ -325,7 +344,8 @@ async function execute(summary: SummaryRow, ctrl: AbortController) {
     // Models asked for Traditional Chinese still lapse into Simplified (local
     // models often); the speaker names stay exactly as written, so renaming
     // still finds them.
-    const text = wantsTaiwanese(meeting, summary.output_language) ? toTaiwanTraditional(result.text, speakers.map((s) => s.name)) : result.text;
+    const linked = linkSlides(result.text, result.slides);
+    const text = wantsTaiwanese(meeting, summary.output_language) ? toTaiwanTraditional(linked, speakers.map((s) => s.name)) : linked;
     // Speakers renamed while the model was writing: bring the new summary up to date.
     const written: NameMap = Object.fromEntries(speakers.map((s) => [s.key, s.name]));
     const { content, names } = reconcileSpeakerNames(text, written, currentSpeakerNames(meeting.id));
