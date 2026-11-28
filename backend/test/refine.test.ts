@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { db } from "../src/db";
 import { acceptableFix, editDistance, setRefineClientForTests } from "../src/services/refine";
-import { adminClient, memberClient, waitFor, type Client } from "./helpers";
+import { adminClient, memberClient, waitFor, worker, type Client } from "./helpers";
 
 let n = 0;
 /** Every request the stand-in model received. */
@@ -161,5 +161,48 @@ describe("correcting a transcript with a hosted model", () => {
     await waitFor(async () => (await detail(c, id)).refinement?.status === "done");
     await waitFor(async () => summaries() === 1);
     expect(summaries()).toBe(1);
+  });
+
+  test("transcribing again (or re-splitting speakers) can ask for a correction of the new transcript", async () => {
+    await setRefine(true);
+    const c = await memberClient("refine-again");
+    // A real upload and transcription, so transcribing again goes through the worker.
+    const bytes = new Uint8Array(2048).fill(5);
+    const created = await c.post("/api/meetings", { title: "再轉錄", file: { name: "a.m4a", size: bytes.length } });
+    const { meeting } = (await created.json()) as any;
+    await c.req("PUT", `/api/meetings/${meeting.id}/upload?offset=0`, { body: bytes, headers: { "content-type": "application/octet-stream" } });
+    await c.post(`/api/meetings/${meeting.id}/upload/complete`);
+    const finish = async () => {
+      for (let i = 0; i < 60; i++) {
+        const res = await worker.call("/jobs/claim", { workerId: "gpu-refine", kinds: ["transcribe"] });
+        if (res.status === 204) break;
+        const { job } = (await res.json()) as any;
+        if (job.meetingId !== meeting.id) {
+          await worker.call(`/jobs/${job.jobId}/fail`, { workerId: "gpu-refine", error: "not this test", retryable: false });
+          continue;
+        }
+        const done = await worker.call(`/jobs/${job.jobId}/complete`, {
+          workerId: "gpu-refine",
+          result: { durationSec: 60, language: "Chinese", hasVideo: false, hasPlayback: false, hasPeaks: false, speakers: ["SPEAKER_00"], segments: [{ start: 0, end: 3, speaker: "SPEAKER_00", text: "我們改用瑞克特。" }] },
+        });
+        expect(done.status).toBe(200);
+        return;
+      }
+      throw new Error("the transcription was never handed out");
+    };
+    await finish();
+    // Not asked at upload: no correction.
+    expect((await detail(c, meeting.id)).refinement).toBeNull();
+
+    const d = await detail(c, meeting.id);
+    expect((await c.post(`/api/meetings/${meeting.id}/retranscribe`, { options: { ...d.options, refine: true } })).status).toBe(200);
+    await finish();
+    const after = await waitFor(async () => {
+      const m = await detail(c, meeting.id);
+      return m.refinement?.status === "done" && m;
+    });
+    expect(after.options.refine).toBe(true);
+    expect(after.segments[0].text).toBe("我們改用React。");
+    db.query("DELETE FROM meetings WHERE id = $id").run({ id: meeting.id });
   });
 });
