@@ -1485,3 +1485,24 @@
 .refine-note .link-btn {
   margin-left: 4px;
 }
+
+/* Notices between the meeting's head and its columns (speakers, a deleted recording, the AI
+   correction): clear of the head's rule, with the columns' own top padding below them. */
+.meeting > .diarize-notice,
+.meeting > .retention-note,
+.meeting > .refine-note {
+  margin: 20px 0 0;
+}
+.meeting > .diarize-notice + .retention-note,
+.meeting > .diarize-notice + .refine-note,
+.meeting > .retention-note + .refine-note,
+.meeting > .retention-note + .diarize-notice {
+  margin-top: 12px;
+}
+@media (max-width: 1000px) {
+  .meeting > .diarize-notice,
+  .meeting > .retention-note,
+  .meeting > .refine-note {
+    margin-bottom: 12px;
+  }
+}

@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 import { defineConfig, type Plugin } from "vite";
@@ -32,6 +32,36 @@ function preloadFonts(): Plugin {
   };
 }
 
+/** Days a build's scripts and styles stay after a newer build replaced them. */
+const KEEP_OLD_ASSETS_DAYS = 14;
+
+/**
+ * Pages opened before an update still ask for the scripts of the build they
+ * were loaded with (assets/Upload-<hash>.js). The output folder is therefore
+ * not emptied: files of earlier builds stay for KEEP_OLD_ASSETS_DAYS days, so
+ * such a page keeps working, and older ones are removed. Files of the new
+ * build are written afresh, so their dates are new.
+ */
+function keepPreviousAssets(): Plugin {
+  let outDir = "dist";
+  return {
+    name: "mm-keep-previous-assets",
+    apply: "build",
+    configResolved(c) {
+      outDir = c.build.outDir;
+    },
+    closeBundle() {
+      const dir = join(outDir, "assets");
+      if (!existsSync(dir)) return;
+      const cutoff = Date.now() - KEEP_OLD_ASSETS_DAYS * 86_400_000;
+      for (const name of readdirSync(dir)) {
+        const p = join(dir, name);
+        if (statSync(p).mtimeMs < cutoff) rmSync(p, { force: true });
+      }
+    },
+  };
+}
+
 /**
  * Brotli and gzip copies of the text assets next to them (app.js.br, app.js.gz),
  * made once at build time at the best compression, so the server sends them
@@ -53,6 +83,9 @@ function precompress(): Plugin {
         });
       for (const file of walk(outDir)) {
         if (!/\.(js|css|html|svg|json|txt|webmanifest)$/.test(file)) continue;
+        // An earlier build's file, compressed then: nothing to do again.
+        const mtime = statSync(file).mtimeMs;
+        if (existsSync(file + ".br") && statSync(file + ".br").mtimeMs >= mtime) continue;
         const data = readFileSync(file);
         if (data.length < 1024) continue;
         const br = brotliCompressSync(data, {
@@ -67,7 +100,7 @@ function precompress(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), preloadFonts(), precompress()],
+  plugins: [react(), preloadFonts(), keepPreviousAssets(), precompress()],
   server: {
     port: 5173,
     proxy: {
@@ -78,5 +111,7 @@ export default defineConfig({
     target: "es2022",
     sourcemap: false,
     chunkSizeWarningLimit: 900,
+    // Earlier builds' files stay for pages opened before an update (see keepPreviousAssets).
+    emptyOutDir: false,
   },
 });

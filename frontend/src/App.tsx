@@ -2,6 +2,7 @@ import { Navigate, Outlet, createBrowserRouter, useLocation } from "react-router
 import { AnnouncementBanners } from "./components/Announcements";
 import { Masthead } from "./components/Masthead";
 import { Seal } from "./components/Seal";
+import { RouteError } from "./components/RouteError";
 import { useAuth } from "./lib/auth";
 import { useLiveUpdates } from "./lib/useLiveUpdates";
 import { ForgotPasswordPage, InvitePage, LoginPage, RegisterPage, SetupPage, VerifyEmailPage } from "./pages/Auth";
@@ -98,35 +99,41 @@ function PublicOnly() {
 
 export const router = createBrowserRouter([
   {
-    element: <Protected />,
+    // Any page that fails to load or render: after an update, a reload into the new version.
+    errorElement: <RouteError />,
     children: [
-      { path: "/", element: <LibraryPage /> },
-      { path: "/new", lazy: async () => ({ Component: (await pages.upload()).UploadPage }) },
-      { path: "/m/:id", lazy: async () => ({ Component: (await pages.meeting()).MeetingPage }) },
-      { path: "/templates", lazy: async () => ({ Component: (await pages.templates()).TemplatesPage }) },
-      { path: "/voices", lazy: async () => ({ Component: (await pages.voices()).VoicesPage }) },
-      { path: "/settings", lazy: async () => ({ Component: (await pages.settings()).SettingsPage }) },
-      { path: "/billing", lazy: async () => ({ Component: (await pages.billing()).BillingPage }) },
-      { path: "/usage", lazy: async () => ({ Component: (await pages.usage()).UsagePage }) },
-      { path: "/announcements", lazy: async () => ({ Component: (await pages.announcements()).AnnouncementsPage }) },
-      { element: <AdminOnly />, children: [{ path: "/admin", lazy: async () => ({ Component: (await pages.admin()).AdminPage }) }] },
-    ],
+    {
+      element: <Protected />,
+      children: [
+        { path: "/", element: <LibraryPage /> },
+        { path: "/new", lazy: async () => ({ Component: (await pages.upload()).UploadPage }) },
+        { path: "/m/:id", lazy: async () => ({ Component: (await pages.meeting()).MeetingPage }) },
+        { path: "/templates", lazy: async () => ({ Component: (await pages.templates()).TemplatesPage }) },
+        { path: "/voices", lazy: async () => ({ Component: (await pages.voices()).VoicesPage }) },
+        { path: "/settings", lazy: async () => ({ Component: (await pages.settings()).SettingsPage }) },
+        { path: "/billing", lazy: async () => ({ Component: (await pages.billing()).BillingPage }) },
+        { path: "/usage", lazy: async () => ({ Component: (await pages.usage()).UsagePage }) },
+        { path: "/announcements", lazy: async () => ({ Component: (await pages.announcements()).AnnouncementsPage }) },
+        { element: <AdminOnly />, children: [{ path: "/admin", lazy: async () => ({ Component: (await pages.admin()).AdminPage }) }] },
+      ],
+    },
+    {
+      element: <PublicOnly />,
+      children: [
+        { path: "/login", element: <LoginPage /> },
+        { path: "/setup", element: <SetupPage /> },
+        { path: "/register", element: <RegisterPage /> },
+        { path: "/forgot", element: <ForgotPasswordPage /> },
+      ],
+    },
+    { path: "/invite/:token", element: <InvitePage /> },
+    // Opened from an email, signed in or not (it may confirm a changed address).
+    { path: "/verify-email/:token", element: <VerifyEmailPage /> },
+    // The terms of sale: for anyone, signed in or not (buyers, and payment providers reviewing the site).
+    { path: "/terms", lazy: async () => ({ Component: (await pages.terms()).TermsPage }) },
+    // What is sold and for how much (NT$): for anyone, signed in or not.
+    { path: "/pricing", lazy: async () => ({ Component: (await pages.pricing()).PricingPage }) },
+    { path: "*", element: <NotFoundPage /> },
+  ],
   },
-  {
-    element: <PublicOnly />,
-    children: [
-      { path: "/login", element: <LoginPage /> },
-      { path: "/setup", element: <SetupPage /> },
-      { path: "/register", element: <RegisterPage /> },
-      { path: "/forgot", element: <ForgotPasswordPage /> },
-    ],
-  },
-  { path: "/invite/:token", element: <InvitePage /> },
-  // Opened from an email, signed in or not (it may confirm a changed address).
-  { path: "/verify-email/:token", element: <VerifyEmailPage /> },
-  // The terms of sale: for anyone, signed in or not (buyers, and payment providers reviewing the site).
-  { path: "/terms", lazy: async () => ({ Component: (await pages.terms()).TermsPage }) },
-  // What is sold and for how much (NT$): for anyone, signed in or not.
-  { path: "/pricing", lazy: async () => ({ Component: (await pages.pricing()).PricingPage }) },
-  { path: "*", element: <NotFoundPage /> },
 ]);
