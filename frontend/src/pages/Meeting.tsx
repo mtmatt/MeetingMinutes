@@ -410,7 +410,7 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
             )}
             <Menu
               trigger={({ toggle }) => (
-                <button className="icon-btn" onClick={toggle} aria-label="More">
+                <button className="icon-btn" onClick={toggle} aria-label={t("common.more")}>
                   <MoreHorizontal />
                 </button>
               )}

@@ -196,7 +196,7 @@
   display: none;
 }
 [data-ui="next"] .auth-hero-top {
-  --accent: #c8412b;
+  --accent: #b13927;
   --accent-ink: #ffffff;
   gap: 12px;
 }

@@ -51,22 +51,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={api}>
       {children}
       <div className="toasts" role="status" aria-live="polite">
-        {items.map((t) => (
-          <div key={t.id} className={`toast ${t.kind === "error" ? "error" : ""}`}>
-            {t.kind === "error" ? <AlertTriangle /> : <CheckCircle2 />}
-            <span className="grow">{t.message}</span>
-            {t.action && (
+        {items.map((item) => (
+          <div key={item.id} className={`toast ${item.kind === "error" ? "error" : ""}`}>
+            {item.kind === "error" ? <AlertTriangle /> : <CheckCircle2 />}
+            <span className="grow">{item.message}</span>
+            {item.action && (
               <button
                 className="btn btn-sm btn-ghost toast-action"
                 onClick={() => {
-                  remove(t.id);
-                  t.action!.onClick();
+                  remove(item.id);
+                  item.action!.onClick();
                 }}
               >
-                {t.action.label}
+                {item.action.label}
               </button>
             )}
-            <button className="icon-btn sm" style={{ color: "inherit" }} onClick={() => remove(t.id)} aria-label="Dismiss">
+            <button className="icon-btn sm" style={{ color: "inherit" }} onClick={() => remove(item.id)} aria-label={t("common.close")}>
               <X />
             </button>
           </div>

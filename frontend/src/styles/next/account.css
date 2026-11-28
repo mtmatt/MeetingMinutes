@@ -775,8 +775,7 @@
   opacity: 1;
   transition: background-color var(--dur-out) var(--ease-out);
 }
-[data-ui="next"] .usage-bar.is-hover .usage-bar-fill,
-[data-ui="next"] .usage-bar:focus-visible .usage-bar-fill {
+[data-ui="next"] .usage-bar.is-hover .usage-bar-fill {
   background: var(--accent);
   transition-duration: var(--dur-in);
 }
@@ -784,7 +783,7 @@
   background: color-mix(in oklab, var(--ink) 5%, transparent);
   border-radius: 3px 3px 0 0;
 }
-[data-ui="next"] .usage-bar:focus-visible {
+[data-ui="next"] .usage-chart-plot:focus-visible {
   outline: 2px solid var(--accent);
   border-radius: 3px;
 }
@@ -958,6 +957,10 @@
   font-size: var(--step--1);
   line-height: 1.5;
   color: var(--ink-3);
+}
+/* On the selected row's darker background, ink-3 falls short of 4.5:1. */
+[data-ui="next"] .tpl-item.selected .tpl-item-desc {
+  color: var(--ink-2);
 }
 [data-ui="next"] .tpl-empty {
   padding: 4px 12px;

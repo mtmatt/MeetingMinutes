@@ -98,6 +98,16 @@ export function Menu({
     };
   }, [open, place]);
 
+  // A menu holds menu items: give each focusable entry the role screen readers
+  // expect (an entry that sets its own role, such as a radio, keeps it), and
+  // separators theirs. After every render, since entries come and go.
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    for (const el of menu.querySelectorAll<HTMLElement>(ITEMS)) if (!el.hasAttribute("role")) el.setAttribute("role", "menuitem");
+    for (const el of menu.querySelectorAll<HTMLElement>(".menu-sep")) el.setAttribute("role", "separator");
+  });
+
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>(ITEMS) ?? []);
     const i = items.indexOf(document.activeElement as HTMLElement);

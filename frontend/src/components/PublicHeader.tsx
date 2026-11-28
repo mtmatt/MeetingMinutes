@@ -14,7 +14,7 @@ export function PublicHeader({ back }: { back: { to: string; label: string } }) 
   const { user, registration } = useAuth();
   return (
     <header className="terms-head">
-      <Link to="/" reloadDocument={!user} className="terms-brand" aria-label="Minutes">
+      <Link to="/" reloadDocument={!user} className="terms-brand">
         <Wordmark />
       </Link>
       {user ? (

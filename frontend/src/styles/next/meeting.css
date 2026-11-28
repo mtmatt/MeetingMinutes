@@ -503,7 +503,7 @@
   font-weight: 500;
   line-height: 1.7;
   letter-spacing: 0;
-  color: color-mix(in oklab, var(--spk) 78%, var(--ink));
+  color: color-mix(in oklab, var(--spk) min(78%, var(--spk-text)), var(--ink));
   text-underline-offset: 4px;
   border-radius: 4px;
 }

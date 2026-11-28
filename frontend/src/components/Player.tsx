@@ -73,6 +73,7 @@ const BAND_GAP = 6;
  * both. Click or drag anywhere to seek.
  */
 function Waveform({ meeting }: { meeting: MeetingDetail }) {
+  const { t } = useI18n();
   const { seek, subscribe, getTime, duration } = usePlayer();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -235,9 +236,11 @@ function Waveform({ meeting }: { meeting: MeetingDetail }) {
       }}
       onPointerLeave={() => setHover(null)}
       role="slider"
+      aria-label={t("meeting.seekBar")}
       aria-valuemin={0}
       aria-valuemax={Math.round(total)}
       aria-valuenow={Math.round(getTime())}
+      aria-valuetext={`${clock(getTime())} / ${clock(total)}`}
       tabIndex={-1}
     >
       <canvas ref={canvasRef} />
@@ -245,7 +248,7 @@ function Waveform({ meeting }: { meeting: MeetingDetail }) {
         <div className="waveform-hover" style={{ left: hover.x }}>
           <span className="mono">{clock(hover.t)}</span>
           {hoverSpeaker && (
-            <span className="waveform-hover-spk" style={{ color: `var(--spk-${hoverSpeaker.color % 10})` }}>
+            <span className="waveform-hover-spk" style={{ color: `color-mix(in oklab, var(--spk-${hoverSpeaker.color % 10}) var(--spk-text), var(--ink))` }}>
               {hoverSpeaker.name}
             </span>
           )}
@@ -307,14 +310,15 @@ export function PlayerBar({ meeting, videoMode }: { meeting: MeetingDetail; vide
       {!videoMode && <audio ref={audioRef} src={mediaUrl.audio(meeting.id)} preload="metadata" />}
       <div className="player-inner">
         <div className="player-controls">
-          <button className="skip-btn" onClick={() => skip(-15)} aria-label={t("meeting.back15")} title={t("meeting.back15")}>
+          {/* Named by its visible text ("−15 秒"), so what is seen is what speech control says; the title explains. */}
+          <button className="skip-btn" onClick={() => skip(-15)} title={t("meeting.back15")}>
             <RotateCcw />
             <span>{t("meeting.back15Short")}</span>
           </button>
           <button className="player-play" onClick={toggle} aria-label={t("meeting.playPause")} title={`${t("meeting.playPause")} (Space)`}>
             {playing ? <Pause /> : <Play />}
           </button>
-          <button className="skip-btn" onClick={() => skip(15)} aria-label={t("meeting.fwd15")} title={t("meeting.fwd15")}>
+          <button className="skip-btn" onClick={() => skip(15)} title={t("meeting.fwd15")}>
             <span>{t("meeting.fwd15Short")}</span>
             <RotateCw />
           </button>
@@ -331,7 +335,7 @@ export function PlayerBar({ meeting, videoMode }: { meeting: MeetingDetail; vide
         <Menu
           up
           trigger={({ toggle: open }) => (
-            <button className="player-rate" onClick={open} aria-label={t("meeting.speed")} title={t("meeting.speed")}>
+            <button className="player-rate" onClick={open} title={t("meeting.speed")}>
               <span className="player-rate-label">{t("meeting.speedShort")}</span>
               <span className="mono">{rate}×</span>
             </button>

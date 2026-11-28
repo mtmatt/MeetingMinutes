@@ -289,20 +289,34 @@ function OverTime({ r }: { r: UsageReport }) {
           <span>{topText}</span>
           <span>0</span>
         </div>
-        <div className={`usage-chart-plot ${n > 45 ? "is-dense" : ""}`} onMouseLeave={() => setHover(null)}>
+        {/* One target for the whole plot (bars a few pixels wide are too small to aim at):
+            the pointer picks the bar under it, and the arrow keys step through them;
+            the tip below is a live region, so a screen reader hears each one. */}
+        <div
+          className={`usage-chart-plot ${n > 45 ? "is-dense" : ""}`}
+          role="group"
+          tabIndex={0}
+          aria-label={`${r.by === "month" ? t("usage.byMonth") : t("usage.byDay")}. ${t("common.chartKeys")}`}
+          onPointerMove={(e) => {
+            const box = e.currentTarget.getBoundingClientRect();
+            setHover(Math.max(0, Math.min(n - 1, Math.floor(((e.clientX - box.left) / box.width) * n))));
+          }}
+          onPointerLeave={() => setHover(null)}
+          onFocus={() => setHover((h) => h ?? n - 1)}
+          onBlur={() => setHover(null)}
+          onKeyDown={(e) => {
+            const next =
+              e.key === "ArrowLeft" ? (hover ?? n) - 1 : e.key === "ArrowRight" ? (hover ?? -1) + 1 : e.key === "Home" ? 0 : e.key === "End" ? n - 1 : null;
+            if (next == null) return;
+            e.preventDefault();
+            setHover(Math.max(0, Math.min(n - 1, next)));
+          }}
+        >
           <div className="usage-chart-grid" aria-hidden="true" />
           {r.series.map((b, i) => (
-            <button
-              type="button"
-              key={b.key}
-              className={`usage-bar ${hover === i ? "is-hover" : ""}`}
-              onMouseEnter={() => setHover(i)}
-              onFocus={() => setHover(i)}
-              onBlur={() => setHover(null)}
-              aria-label={`${label(b.key)}: ${hoursText(b.sec, locale)}, ${t("usage.summariesN", { n: b.summaries })}${r.showPoints ? `, ${pointsText(b.points, locale)}` : ""}`}
-            >
+            <span key={b.key} className={`usage-bar ${hover === i ? "is-hover" : ""}`} aria-hidden="true">
               <span className="usage-bar-fill" style={{ height: `${(value(b) / top) * 100}%` }} />
-            </button>
+            </span>
           ))}
           {active && hover != null && (
             <div className={`usage-tip ${hover > n * 0.7 ? "tip-left" : hover < n * 0.3 ? "tip-right" : ""}`} role="status" style={{ left: `${((hover + 0.5) / n) * 100}%` }}>
@@ -376,7 +390,7 @@ function TopMeetings({ r, own }: { r: UsageReport; own: boolean }) {
   return (
     <section className="card usage-card">
       <h2 className="system-h">{r.showPoints ? t("usage.topByPoints") : t("usage.topByLength")}</h2>
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0}>
         <table className="table usage-table">
           <thead>
             <tr>
@@ -412,7 +426,7 @@ function ByUser({ r, onPick }: { r: UsageReport; onPick: (id: string) => void })
   return (
     <section className="card usage-card">
       <h2 className="system-h">{t("usage.byUser")}</h2>
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0}>
         <table className="table usage-table">
           <thead>
             <tr>

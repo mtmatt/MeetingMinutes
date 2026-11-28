@@ -717,13 +717,12 @@
   opacity: 0.55;
   transition: opacity var(--dur-fast);
 }
-.security-bar.is-hover .security-bar-fill,
-.security-bar:focus-visible .security-bar-fill {
+.security-bar.is-hover .security-bar-fill {
   opacity: 1;
 }
-.security-bar:focus-visible {
+.security-chart-plot:focus-visible {
   outline: 2px solid var(--focus);
-  outline-offset: 2px;
+  outline-offset: 4px;
   border-radius: 4px;
 }
 .security-tip {
@@ -760,6 +759,10 @@
   padding-top: 10px;
   padding-bottom: 10px;
   vertical-align: top;
+}
+/* An address and its "you" pill stay on one line (the table scrolls on a phone). */
+.security-table td.mono {
+  white-space: nowrap;
 }
 .security-kinds {
   display: flex;

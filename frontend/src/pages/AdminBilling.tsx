@@ -484,7 +484,7 @@ function Orders() {
       {data && data.orders.length === 0 ? (
         <p className="faint">{t("sales.noOrders")}</p>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0}>
           <table className="table">
             <thead>
               <tr>

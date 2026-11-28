@@ -52,6 +52,7 @@
 .masthead-nav a {
   position: relative;
   display: flex;
+  white-space: nowrap;
   align-items: center;
   font-size: var(--step--1);
   font-weight: 600;
@@ -174,7 +175,7 @@
   width: 13px;
   height: 13px;
 }
-.menu-chip[aria-pressed="true"] {
+.menu-chip[aria-checked="true"] {
   border-color: var(--ink);
   color: var(--ink);
   background: var(--surface-2);
@@ -223,9 +224,6 @@
     padding: 0 16px;
     gap: 16px;
   }
-  .masthead-nav {
-    display: none;
-  }
   .masthead-context-sub {
     display: none;
   }
@@ -247,10 +245,15 @@
   }
 }
 
+/* The page links fit beside the brand and the buttons from about 1024px (five
+   links, in either language); below that they move into the account menu. */
 .mobile-only {
   display: none;
 }
-@media (max-width: 760px) {
+@media (max-width: 1023px) {
+  .masthead-nav {
+    display: none;
+  }
   .mobile-only {
     display: block;
   }

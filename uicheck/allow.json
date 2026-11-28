@@ -4,5 +4,11 @@
     "screen": "landing",
     "selector": "img.shot",
     "reason": "The landing page's collage crops its screenshots on purpose."
+  },
+  {
+    "rule": "label-wrap",
+    "screen": "admin-perf",
+    "selector": "tbody > tr > th",
+    "reason": "The pipeline table's row names wrap on purpose (min-width 7em), so the figures fit beside them on a tablet."
   }
 ]

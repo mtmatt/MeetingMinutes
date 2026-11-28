@@ -23,6 +23,9 @@ body {
   font-feature-settings: "ss01", "cv11";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Inherited everywhere: the browser avoids leaving one character (or one
+     word) alone on a paragraph's last line. */
+  text-wrap: pretty;
   text-rendering: optimizeLegibility;
 }
 
@@ -201,4 +204,12 @@ canvas {
   to {
     transform: translateX(250%);
   }
+}
+
+/* Headings and short titles: lines of even length. */
+h1,
+h2,
+h3,
+h4 {
+  text-wrap: balance;
 }

@@ -761,10 +761,18 @@
   display: flex;
   gap: 22px;
   border-bottom: 1px solid var(--rule);
+  /* More tabs than fit: the strip scrolls sideways; a label never breaks. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 .tabs button,
 .tabs a {
   position: relative;
+  flex-shrink: 0;
+  white-space: nowrap;
   border: 0;
   background: none;
   padding: 10px 0 12px;
@@ -813,6 +821,8 @@
 }
 .table th {
   text-align: left;
+  /* Column names stay on one line; a table too wide for a phone scrolls in its .table-wrap. */
+  white-space: nowrap;
   font-weight: 600;
   font-size: var(--step--2);
   letter-spacing: 0.1em;

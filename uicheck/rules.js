@@ -77,7 +77,7 @@
   const shown = all.filter((el) => !hidden(el) && (!layer || layer.contains(el)));
   const scrollsX = (cs) => cs.overflowX === "auto" || cs.overflowX === "scroll";
   /** Meant to scroll sideways: wide tables, tab strips, code. */
-  const INTENDED = ".table-wrap, [role=tablist], .tabs, pre, [data-scroll-x]";
+  const INTENDED = ".table-wrap, .prose-table, [role=tablist], .tabs, pre, [data-scroll-x]";
   const clipsX = (cs) => cs.overflowX === "hidden" || cs.overflowX === "clip";
   const clipsY = (cs) => cs.overflowY === "hidden" || cs.overflowY === "clip";
   /** Inside a container that may scroll sideways on purpose. */
@@ -227,8 +227,17 @@
   // Each control in the middle of the window, where nothing pinned should cover it.
   if (only("covered")) for (const el of shown) {
     if (!el.matches(CONTROLS)) continue;
-    // Pinned (a menu, a bar): scroll only inside it, as a person would to reach a lower item.
-    el.scrollIntoView(pinned(el) ? { block: "nearest", inline: "nearest" } : { block: "center", inline: "nearest" });
+    // Pinned (a menu, a bar, a sticky column): from the top of the page, scroll only as far as
+    // needed, as a person would; at the very end of the page a sticky column is pushed up by
+    // its container, as it should be.
+    const pin = pinned(el);
+    if (pin && getComputedStyle(pin).position === "sticky") {
+      // Where it has just stuck: its whole height in view, as when someone has scrolled to it.
+      window.scrollTo(0, 0);
+      const r0 = pin.getBoundingClientRect();
+      window.scrollTo(0, Math.max(0, r0.top - (parseFloat(getComputedStyle(pin).top) || 0)));
+    }
+    el.scrollIntoView(pin ? { block: "nearest", inline: "nearest" } : { block: "center", inline: "nearest" });
     const r = el.getBoundingClientRect();
     const x = r.left + Math.min(r.width / 2, 12);
     const y = r.top + r.height / 2;

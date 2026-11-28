@@ -109,20 +109,34 @@ function DailyChart({ daily }: { daily: SecurityState["daily"] }) {
         <span>{top.toLocaleString()}</span>
         <span>0</span>
       </div>
-      <div className="security-chart-plot" onMouseLeave={() => setHover(null)}>
+      {/* One target for the whole plot, as on the usage page: the pointer picks the bar under
+          it, the arrow keys step through them, and the tip is read out as it changes. */}
+      <div
+        className="security-chart-plot"
+        role="group"
+        tabIndex={0}
+        aria-label={`${t("security.chartTitle")}. ${t("common.chartKeys")}`}
+        onPointerMove={(e) => {
+          const box = e.currentTarget.getBoundingClientRect();
+          setHover(Math.max(0, Math.min(daily.length - 1, Math.floor(((e.clientX - box.left) / box.width) * daily.length))));
+        }}
+        onPointerLeave={() => setHover(null)}
+        onFocus={() => setHover((h) => h ?? daily.length - 1)}
+        onBlur={() => setHover(null)}
+        onKeyDown={(e) => {
+          const n = daily.length;
+          const next =
+            e.key === "ArrowLeft" ? (hover ?? n) - 1 : e.key === "ArrowRight" ? (hover ?? -1) + 1 : e.key === "Home" ? 0 : e.key === "End" ? n - 1 : null;
+          if (next == null) return;
+          e.preventDefault();
+          setHover(Math.max(0, Math.min(n - 1, next)));
+        }}
+      >
         <div className="security-chart-grid" aria-hidden="true" />
         {daily.map((d, i) => (
-          <button
-            type="button"
-            key={d.date}
-            className={`security-bar ${hover === i ? "is-hover" : ""}`}
-            onMouseEnter={() => setHover(i)}
-            onFocus={() => setHover(i)}
-            onBlur={() => setHover(null)}
-            aria-label={t("security.barLabel", { day: monthDay(d.date, locale), n: d.total })}
-          >
+          <span key={d.date} className={`security-bar ${hover === i ? "is-hover" : ""}`} aria-hidden="true">
             <span className="security-bar-fill" style={{ height: `${(d.total / top) * 100}%` }} />
-          </button>
+          </span>
         ))}
         {active && hover != null && (
           <div
@@ -192,7 +206,7 @@ function TopAddresses({ data }: { data: SecurityState }) {
       <h3 className="system-h">
         <ListFilter /> {t("security.topTitle")}
       </h3>
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0}>
         <table className="table security-table">
           <thead>
             <tr>
@@ -347,7 +361,7 @@ function RecentEvents() {
       {data && data.events.length === 0 ? (
         <p className="faint security-empty">{t("security.noEvents")}</p>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0}>
           <table className="table security-table">
             <thead>
               <tr>
