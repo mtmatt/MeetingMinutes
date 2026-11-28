@@ -30,7 +30,7 @@
 
 .perf-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
   gap: var(--space-3);
 }
 .perf-tile {
@@ -69,7 +69,7 @@
     padding: var(--space-3);
   }
 }
-.perf-h {
+.perf .perf-h {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -182,7 +182,7 @@
 
 .perf-pipeline {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   gap: var(--space-5);
 }
 
@@ -241,4 +241,22 @@
 }
 .perf-more {
   justify-self: start;
+}
+
+/* Touch screens: every control at least 44px tall. */
+@media (pointer: coarse), (max-width: 560px) {
+  :root .perf .perf-head .segmented button {
+    min-height: 44px;
+  }
+  .perf-sort {
+    min-height: 44px;
+    padding: 0 4px;
+  }
+  .perf-table thead th {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .perf-more {
+    min-height: 44px;
+  }
 }

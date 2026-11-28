@@ -56,7 +56,7 @@ export function AdminPerf() {
         <>
           <Tiles s={data.overall} />
           <section className="card perf-card">
-            <h3 className="perf-h">{t("perf.chartTitle")}</h3>
+            <h2 className="perf-h">{t("perf.chartTitle")}</h2>
             <LatencyChart report={data} />
           </section>
           <Pipeline p={data.pipeline} />
@@ -240,7 +240,8 @@ function LatencyChart({ report }: { report: PerfReport }) {
         </div>
       )}
       {/* The figures as a table, for screen readers. */}
-      <table className="visually-hidden">
+      <div className="visually-hidden">
+      <table>
         <caption>{t("perf.chartAria")}</caption>
         <thead>
           <tr>
@@ -263,6 +264,7 @@ function LatencyChart({ report }: { report: PerfReport }) {
             ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
@@ -283,10 +285,10 @@ function Pipeline({ p }: { p: PerfReport["pipeline"] }) {
   const factor = (v: number | null) => (v == null ? "–" : t("perf.perMinute", { s: Math.round(v * 60) }));
   const block = (title: string, done: number, failed: number, rows: ReactNode) => (
     <section className="card perf-card">
-      <h3 className="perf-h">
+      <h2 className="perf-h">
         {title}
         <span className="faint perf-h-sub">{t("perf.doneFailed", { done: done.toLocaleString(locale), failed: failed.toLocaleString(locale) })}</span>
-      </h3>
+      </h2>
       <div className="perf-scroll">
       <table className="perf-table">
         <thead>
@@ -346,7 +348,7 @@ function Routes({ routes }: { routes: (PerfSummary & { route: string })[] }) {
   );
   return (
     <section className="card perf-card">
-      <h3 className="perf-h">{t("perf.routes")}</h3>
+      <h2 className="perf-h">{t("perf.routes")}</h2>
       {routes.length === 0 ? (
         <p className="faint">{t("perf.noRequests")}</p>
       ) : (
