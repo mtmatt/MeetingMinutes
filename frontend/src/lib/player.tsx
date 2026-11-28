@@ -42,22 +42,31 @@ interface PlayerValue {
  * Why the recording does not play, when it does not: shown in the player
  * instead of a play button that silently does nothing.
  */
-export type PlayError = "deleted" | "missing" | "signedOut" | "format" | "blocked" | "network";
+export type PlayError = "deleted" | "missing" | "signedOut" | "format" | "blocked" | "network" | "stalled";
+
+/** How long a press of play may go without sound before the player looks into why. */
+const STALL_MS = 8000;
 
 /** Asks the server about the file once the browser gave up on it: its answer says why. */
-async function diagnose(el: HTMLMediaElement): Promise<PlayError> {
+async function diagnose(el: HTMLMediaElement, stalled = false): Promise<PlayError> {
   const decode = el.error?.code === MediaError.MEDIA_ERR_DECODE || el.error?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED;
+  // A request that never gets an answer (no free connection to the site, a server that
+  // does not reply) must not leave this waiting too.
+  const timeout = new AbortController();
+  const timer = setTimeout(() => timeout.abort(), STALL_MS);
   try {
-    const res = await fetch(el.currentSrc || el.src, { headers: { Range: "bytes=0-0" }, credentials: "same-origin" });
+    const res = await fetch(el.currentSrc || el.src, { headers: { Range: "bytes=0-0" }, credentials: "same-origin", signal: timeout.signal });
     if (res.status === 410) return "deleted";
     if (res.status === 404) return "missing";
     if (res.status === 401 || res.status === 403) return "signedOut";
     if (!res.ok) return "network";
   } catch {
-    return "network";
+    return stalled ? "stalled" : "network";
+  } finally {
+    clearTimeout(timer);
   }
-  // The server sends the file: the browser could not use it.
-  return decode ? "format" : "network";
+  // The server sends the file: the browser could not use it, or is still waiting for it.
+  return decode ? "format" : stalled ? "stalled" : "network";
 }
 
 const PlayerContext = createContext<PlayerValue | null>(null);
@@ -75,9 +84,18 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
   const pendingSeek = useRef<{ t: number; play: boolean } | null>(null);
   const lastState = useRef({ t: 0, playing: false, rate: 1 });
   const [error, setError] = useState<PlayError | null>(null);
+  const stallTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /** Start playing; a refusal is reported, not swallowed. */
+  /** Start playing; a refusal is reported, not swallowed, and so is a wait that never ends. */
   const start = useCallback((el: HTMLMediaElement) => {
+    if (stallTimer.current) clearTimeout(stallTimer.current);
+    stallTimer.current = setTimeout(() => {
+      stallTimer.current = null;
+      // Still no sound, and nothing said why: ask the server, with a time limit.
+      if (el.paused === false && el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return;
+      if (el.error) return;
+      void diagnose(el, true).then(setError);
+    }, STALL_MS);
     el.play().then(
       () => setError(null),
       (e: unknown) => {
@@ -152,6 +170,15 @@ export function PlayerProvider({ children, fallbackDuration }: { children: React
       el.addEventListener("seeked", sync);
       el.addEventListener("error", () => void diagnose(el).then(setError));
       el.addEventListener("canplay", () => setError(null));
+      el.addEventListener("pause", () => {
+        if (stallTimer.current) clearTimeout(stallTimer.current);
+        stallTimer.current = null;
+      });
+      el.addEventListener("playing", () => {
+        if (stallTimer.current) clearTimeout(stallTimer.current);
+        stallTimer.current = null;
+        setError(null);
+      });
       el.addEventListener("play", () => setPlaying(true));
       el.addEventListener("pause", () => setPlaying(false));
       el.addEventListener("ended", () => {

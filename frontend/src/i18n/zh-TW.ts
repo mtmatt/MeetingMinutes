@@ -335,6 +335,7 @@ export const zhTW: Dict = {
       format: "這個瀏覽器無法播放這段錄音的格式。請換一個瀏覽器，或下載原始檔。",
       blocked: "瀏覽器擋下了播放，請再按一次播放。",
       network: "無法載入錄音，請確認網路連線後再按一次播放。",
+      stalled: "錄音等了好幾秒都沒有開始載入：伺服器沒有送出這個檔案。請重新整理頁面再試；如果一直這樣，請管理員用 bun run admin media-check 檢查檔案。",
     },
     seekBar: "錄音播放位置",
     backToPlayback: "回到播放位置",

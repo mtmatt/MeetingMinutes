@@ -333,6 +333,7 @@ export const en = {
       format: "This browser cannot play the recording's format. Try another browser, or download the original.",
       blocked: "The browser blocked playback. Press play again.",
       network: "The recording could not be loaded. Check the connection and press play again.",
+      stalled: "The recording has not started loading after several seconds: the server is not sending it. Reload the page and try again; if it stays like this, the administrator can check the file with bun run admin media-check.",
     },
     seekBar: "Position in the recording",
     backToPlayback: "Back to playback",
