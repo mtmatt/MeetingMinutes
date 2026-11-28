@@ -78,6 +78,17 @@ export interface SummaryRequest {
   templateId: string | null;
   prompt: string;
   outputLanguage: OutputLanguage;
+  /** Show the model the meeting's slides too (absent: yes, when there are any and the model reads pictures). */
+  slides?: boolean;
+}
+
+/** A picture of what was on screen, picked in the browser when the picture changed (a new slide). */
+export interface Slide {
+  id: string;
+  /** Recording time it appeared at, in seconds. */
+  at: number;
+  width: number;
+  height: number;
 }
 
 /** Named settings for adding a recording, applied in one click; the default one by itself. */
@@ -229,6 +240,10 @@ export interface Summary {
   provider: SummaryProvider | null;
   /** Speaker key → the name this summary uses; null until it is written. */
   speakerNames: Record<string, string> | null;
+  /** The slides were asked for (absent from older servers). */
+  withSlides?: boolean;
+  /** How many slides the model was shown; null when none were. */
+  slidesSent?: number | null;
   createdAt: number;
   startedAt: number | null;
   finishedAt: number | null;
@@ -243,6 +258,8 @@ export interface MeetingDetail extends MeetingSummary {
   summaries: Summary[];
   /** The latest AI correction of the transcript (absent from older servers). */
   refinement?: Refinement | null;
+  /** What was on screen, in order (absent from older servers). */
+  slides?: Slide[];
 }
 
 export interface Template {
@@ -345,6 +362,8 @@ export interface SummarizerInfo {
   onServer: boolean;
   /** Host the transcript is sent to: the provider's, or a model server's on another machine. */
   host: string | null;
+  /** The model reads pictures, so a meeting's slides go into its summaries (absent from older servers). */
+  vision?: boolean;
 }
 
 export type AsrEngine = "local" | "api";
@@ -480,6 +499,8 @@ export interface LocalModelSettings {
   contextTokens: number;
   think: boolean;
   keepAliveSec: number;
+  /** The model reads pictures: summaries are shown the meeting's slides. */
+  vision: boolean;
 }
 
 export interface ApiModelSettings {

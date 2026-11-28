@@ -8,6 +8,7 @@
  *   LEAK_PLEASE           repeats the worker token
  *   REFUSE_PLEASE         stop_reason "refusal"
  *   ECHO_SPEAKERS_PLEASE  writes the transcript lines back
+ *   NO_PICTURES_PLEASE    400 "image input is not supported" when pictures are sent
  * Every request's prompt (system + user text) is written to FAKE_ANTHROPIC_PROMPT_FILE.
  */
 import { writeFileSync } from "node:fs";
@@ -47,12 +48,19 @@ export function startFakeAnthropic(opts: FakeAnthropicOptions) {
       }
       if (req.method !== "POST" || url.pathname !== "/v1/messages") return error(404, "not_found_error", "Not found");
 
-      const body = (await req.json()) as { model: string; system?: string; messages: { content: string }[]; stream?: boolean };
+      type Block = { type: string; text?: string; source?: { media_type: string; data: string } };
+      const body = (await req.json()) as { model: string; system?: string; messages: { content: string | Block[] }[]; stream?: boolean };
       if (!models[body.model]) return error(404, "not_found_error", `model: ${body.model}`);
-      const user = body.messages.map((m) => m.content).join("\n\n");
+      // Pictures are written as <<image type bytes>>, so tests can see which were sent and where.
+      const flatten = (c: string | Block[]) =>
+        typeof c === "string"
+          ? c
+          : c.map((b) => (b.type === "text" ? b.text : b.type === "image" ? `<<image ${b.source?.media_type} ${b.source?.data.length}>>` : `<<${b.type}>>`)).join("\n");
+      const user = body.messages.map((m) => flatten(m.content)).join("\n\n");
       const prompt = `${body.system ?? ""}\n\n${user}`;
       writeFileSync(opts.promptFile, prompt);
       if (prompt.includes("FAIL_PLEASE")) return error(400, "invalid_request_error", "usage limit reached");
+      if (prompt.includes("NO_PICTURES_PLEASE") && prompt.includes("<<image ")) return error(400, "invalid_request_error", "image input is not supported by this model");
       if (prompt.includes("SLOW_PLEASE")) {
         await Bun.sleep(5000);
         if (req.signal.aborted) return new Response(null, { status: 499 });

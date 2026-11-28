@@ -7,7 +7,7 @@ import type { LocalModelSettings } from "./summarySettings";
  * Where a summary is written: a model server set up on the admin page, or a
  * hosted provider (with its fixed address and the key from the environment).
  */
-export type ChatTarget = Omit<LocalModelSettings, "api"> & {
+export type ChatTarget = Omit<LocalModelSettings, "api" | "vision"> & {
   api: "ollama" | "openai" | "anthropic";
   /** A hosted provider: its name in messages, its key, and how it wants the answer length. */
   provider?: ApiProvider;
@@ -26,9 +26,54 @@ function who(s: ChatTarget): string {
  * prompt injection in a transcript has nothing to act with.
  */
 
+/** A picture shown to the model with a user message (a meeting's slide). */
+export interface ChatImage {
+  /** Said just before the picture, e.g. "Slide 3, on screen from [00:12:34]". */
+  label: string;
+  /** Base64 of the file. */
+  data: string;
+  mediaType: "image/jpeg";
+  /** About how many tokens reading it takes. */
+  tokens: number;
+}
+
 export interface ChatMessage {
   role: "system" | "user";
   content: string;
+  /** Pictures that come before the text (user messages only; for models that read pictures). */
+  images?: ChatImage[];
+}
+
+/** The labels of a message's pictures, in order, for servers that take pictures without text between them. */
+function imageIndex(images: ChatImage[]): string {
+  return `The ${images.length} attached picture${images.length === 1 ? " is" : "s are, in order"}:\n${images.map((im, i) => `${i + 1}. ${im.label}`).join("\n")}`;
+}
+
+/** Ollama's shape: the pictures as a list beside the text, which names them. */
+function ollamaMessages(messages: ChatMessage[]) {
+  return messages.map((m) =>
+    m.images?.length
+      ? { role: m.role, content: `${imageIndex(m.images)}\n\n${m.content}`, images: m.images.map((im) => im.data) }
+      : { role: m.role, content: m.content },
+  );
+}
+
+/** OpenAI's shape: each picture after its label, then the text. */
+function openaiMessages(messages: ChatMessage[]) {
+  return messages.map((m) =>
+    m.images?.length
+      ? {
+          role: m.role,
+          content: [
+            ...m.images.flatMap((im) => [
+              { type: "text", text: im.label },
+              { type: "image_url", image_url: { url: `data:${im.mediaType};base64,${im.data}` } },
+            ]),
+            { type: "text", text: m.content },
+          ],
+        }
+      : { role: m.role, content: m.content },
+  );
 }
 
 export interface ChatOptions {
@@ -177,7 +222,7 @@ function modelMissing(s: ChatTarget, detail: string): LlmError {
 async function chatOllama(s: ChatTarget, messages: ChatMessage[], o: ChatOptions): Promise<ChatResult> {
   const body: Record<string, unknown> = {
     model: s.model,
-    messages,
+    messages: ollamaMessages(messages),
     stream: true,
     keep_alive: o.keepAliveSec,
     // Sampling is left to the model's own defaults (its Modelfile), which the
@@ -226,7 +271,7 @@ async function chatOllama(s: ChatTarget, messages: ChatMessage[], o: ChatOptions
 async function chatOpenAI(s: ChatTarget, messages: ChatMessage[], o: ChatOptions): Promise<ChatResult> {
   const body: Record<string, unknown> = {
     model: s.model,
-    messages,
+    messages: openaiMessages(messages),
     stream: true,
     stream_options: { include_usage: true },
   };
@@ -324,7 +369,20 @@ function anthropicError(s: ChatTarget, e: unknown, signal?: AbortSignal): LlmErr
 async function chatAnthropic(s: ChatTarget, messages: ChatMessage[], o: ChatOptions): Promise<ChatResult> {
   if (!s.apiKey) throw new LlmError("Set ANTHROPIC_API_KEY in the server's .env and restart it.");
   const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
-  const user = messages.filter((m) => m.role === "user").map((m) => ({ role: "user" as const, content: m.content }));
+  const user = messages
+    .filter((m) => m.role === "user")
+    .map((m) => ({
+      role: "user" as const,
+      content: m.images?.length
+        ? [
+            ...m.images.flatMap((im): Anthropic.ContentBlockParam[] => [
+              { type: "text", text: im.label },
+              { type: "image", source: { type: "base64", media_type: im.mediaType, data: im.data } },
+            ]),
+            { type: "text" as const, text: m.content },
+          ]
+        : m.content,
+    }));
   let message: Anthropic.Message;
   try {
     const stream = anthropicClient(s.apiKey).messages.stream(

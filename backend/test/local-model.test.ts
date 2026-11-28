@@ -272,7 +272,7 @@ describe("summaries with a local model", () => {
     expect(saved.settings.local.baseUrl).toBe(ollama.url);
 
     const state = (await (await admin.get("/api/auth/state")).json()) as any;
-    expect(state.summarizer).toEqual({ provider: "local", vendor: null, model: "qwen3:14b", onServer: true, host: null });
+    expect(state.summarizer).toEqual({ provider: "local", vendor: null, model: "qwen3:14b", onServer: true, host: null, vision: false });
     // Not before signing in.
     expect(((await (await new Client().get("/api/auth/state")).json()) as any).summarizer).toBeNull();
 
@@ -461,7 +461,7 @@ describe("summaries with a local model", () => {
     expect(saved.apiKeys).toMatchObject({ anthropic: true, openrouter: false });
     expect(JSON.stringify(saved)).not.toContain(process.env.ANTHROPIC_API_KEY!);
     const state = (await (await admin.get("/api/auth/state")).json()) as any;
-    expect(state.summarizer).toEqual({ provider: "api", vendor: "anthropic", model: "claude-haiku-5-5", onServer: false, host: "api.anthropic.com" });
+    expect(state.summarizer).toEqual({ provider: "api", vendor: "anthropic", model: "claude-haiku-5-5", onServer: false, host: "api.anthropic.com", vision: true });
 
     const id = await readyMeeting(admin, SHORT);
     const s = await summarize(admin, id, "Write minutes.", "en");

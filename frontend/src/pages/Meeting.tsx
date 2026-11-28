@@ -374,6 +374,11 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
                             summaryInfo.exportGoogleDoc(exportable, withTranscript);
                             close();
                           }}
+                          onPdf={(withTranscript) => {
+                            close();
+                            summaryInfo.exportPdf(exportable, withTranscript);
+                          }}
+                          slideCount={meeting.slides?.length ?? 0}
                         />
                         <div className="menu-sep" />
                       </>

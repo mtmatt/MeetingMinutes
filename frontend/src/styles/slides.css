@@ -1,0 +1,269 @@
+/* Slides: pictures of what was on screen, picked in the browser. */
+
+/* ---------------------------------------------- before upload: thumbnails */
+
+.slide-option {
+  margin-top: var(--space-4);
+}
+.slides-found {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+}
+.slides-found.is-failed {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+}
+.slides-found-head,
+.rec-slides-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  font-size: var(--step--1);
+}
+.slides-found-head .spinner {
+  flex: none;
+}
+.rec-slides {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.slide-strip {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 2px 2px var(--space-2);
+  list-style: none;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+}
+.slide-thumb {
+  position: relative;
+  flex: none;
+  width: 148px;
+  scroll-snap-align: start;
+}
+.slide-thumb img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+}
+.slide-thumb-time {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: rgb(0 0 0 / 0.62);
+  color: #fff;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+.slide-thumb-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.62);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0.85;
+}
+.slide-thumb-remove:hover,
+.slide-thumb-remove:focus-visible {
+  opacity: 1;
+  background: var(--danger);
+}
+.slide-thumb-remove svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* --------------------------------------------- meeting page: in the transcript */
+
+.slide-card {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  column-gap: 16px;
+  margin: var(--space-2) 0;
+  padding: 0 36px 0 0;
+}
+.slide-card figcaption {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding-top: 3px;
+  font-size: var(--step--2);
+}
+.slide-card-img {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  display: block;
+  width: min(100%, 440px);
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  overflow: hidden;
+  cursor: zoom-in;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.slide-card-img:hover {
+  border-color: var(--rule-strong);
+  box-shadow: 0 6px 20px -12px rgb(0 0 0 / 0.35);
+}
+.slide-card-img img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+[data-ui="next"] .slide-card {
+  grid-template-columns: 64px minmax(0, 1fr);
+  column-gap: 12px;
+  padding: 0 44px 0 12px;
+}
+[data-ui="next"] .slide-card-img {
+  margin-left: 100px;
+  width: min(calc(100% - 100px), 440px);
+  border-radius: var(--radius-s);
+}
+@media (max-width: 720px) {
+  .slide-card,
+  [data-ui="next"] .slide-card {
+    grid-template-columns: 56px minmax(0, 1fr);
+    column-gap: 10px;
+    padding: 0 8px 0 10px;
+  }
+  [data-ui="next"] .slide-card-img {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+.slide-viewer {
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  border-radius: var(--radius-s);
+}
+.slide-viewer img {
+  display: block;
+  max-width: 100%;
+  max-height: min(70vh, 760px);
+  width: auto;
+  height: auto;
+}
+.modal-foot-spacer {
+  flex: 1;
+}
+
+.composer-slides {
+  margin-top: var(--space-4);
+}
+
+/* ------------------------------------------------------- PDF (printing) */
+
+.print-doc {
+  display: none;
+}
+@media print {
+  html.printing,
+  html.printing body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  html.printing body > :not(.print-doc) {
+    display: none !important;
+  }
+  html.printing .print-doc {
+    display: block;
+    max-width: none;
+    font-family: var(--font-sans);
+    font-size: 10.5pt;
+    line-height: 1.65;
+    color: #111;
+  }
+  @page {
+    margin: 16mm 15mm;
+  }
+  .print-doc h1 {
+    margin: 0 0 8pt;
+    font-family: var(--font-title);
+    font-size: 20pt;
+    line-height: 1.25;
+  }
+  .print-doc h2 {
+    margin: 16pt 0 6pt;
+    font-size: 14pt;
+    break-after: avoid;
+  }
+  .print-doc h3,
+  .print-doc h4 {
+    margin: 12pt 0 4pt;
+    font-size: 11.5pt;
+    break-after: avoid;
+  }
+  .print-doc p,
+  .print-doc li {
+    orphans: 3;
+    widows: 3;
+  }
+  .print-doc a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .print-doc hr {
+    border: 0;
+    border-top: 0.5pt solid #999;
+    margin: 12pt 0;
+  }
+  .print-doc table {
+    border-collapse: collapse;
+    break-inside: auto;
+  }
+  .print-doc tr {
+    break-inside: avoid;
+  }
+  .print-doc .doc-slide {
+    margin: 0 0 12pt;
+    break-inside: avoid;
+  }
+  .print-doc .doc-slide img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 120mm;
+    object-fit: contain;
+    border: 0.5pt solid #bbb;
+  }
+  .print-doc .doc-slide figcaption {
+    margin-top: 3pt;
+    font-size: 9pt;
+    color: #555;
+  }
+}

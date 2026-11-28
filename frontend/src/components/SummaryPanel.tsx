@@ -11,6 +11,8 @@ import { clock, pointsText, relative } from "../lib/format";
 import { usePlayer } from "../lib/player";
 import { copyRichText, exportToGoogleDocs, GoogleDocsError, loadGoogleSignIn, NEW_GOOGLE_DOC, summaryDocument, type GoogleDocsFailure } from "../lib/googleDocs";
 import { downloadText, linkTimestamps, safeFileName, summaryMarkdown, type SummaryExport } from "../lib/summaryExport";
+import { printAsPdf } from "../lib/printPdf";
+import { slideUrl } from "./MeetingSlides";
 import { segmentAt } from "./Player";
 import { Menu } from "./Menu";
 import { Modal, useConfirm } from "./Modal";
@@ -240,7 +242,7 @@ function Writing({ summary, onCancel }: { summary: Summary; onCancel: () => void
 
 
 /** Prepaid accounts: what the summary will probably cost, against what is left. */
-function SummaryCost({ meetingId, prompt }: { meetingId: string; prompt: string }) {
+function SummaryCost({ meetingId, prompt, slides }: { meetingId: string; prompt: string; slides: boolean }) {
   const { t, locale } = useI18n();
   const { user } = useAuth();
   const prepaid = user?.billing === "prepaid";
@@ -250,8 +252,8 @@ function SummaryCost({ meetingId, prompt }: { meetingId: string; prompt: string 
     return () => clearTimeout(id);
   }, [prompt]);
   const { data } = useQuery({
-    queryKey: ["summary-estimate", meetingId, debounced],
-    queryFn: () => api.summaryEstimate(meetingId, debounced),
+    queryKey: ["summary-estimate", meetingId, debounced, slides],
+    queryFn: () => api.summaryEstimate(meetingId, debounced, slides),
     enabled: prepaid && !!debounced.trim(),
     staleTime: 60_000,
   });
@@ -286,10 +288,14 @@ export function Composer({ meeting, onClose, initial }: { meeting: MeetingDetail
   );
   const [busy, setBusy] = useState(false);
   const { data: templates } = useTemplates();
+  const slideCount = meeting.slides?.length ?? 0;
+  const canReadSlides = !!engine.info?.vision;
+  // Unless turned off, a summary of a meeting with slides reads them too.
+  const withSlides = canReadSlides && slideCount > 0 && value.slides !== false;
   const submit = async () => {
     setBusy(true);
     try {
-      await api.createSummary(meeting.id, normalizeRequest(value, templates?.templates ?? []));
+      await api.createSummary(meeting.id, { ...normalizeRequest(value, templates?.templates ?? []), slides: withSlides });
       await qc.invalidateQueries({ queryKey: ["meeting", meeting.id] });
       onClose();
     } catch (e) {
@@ -315,7 +321,17 @@ export function Composer({ meeting, onClose, initial }: { meeting: MeetingDetail
     >
       <p className="composer-note">{t(meeting.summaries.length ? "summary.regenerateNote" : "summary.firstNote", { engine: engine.name })}</p>
       <SummaryComposer value={value} onChange={setValue} />
-      <SummaryCost meetingId={meeting.id} prompt={normalizeRequest(value, templates?.templates ?? []).prompt} />
+      {slideCount > 0 && (
+        <div className="field composer-slides">
+          <label className="switch">
+            <input type="checkbox" checked={withSlides} disabled={!canReadSlides} onChange={(e) => setValue({ ...value, slides: e.target.checked })} />
+            <span className="switch-track" />
+            <span className="switch-label">{t("slides.composerSwitch", { n: slideCount })}</span>
+          </label>
+          <span className="field-hint">{canReadSlides ? t("slides.composerHint") : t("slides.composerNoVision")}</span>
+        </div>
+      )}
+      <SummaryCost meetingId={meeting.id} prompt={normalizeRequest(value, templates?.templates ?? []).prompt} slides={withSlides} />
       <DataFlowNote />
     </Modal>
   );
@@ -404,16 +420,30 @@ export function useSummaryInfo(meeting: MeetingDetail) {
       },
     );
   };
-  return { versionOf, labelOf, exportMarkdown, exportGoogleDoc };
+  /** A print-ready document with the meeting's slides, through the browser's print dialog ("Save as PDF"). */
+  const exportPdf = (s: Summary, withTranscript: boolean) => {
+    const x: SummaryExport = {
+      ...exportOf(s, withTranscript),
+      slides: (meeting.slides ?? []).map((sl) => ({ url: slideUrl(meeting.id, sl.id), at: sl.at, width: sl.width, height: sl.height })),
+      slidesHeading: t("slides.docHeading"),
+    };
+    printAsPdf(summaryDocument(x, t).body, nameOf(s, withTranscript)).catch((e: unknown) => toast.error(e));
+  };
+  return { versionOf, labelOf, exportMarkdown, exportGoogleDoc, exportPdf };
 }
 
 /** Export choices for one summary version, used by the page's Export menu. */
 export function SummaryExportItems({
   onExport,
   onGoogleDoc,
+  onPdf,
+  slideCount = 0,
 }: {
   onExport: (withTranscript: boolean) => void;
   onGoogleDoc: (withTranscript: boolean) => void;
+  onPdf: (withTranscript: boolean) => void;
+  /** The meeting's slides, which the PDF includes. */
+  slideCount?: number;
 }) {
   const { t } = useI18n();
   const { googleClientId } = useAuth();
@@ -438,6 +468,17 @@ export function SummaryExportItems({
           <span className="menu-item-desc">{t("summary.exportWithTranscriptDesc")}</span>
         </span>
         <span className="end mono">.md</span>
+      </button>
+      <div className="menu-sep" />
+      <div className="menu-label smallcaps">PDF</div>
+      <p className="menu-note">{slideCount > 0 ? t("slides.pdfNoteWithSlides", { n: slideCount }) : t("slides.pdfNote")}</p>
+      <button className="menu-item" onClick={() => onPdf(false)}>
+        <FileText /> {t("summary.exportSummaryOnly")}
+        <span className="end mono">.pdf</span>
+      </button>
+      <button className="menu-item" onClick={() => onPdf(true)}>
+        <ScrollText /> {t("summary.exportWithTranscript")}
+        <span className="end mono">.pdf</span>
       </button>
       <div className="menu-sep" />
       <div className="menu-label smallcaps">{t("summary.googleDocs")}</div>
@@ -639,6 +680,7 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
                     templateId: current.templateId,
                     prompt: current.templateId ? "" : current.prompt,
                     outputLanguage: current.outputLanguage,
+                    slides: current.withSlides,
                   })
                 }
                 title={t("summary.regenerateHint")}
@@ -656,6 +698,7 @@ export function SummaryPanel({ meeting, selection }: { meeting: MeetingDetail; s
           </span>
           <span>{relative(current.createdAt, t, locale)}</span>
           {summaries.length === 1 && <span>{t("summary.version", { n: 1 })}</span>}
+          {!!current.slidesSent && <span>{t("slides.summaryRead", { n: current.slidesSent })}</span>}
         </div>
       )}
       <div className="summary-body">{body}</div>

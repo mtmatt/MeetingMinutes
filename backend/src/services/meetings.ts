@@ -28,6 +28,7 @@ import {
 } from "./transcriberSettings";
 import { scheduleWakeCheck } from "./workerWake";
 import { mediaRetention } from "./mediaRetention";
+import { listSlides, removeSlides, slidePublic } from "./slides";
 import { enqueueCompactions } from "./mediaCompaction";
 import { activeRefinement, enqueueRefinementAfterTranscription, latestRefinement, refineAvailable } from "./refine";
 import { LOCAL_PROFILE, effectiveSettings, fallbackDelaySec } from "./workerProfiles";
@@ -311,6 +312,8 @@ export function meetingDetail(m: MeetingRow) {
       ...(s.original_text != null ? { original: s.original_text } : {}),
     })),
     refinement: latestRefinement(m.id),
+    /** What was on screen, picked in the uploader's browser, in order. */
+    slides: listSlides(m.id).map(slidePublic),
     summaries: summaries.map(summaryPublic),
   };
 }
@@ -322,6 +325,7 @@ export async function deleteMeeting(m: MeetingRow) {
   });
   db.query("DELETE FROM meetings WHERE id = $id").run({ id: m.id });
   await rm(meetingDir(m.id), { recursive: true, force: true });
+  await removeSlides(m.id);
   publish(m.owner_id, { type: "meeting.deleted", meetingId: m.id });
 }
 
@@ -627,7 +631,7 @@ export function enqueueAutoSummary(m: MeetingRow, req: SummaryRequest) {
   const owner = db.query<UserRow, { id: string }>("SELECT * FROM users WHERE id = $id").get({ id: m.owner_id });
   if (!owner) return;
   try {
-    enqueueSummary(m, owner.id, req, summaryHold(owner, summaryInputTokens(m, req.prompt)));
+    enqueueSummary(m, owner.id, req, summaryHold(owner, summaryInputTokens(m, req.prompt, req.slides !== false)));
   } catch (e) {
     if (!(e instanceof CreditsError)) throw e;
     const pts = (n: number) => (n / MILLI).toFixed(1);

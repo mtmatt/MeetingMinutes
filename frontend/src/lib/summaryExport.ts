@@ -111,6 +111,9 @@ export interface SummaryExport {
   transcriptHeading: string;
   /** Lead with YAML front matter carrying the meeting details (default true; a file needs it, pasted text does not). */
   frontMatter?: boolean;
+  /** The meeting's slides, with their addresses (PDF only: a Google Doc cannot fetch them, they need the sign-in). */
+  slides?: { url: string; at: number; width: number; height: number }[];
+  slidesHeading?: string;
 }
 
 /**

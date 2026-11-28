@@ -41,6 +41,8 @@ export const localSettingsSchema = z.object({
   contextTokens: z.number().int().min(4096).max(1_048_576),
   think: z.boolean(),
   keepAliveSec: z.number().int().min(0).max(86_400),
+  /** The model reads pictures: summaries are shown the meeting's slides. Hosted models always can. */
+  vision: z.boolean().default(false),
 });
 
 /** A hosted model: the provider (with its fixed address) and the model name. */
@@ -74,6 +76,7 @@ export function defaultSummarySettings(): SummarySettings {
       contextTokens: config.llm.contextTokens,
       think: config.llm.think,
       keepAliveSec: config.llm.keepAliveSec,
+      vision: config.llm.vision,
     },
     api: {
       provider: config.summary.apiProvider,
@@ -81,6 +84,11 @@ export function defaultSummarySettings(): SummarySettings {
       contextTokens: config.summary.apiContextTokens,
     },
   };
+}
+
+/** Whether summaries written with these settings can be shown pictures (the meeting's slides). */
+export function summaryVision(s: SummarySettings = summarySettings()): boolean {
+  return s.provider === "api" || s.local.vision;
 }
 
 /**
@@ -161,10 +169,12 @@ export function publicSummarizerInfo(s: SummarySettings = summarySettings()): {
   onServer: boolean;
   /** Host the transcript is sent to: a hosted provider's, or a model server's on another machine (null when on this server). */
   host: string | null;
+  /** The model reads pictures, so a meeting's slides go into its summaries. */
+  vision: boolean;
 } {
   if (s.provider === "api") {
-    return { provider: "api", vendor: s.api.provider, model: s.api.model, onServer: false, host: PROVIDER_INFO[s.api.provider].host };
+    return { provider: "api", vendor: s.api.provider, model: s.api.model, onServer: false, host: PROVIDER_INFO[s.api.provider].host, vision: true };
   }
   const onServer = isLoopbackUrl(s.local.baseUrl);
-  return { provider: "local", vendor: null, model: s.local.model, onServer, host: onServer ? null : new URL(s.local.baseUrl).host };
+  return { provider: "local", vendor: null, model: s.local.model, onServer, host: onServer ? null : new URL(s.local.baseUrl).host, vision: s.local.vision };
 }

@@ -304,6 +304,15 @@ function LocalModelForm({
           </label>
           <span className="field-hint">{t("model.thinkHint")}</span>
         </div>
+        <div className="field">
+          <span className="field-label">{t("slides.adminVision")}</span>
+          <label className="switch">
+            <input type="checkbox" checked={!!value.vision} onChange={(e) => onChange({ vision: e.target.checked })} />
+            <span className="switch-track" />
+            <span className={`switch-state ${value.vision ? "on" : ""}`}>{value.vision ? t("model.on") : t("model.off")}</span>
+          </label>
+          <span className="field-hint">{t("slides.adminVisionHint")}</span>
+        </div>
         {value.api === "ollama" && (
           <div className="field">
             <label htmlFor="llm-keep">{t("model.keepAlive")}</label>

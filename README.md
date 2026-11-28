@@ -589,6 +589,23 @@ A few limits to know about:
 - **Recording continues in the background.** You can switch tabs, but if you close the Minutes tab, recording stops. What was already recorded is kept locally and can be restored.
 - **Tell participants** before you record.
 
+## Slides from videos and shared tabs
+
+People can have Minutes keep a picture of what was on screen each time it changes a lot, as when a slide changes. The pictures are picked **in their own browser**: only the pictures are uploaded, never the video for this.
+
+- **A video file**: turn on **Capture slides** under the file. The browser steps through the video (one frame a second for up to an hour, then every two or three seconds), in the background while the rest of the form is filled in. The slides found are shown as thumbnails; any can be removed before uploading. They are sent after the recording and before it is marked complete, so the automatic summary has them.
+- **An online meeting recorded in the browser**: turn on **Capture slides** before starting. The shared tab is then captured at up to 1080p, one frame a second, and the pictures are kept in the browser with the recording (restoring an interrupted recording restores its slides too).
+
+Each frame is shrunk on the GPU with WebGL to a 160×90 grey picture and compared with the slide kept last. Measuring how much of the slide's *content* (whatever is not its background) changed, rather than how much of the screen, tells two text slides of the same template apart. Parts of the screen that keep moving (a speaker's camera, a playing clip) are learned and ignored; a transition is waited out until the picture holds still; a slide that only gains something (a bullet appearing) keeps one picture, as it finally looked; going back to an earlier slide keeps no second copy; black frames are skipped. Browsers without WebGL fall back to a 2D canvas.
+
+On the meeting page the slides sit in the transcript where they appeared; click one to see it full size, page through them, play the recording from there, or delete it. They are stored apart from the recording (`data/slides/<meeting>`), so deleting the recording after its retention period keeps them with the transcript and the summaries.
+
+**Summaries read the slides** when the summary model can read pictures: hosted models always (Anthropic, OpenAI, OpenRouter, Gemini), a model on your own server when **Admin → Summary model → Model reads pictures** is on (or `LLM_VISION=true`). Each slide is sent with the time it appeared, before the transcript, so the model can check names, numbers and terms against it. A long meeting summarised in parts gets each part's slides with that part. At most 50 slides (spread evenly over the meeting) and 16 MB go into one summary. They are paid for like the rest of what the model reads (a 1280×720 slide is about 1,200 tokens), the estimate shown before writing includes them, and the summary composer has a switch to leave them out. A model that turns out not to accept pictures writes the summary from the transcript alone.
+
+**Exporting a summary as PDF** (Export → PDF) lays out the summary, the meeting's slides with their times, and optionally the transcript, and opens the browser's print dialog: choose **Save as PDF**. Doing it there keeps the text selectable and the Chinese fonts right without embedding several megabytes of font in the page.
+
+Limits: 300 slides a meeting, JPEG only, at most 1.5 MB and 2560 pixels a side each.
+
 ## Configuration
 
 All settings are environment variables. Put them in `.env` at the repository root; `.env.example` documents each one. The most relevant:
@@ -627,6 +644,7 @@ All settings are environment variables. Put them in `.env` at the repository roo
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `GEMINI_API_KEY` | – | The hosted provider's key; only the one in use is needed. Never stored in the database or sent to browsers. |
 | `SUMMARY_API_CONTEXT_TOKENS` / `SUMMARY_API_CONCURRENCY` | `128000` / `2`                     | Context window when the provider does not report one, and summaries written at once with a hosted API. Each person can have at most 3 summaries queued or running. |
 | `LLM_API` / `LLM_BASE_URL` / `LLM_MODEL`            | `ollama` / `http://127.0.0.1:11434` / `batiai/qwen3.8-27b:q3` | The local model server and model (`openai` for vLLM, llama.cpp, LM Studio).                                                                                                                                                                                                                                       |
+| `LLM_VISION`                                        | `false`                                | The local model reads pictures (Qwen-VL, Gemma 3, LLaVA…): summaries are then shown the meeting's slides. Hosted models always are.                                                                                                                                                                                               |
 | `LLM_CONTEXT_TOKENS` / `LLM_THINK`                  | `65536` / `false`                      | Context window (longer transcripts are read in parts) and thinking.                                                                                                                                                                                                                                                                |
 | `LLM_KEEP_ALIVE_SEC` / `LLM_GPUS`                   | `0` / all                              | Seconds the model stays in GPU memory after a summary; GPUs Ollama may use (`scripts/llm.sh`).                                                                                                                                                                                                                                     |
 | `LLM_TIMEOUT_SEC` / `LLM_CONCURRENCY` / `LLM_API_KEY` | `3600` / `1` / –                     | Longest summary, summaries at once, and a key for an OpenAI-compatible server (never sent to browsers).                                                                                                                                                                                                                            |

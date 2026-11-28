@@ -9,6 +9,7 @@ import { clock, duration, speakerVar, wordCount } from "../lib/format";
 import { usePlayer } from "../lib/player";
 import { Menu } from "./Menu";
 import { Modal } from "./Modal";
+import { SlideCard, SlideViewer, slidesByBlock } from "./MeetingSlides";
 import { useToast } from "./Toast";
 
 interface Block {
@@ -683,6 +684,13 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
   const speakers = useMemo(() => new Map(meeting.speakers.map((s) => [s.key, s])), [meeting.speakers]);
   const blocks = useMemo(() => toBlocks(meeting.segments), [meeting.segments]);
   const turns = useMemo(() => turnsBySpeaker(blocks), [blocks]);
+  // Slides sit in the transcript where they appeared.
+  const slides = useMemo(() => meeting.slides ?? [], [meeting.slides]);
+  const slideIndex = useMemo(() => new Map(slides.map((s, i) => [s.id, i])), [slides]);
+  const placedSlides = useMemo(() => slidesByBlock(slides, blocks.map((b) => b.start)), [slides, blocks]);
+  const [viewing, setViewing] = useState<number | null>(null);
+  const slideCards = (list: typeof slides) =>
+    list.map((sl) => <SlideCard key={sl.id} meeting={meeting} slide={sl} index={slideIndex.get(sl.id) ?? 0} onOpen={setViewing} />);
   const activeIdx = findActive(meeting.segments, time);
   const activeId = activeIdx >= 0 ? meeting.segments[activeIdx]!.id : null;
   const q = query.trim();
@@ -879,7 +887,9 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
           const sp = b.speaker ? speakers.get(b.speaker) : undefined;
           const hasActive = activeId != null && b.segments.some((s) => s.id === activeId);
           return (
-            <section key={`${bi}-${b.segments[0]!.id}`} className={`block ${hasActive ? "is-active" : ""}`} style={{ ["--spk" as string]: speakerVar(sp?.color) }}>
+            <Fragment key={`${bi}-${b.segments[0]!.id}`}>
+            {slideCards(placedSlides.before[bi] ?? [])}
+            <section className={`block ${hasActive ? "is-active" : ""}`} style={{ ["--spk" as string]: speakerVar(sp?.color) }}>
               <header className="block-head">
                 <button className="block-time mono" onClick={() => seek(b.start, true)}>
                   {clock(b.start, (meeting.durationSec ?? 0) >= 3600)}
@@ -950,9 +960,12 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
                 <Pencil />
               </button>
             </section>
+            </Fragment>
           );
         })}
+        {slideCards(placedSlides.after)}
       </div>
+      {viewing != null && slides[viewing] && <SlideViewer meeting={meeting} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} />}
 
       {newSpeakerFor && (
         <Modal
