@@ -1,6 +1,7 @@
 import { config } from "../config";
 import { db, now } from "../db";
 import { newId, sha256 } from "../lib/util";
+import { revokeResetLinks } from "./invites";
 import type { UserRow } from "../types";
 import { findUserById } from "./service";
 
@@ -77,6 +78,8 @@ export function consumeVerification(token: string): VerifyOutcome {
     db.query("UPDATE email_verifications SET used_at = $t WHERE id = $id").run({ id: row.id, t });
     const changed = user.email?.toLowerCase() !== row.email || !user.email_verified_at;
     db.query("UPDATE users SET email = $e, email_verified_at = $t, updated_at = $t WHERE id = $u").run({ u: user.id, e: row.email, t });
+    // Reset links already mailed went to the old address: they stop working with it.
+    if (user.email && user.email.toLowerCase() !== row.email) revokeResetLinks(user.id);
     return { ok: true, user: findUserById(user.id)!, changed };
   })();
 }

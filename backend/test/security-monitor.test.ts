@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { config } from "../src/config";
 import { db } from "../src/db";
 import { inRange, isProbe, normalizeIp, sentAlerts, unblockIp } from "../src/services/security";
+import { redactPath } from "../src/auth/securityWatch";
 import { adminClient, app } from "./helpers";
 
 // Requests here come through a proxy on this machine, which names the visitor in X-Forwarded-For.
@@ -154,5 +155,26 @@ describe("security monitor", () => {
     const res = await from(ip, "/api/billing/ecpay/notify", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: form });
     expect(res.status).toBe(400);
     expect(events(ip)).toEqual([{ kind: "payment_signature", n: 1 }]);
+  });
+});
+
+describe("link tokens in the event log", () => {
+  test("a token-sized path segment keeps only its first 4 characters", () => {
+    expect(redactPath("/invite/AbCdEfGhIjKlMnOpQrStUvWxYz012345")).toBe("/invite/AbCd…");
+    expect(redactPath("/api/auth/invites/AbCdEfGhIjKlMnOpQrStUvWxYz012345/accept")).toBe("/api/auth/invites/AbCd…/accept");
+    expect(redactPath("/verify-email/AbCdEfGhIjKlMnOpQrStUvWxYz012345")).toBe("/verify-email/AbCd…");
+    // Record IDs and ordinary paths stay as they are.
+    expect(redactPath("/api/meetings/AbCdEfGhIjKlMnOp/slides")).toBe("/api/meetings/AbCdEfGhIjKlMnOp/slides");
+    expect(redactPath("/wp-login.php")).toBe("/wp-login.php");
+  });
+
+  test("a tried link is recorded without its token", async () => {
+    const ip = "203.0.113.177";
+    const token = "ZzYyXxWwVvUuTtSsRrQqPpOoNnMmLlKk";
+    expect((await from(ip, `/api/auth/invites/${token}`)).status).toBe(404);
+    const rows = db.query<{ detail: string }, { ip: string }>("SELECT detail FROM security_events WHERE ip = $ip").all({ ip });
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.detail).not.toContain(token);
+    expect(rows.some((r) => r.detail.includes("/api/auth/invites/ZzYy…"))).toBe(true);
   });
 });

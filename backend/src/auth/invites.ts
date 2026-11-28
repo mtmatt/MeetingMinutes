@@ -61,6 +61,19 @@ export function createInvite(input: {
 
 const USABLE = "use_count < max_uses AND revoked_at IS NULL AND expires_at > $t";
 
+/**
+ * Stop every unused password reset link for a user. Called whenever the old
+ * password or address stops being the way in: the password was changed, the
+ * address changed (links went to the old mailbox), or the account was
+ * disabled. A link that sat in a mailbox someone else could read must not
+ * outlive the password it was meant to replace. Returns how many were stopped.
+ */
+export function revokeResetLinks(userId: string): number {
+  return db
+    .query(`UPDATE invites SET revoked_at = $t WHERE kind = 'reset' AND target_user_id = $u AND use_count < max_uses AND revoked_at IS NULL`)
+    .run({ u: userId, t: now() }).changes;
+}
+
 /** A usable invite (unexpired, not revoked, uses left) for the raw token, or null. */
 export function findInvite(token: string): InviteRow | null {
   if (!token || token.length > 200) return null;

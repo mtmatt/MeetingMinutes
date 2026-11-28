@@ -1,6 +1,7 @@
 import { config } from "../config";
 import { db, now } from "../db";
 import { newId, sha256 } from "../lib/util";
+import { revokeResetLinks } from "./invites";
 import type { Role, SessionRow, UserRow } from "../types";
 
 export const PASSWORD_MIN = 10;
@@ -78,13 +79,17 @@ export function insertUser(input: { username: string; displayName: string; passw
   return findUserById(id)!;
 }
 
+/** Set a new password. Unused reset links for the account stop working with the old password. */
 export async function setPassword(userId: string, password: string) {
   const password_hash = await hashPassword(password);
-  db.query("UPDATE users SET password_hash = $password_hash, updated_at = $t WHERE id = $id").run({
-    id: userId,
-    password_hash,
-    t: now(),
-  });
+  db.transaction(() => {
+    db.query("UPDATE users SET password_hash = $password_hash, updated_at = $t WHERE id = $id").run({
+      id: userId,
+      password_hash,
+      t: now(),
+    });
+    revokeResetLinks(userId);
+  })();
 }
 
 export function publicUser(u: UserRow) {
