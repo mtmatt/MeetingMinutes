@@ -1469,3 +1469,17 @@
   color: var(--ink);
   margin-bottom: 2px;
 }
+
+/* A sentence the AI corrected: a light accent underline; its original shows on hover. */
+.seg.refined {
+  text-decoration: underline solid color-mix(in srgb, var(--accent) 45%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 5px;
+}
+.refine-note {
+  margin: 0 0 16px;
+  align-items: center;
+}
+.refine-note .link-btn {
+  margin-left: 4px;
+}

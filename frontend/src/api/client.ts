@@ -1,4 +1,7 @@
 import type {
+  RefineInfo,
+  RefineSettings,
+  RefineState,
   SecurityEvent,
   SecuritySettings,
   SecurityState,
@@ -114,6 +117,8 @@ export const api = {
       needsSetup: boolean;
       user: User | null;
       helpContact: string | null;
+      /** Transcript correction with a hosted model (null when signed out). */
+      refine?: RefineInfo | null;
       /** How long the site keeps recordings after transcription (days); null: kept. */
       mediaRetentionDays?: number | null;
       uploadLimitBytes: number | null;
@@ -203,6 +208,11 @@ export const api = {
     durationSec?: number | null;
   }) => post<{ meeting: MeetingSummary; chunkSize: number }>("/meetings", b),
   completeUpload: (id: string) => post<{ meeting: MeetingSummary }>(`/meetings/${id}/upload/complete`),
+  refineMeeting: (id: string) => post<{ meeting: MeetingDetail }>(`/meetings/${id}/refine`, {}),
+  undoRefineMeeting: (id: string) => post<{ restored: number; meeting: MeetingDetail }>(`/meetings/${id}/refine/undo`, {}),
+  adminRefine: () => get<RefineState>("/admin/refine"),
+  adminSaveRefine: (s: RefineSettings) => put<RefineState>("/admin/refine", s),
+  adminResetRefine: () => del<RefineState>("/admin/refine"),
   updateMeeting: (id: string, b: { title?: string; occurredAt?: number | null }) =>
     patch<{ meeting: MeetingSummary }>(`/meetings/${id}`, b),
   deleteMeeting: (id: string) => del<{ ok: true }>(`/meetings/${id}`),

@@ -16,6 +16,7 @@ import { VENDOR_NAMES } from "../components/SummaryComposer";
 import { StoragePolicy } from "./AdminStorage";
 import { WorkerKeys } from "./AdminWorkerKeys";
 import { SummaryModel } from "./AdminSummaryModel";
+import { RefineSettingsCard } from "./AdminRefine";
 import { Transcription } from "./AdminTranscription";
 import { AdminBilling } from "./AdminBilling";
 import { AdminSecurity } from "./AdminSecurity";
@@ -613,7 +614,12 @@ export function AdminPage() {
         {tab === "invites" && <Invites />}
         {tab === "announcements" && <AdminAnnouncements />}
         {tab === "asr" && <Transcription />}
-        {tab === "model" && <SummaryModel />}
+        {tab === "model" && (
+          <>
+            <SummaryModel />
+            <RefineSettingsCard />
+          </>
+        )}
         {tab === "sales" && <AdminBilling />}
         {tab === "security" && <AdminSecurity />}
         {tab === "system" && <System />}

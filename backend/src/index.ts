@@ -11,11 +11,13 @@ import { sweepTransfers } from "./services/mediaTransfer";
 import { purgeAbandonedUploads, reapStaleJobs } from "./services/meetings";
 import { billingSettings } from "./services/billingSettings";
 import { kick, recoverSummaries } from "./services/summarizer";
+import { recoverRefinements } from "./services/refine";
 import { seedBuiltinTemplates } from "./services/templates";
 import { bindHelp, handoffHandler, redirectHandler } from "./redirect";
 
 seedBuiltinTemplates();
 recoverSummaries();
+recoverRefinements();
 
 const app = createApp();
 

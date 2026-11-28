@@ -1102,3 +1102,9 @@
     transform: none;
   }
 }
+
+[data-ui="next"] .seg.refined {
+  text-decoration: underline solid color-mix(in oklab, var(--accent) 45%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 6px;
+}

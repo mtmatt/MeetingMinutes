@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, type ReactNode } from "react";
 import { api, setUnauthorizedHandler } from "../api/client";
-import type { MediaPolicy, SummarizerInfo, TranscriberInfo, User } from "../api/types";
+import type { MediaPolicy, RefineInfo, SummarizerInfo, TranscriberInfo, User } from "../api/types";
 import { useI18n } from "../i18n";
 import { currentTheme, isThemePref, setTheme, setThemePersister, themeChosenHere } from "./theme";
 import { setNewUi } from "./newUi";
@@ -14,6 +14,8 @@ interface AuthValue {
   helpContact: string | null;
   /** How long the site keeps recordings after transcription (days); null: kept. People may choose shorter. */
   siteRetentionDays: number | null;
+  /** Transcript correction with a hosted model: offered, and where the transcript then goes. */
+  refine: RefineInfo | null;
   /** Largest file the server accepts (MAX_UPLOAD_MB); null until known. */
   uploadLimitBytes: number | null;
   /** Google OAuth client ID (GOOGLE_CLIENT_ID) for exporting straight to Google Docs; null when not set up. */
@@ -93,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading: q.isLoading,
     helpContact: q.data?.helpContact ?? null,
     siteRetentionDays: q.data?.mediaRetentionDays ?? null,
+    refine: q.data?.refine ?? null,
     uploadLimitBytes: q.data?.uploadLimitBytes ?? null,
     googleClientId: q.data?.googleClientId ?? null,
     summarizer: q.data?.summarizer ?? null,
