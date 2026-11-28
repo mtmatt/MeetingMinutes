@@ -66,7 +66,23 @@ fi
 
 # The service runs as whoever owns the project, like the scripts do when that
 # user runs them.
-NAME=$(stat -c %U "$PROJECT_DIR")
+# By number: files copied from another computer with their owner kept (rsync -a,
+# scp -p, a tar) can belong to a user ID with no account here, which stat names
+# "UNKNOWN".
+OWNER_UID=$(stat -c %u "$PROJECT_DIR")
+NAME=$(getent passwd "$OWNER_UID" | cut -d: -f1 || true)
+if [ -z "$NAME" ]; then
+  cat >&2 <<EOF
+$PROJECT_DIR belongs to user ID $OWNER_UID, which has no account on this machine
+(the files were probably copied here from another computer with their owner kept).
+The service must run as an account that exists. Give the project to one, then run
+this script again:
+  the account you run it as now:   chown -R root:root $PROJECT_DIR
+  or a dedicated user (safer):     scripts/setup-user.sh
+Only ownership changes; no file is altered.
+EOF
+  exit 1
+fi
 GROUP=$(id -gn "$NAME")
 HOME_DIR=$(getent passwd "$NAME" | cut -d: -f6)
 if [ "$NAME" = root ]; then
