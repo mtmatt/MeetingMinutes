@@ -16,6 +16,11 @@
     "typecheck": "bun run --cwd backend typecheck && bun run --cwd frontend typecheck",
     "admin": "bun run --cwd backend src/cli.ts",
     "loadtest": "bun run --cwd backend src/loadtest.ts",
-    "worker": "scripts/worker.sh"
+    "worker": "scripts/worker.sh",
+    "uicheck": "bun uicheck/run.ts"
+  },
+  "devDependencies": {
+    "axe-core": "4.14.1",
+    "playwright": "1.63.0"
   }
 }

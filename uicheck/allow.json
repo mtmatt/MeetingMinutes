@@ -1,0 +1,8 @@
+[
+  {
+    "rule": "clipped",
+    "screen": "landing",
+    "selector": "img.shot",
+    "reason": "The landing page's collage crops its screenshots on purpose."
+  }
+]
