@@ -540,6 +540,19 @@ It appears as a banner under the top bar, the most urgent first, at once in ever
 
 Every API request's time, from arriving to the answer being ready, is counted per minute and per route (`GET /api/meetings/:id`, never the ids) into fixed time buckets, written to the database once a minute and kept for 30 days (`backend/src/services/perf.ts`); the event stream, which stays open, is left out. The page shows, for the last hour, day, week or month: the number of requests, p50, p95 and p99 response times and the server error rate; p50 and p95 over time; and a table by route (sortable by count, percentiles, longest or 5xx). Percentiles are read from the summed buckets, so they are close (within a bucket) rather than exact. It also shows how long the work people wait for takes: transcriptions (waiting in the queue, processing, and processing time per minute of recording) and summaries (waiting, writing), as p50, p95 and the longest.
 
+### Load testing
+
+`bun run loadtest 10 50 100` (on the server, in the repository) simulates that many people using the site at once, one level after another, 60 seconds each. It creates test accounts (`loadtest-001`…), each with three meetings of about an hour (transcript, four speakers, a summary; no recording), and has each person sign in and then, every 2–6 seconds, open the library, open a meeting, search, look at templates or term lists, and now and then rename a meeting or correct a sentence. For each step it prints the requests, failures and p50/p95/p99 response times, and removes the test accounts at the end. Nothing is transcribed or summarised, so it costs no GPU time or API fees; the requests also show in Admin → Performance.
+
+```bash
+bun run loadtest 50 --duration 120        # one level, two minutes
+bun run loadtest 100 --think 0.5          # twice as busy (half the pause between steps)
+bun run loadtest 20 --url https://minutes.example.com   # through the domain and reverse proxy
+bun run loadtest --cleanup                # remove test accounts left by an interrupted run
+```
+
+By default it talks to this machine's server directly (`http://localhost:PORT`), which measures the app itself; `--url` goes through the domain and any proxy in front of it.
+
 ## Usage dashboard
 
 **Usage** (in the account menu, at `/usage`) shows what a person used over the last 30 or 90 days (by day), 12 months or all time (by month): hours of recording transcribed, summaries and the tokens they read and wrote, and, on a prepaid account, the points they cost. The work is sorted by language, recording length, weekday of the meeting, summary template and summary model, with the meetings that used the most. It counts finished work on recordings still in the library (transcribing again counts again; deleted recordings are left out; failures are noted but not counted), in Taiwan time; every charge stays listed on the purchase page.

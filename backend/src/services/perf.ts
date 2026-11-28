@@ -55,11 +55,41 @@ export function recordRequest(route: string, status: number, ms: number, at = no
   a.hist[bucketOf(ms)]!++;
 }
 
-/** Write what was counted (every minute, and before reading). */
+/** Put counts that could not be written back with the ones counted since, to be written next time. */
+function keep(batch: Map<string, Agg>) {
+  for (const [key, a] of batch) {
+    const b = pending.get(key);
+    if (!b) {
+      pending.set(key, a);
+      continue;
+    }
+    b.count += a.count;
+    b.errors += a.errors;
+    b.clientErrors += a.clientErrors;
+    b.sumMs += a.sumMs;
+    b.maxMs = Math.max(b.maxMs, a.maxMs);
+    a.hist.forEach((n, i) => (b.hist[i]! += n));
+  }
+}
+
+/**
+ * Write what was counted (every minute, and before reading). When the
+ * database is busy (another program writing to it), nothing is lost and
+ * nothing is thrown: the counts wait for the next time.
+ */
 export function flushPerf() {
   if (pending.size === 0) return;
   const batch = pending;
   pending = new Map();
+  try {
+    writeBatch(batch);
+  } catch (e) {
+    keep(batch);
+    console.warn(`[perf] request timings not written yet (${e instanceof Error ? e.message : e}); trying again next minute`);
+  }
+}
+
+function writeBatch(batch: Map<string, Agg>) {
   const read = db.query<{ count: number; errors: number; client_errors: number; sum_ms: number; max_ms: number; hist: string }, { m: number; r: string }>(
     "SELECT count, errors, client_errors, sum_ms, max_ms, hist FROM request_stats WHERE minute = $m AND route = $r",
   );
