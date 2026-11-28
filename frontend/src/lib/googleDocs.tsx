@@ -142,7 +142,7 @@ function SummaryDocument({ x, t }: { x: SummaryExport; t: TFn }) {
       >
         {linkTimestamps(summary.content ?? "", meeting.durationSec ?? 0)}
       </ReactMarkdown>
-      {x.withTranscript && meeting.segments.length > 0 && (
+      {x.withTranscript && (meeting.segments.length > 0 || (x.slideImages && (meeting.slides ?? []).length > 0)) && (
         <>
           <hr />
           <h2>{x.transcriptHeading}</h2>

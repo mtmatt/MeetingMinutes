@@ -468,13 +468,10 @@ export function SummaryExportItems({
   onExport,
   onGoogleDoc,
   onPdf,
-  slideCount = 0,
 }: {
   onExport: (withTranscript: boolean) => void;
   onGoogleDoc: (withTranscript: boolean) => void;
   onPdf: () => void;
-  /** The meeting's slides, which the PDF includes. */
-  slideCount?: number;
 }) {
   const { t } = useI18n();
   const { googleClientId } = useAuth();
@@ -505,7 +502,7 @@ export function SummaryExportItems({
         <FileImage />
         <span>
           <span className="menu-item-title">{t("slides.pdfTitle")}</span>
-          <span className="menu-item-desc">{slideCount > 0 ? t("slides.pdfNoteWithSlides", { n: slideCount }) : t("slides.pdfNote")}</span>
+          <span className="menu-item-desc">{t("slides.pdfNote")}</span>
         </span>
         <span className="end mono">.pdf</span>
       </button>
