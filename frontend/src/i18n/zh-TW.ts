@@ -106,8 +106,8 @@ export const zhTW: Dict = {
     setPassword: "設定密碼",
     invalidLink: "這個連結無效、已過期，或已經用完。",
     goToSignIn: "前往登入",
-    heroLine1: "錄下會議，",
-    heroLine2: "留下紀錄。",
+    heroLine1: "錄下會議",
+    heroLine2: "留下紀錄",
     heroBody: "語音辨識在你自己的 GPU 上完成；需要摘要時，由語言模型根據逐字稿撰寫。所有對話內容都能搜尋。",
   },
   library: {

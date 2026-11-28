@@ -8,7 +8,7 @@ import { Seal, Wordmark } from "../components/Seal";
 import { PublicAnnouncements } from "../components/Announcements";
 import { useI18n } from "../i18n";
 import { useAuth } from "../lib/auth";
-import { twd } from "../lib/format";
+import { useForceNewUi } from "../lib/newUi";
 
 /** A few lines of a fictional transcript, typeset on the hero panel. */
 const SAMPLE = [
@@ -18,6 +18,8 @@ const SAMPLE = [
 ];
 
 function AuthLayout({ children }: { children: ReactNode }) {
+  // The landing page's look, for everyone: these pages are where it sends visitors.
+  useForceNewUi();
   const { t, locale, setLocale } = useI18n();
   return (
     <div className="auth">
@@ -245,43 +247,7 @@ export function LoginPage() {
           </div>
         )}
       </form>
-      <PriceSummary />
     </AuthLayout>
-  );
-}
-
-/**
- * The packages and their prices in NT$, on the sign-in page (the site's front
- * page for visitors), with a link to the full plans: anyone can see what is
- * sold and for how much without an account.
- */
-function PriceSummary() {
-  const { t } = useI18n();
-  const q = useQuery({ queryKey: ["pricing"], queryFn: api.pricing, retry: false, staleTime: 60_000 });
-  const p = q.data;
-  if (!p || p.packages.length === 0) return null;
-  const lowest = Math.min(...p.packages.map((x) => x.price));
-  return (
-    <section className="auth-pricing" aria-labelledby="auth-pricing-title">
-      <div className="auth-pricing-head">
-        <h3 id="auth-pricing-title">{t("pricing.title")}</h3>
-        <span className="auth-pricing-from">{t("pricing.from", { price: twd(lowest) })}</span>
-      </div>
-      <ul className="auth-pricing-list">
-        {p.packages.map((pkg) => (
-          <li key={pkg.id}>
-            <span>
-              {pkg.points.toLocaleString()} {t("billing.pointsUnit")}
-            </span>
-            <span className="auth-pricing-price">{twd(pkg.price)}</span>
-          </li>
-        ))}
-      </ul>
-      <p className="auth-pricing-note">{p.onSale ? t("pricing.currencyNote") : `${t("pricing.comingSoon")}${t("pricing.currencyNote")}`}</p>
-      <Link to="/pricing" className="auth-pricing-more">
-        {t("pricing.more")} <ArrowRight />
-      </Link>
-    </section>
   );
 }
 
