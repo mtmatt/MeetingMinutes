@@ -133,7 +133,12 @@ if [ "$DRY" = 0 ]; then
   fi
 fi
 
-SUDO="sudo -u $NAME -H"
+# A command as $NAME, in its home directory, the way this machine allows:
+# sudo when it is installed (Debian, for one, has only su by default).
+as_user_cmd() {
+  if command -v sudo >/dev/null 2>&1; then printf 'sudo -u %s -H %s' "$NAME" "$*"; else printf "su - %s -c '%s'" "$NAME" "$*"; fi
+}
+
 running=""
 if command -v tmux >/dev/null 2>&1; then
   for s in mm-web mm-worker; do
@@ -153,43 +158,37 @@ $HEAD
 
 1. Stop what is still running as root${running:+ (tmux sessions:$running)}:
      tmux kill-session -t mm-web; tmux kill-session -t mm-worker
-   (or systemctl stop meetingminutes-web, if it runs as a systemd service:
-   run scripts/install-service.sh again after the next step, for $NAME).
+   (or systemctl stop meetingminutes-web, if it runs as a systemd service).
 
 2. Give $NAME its own tools. Bun and uv are installed in the home directory
    of whoever ran scripts/install.sh, and the worker's Python environment
    points there, so run it once more as $NAME, with the options you used:
-     $SUDO $PROJECT_DIR/scripts/install.sh [--no-gpu | --worker-only | …]
+     $(as_user_cmd "$PROJECT_DIR/scripts/install.sh [--no-gpu | --worker-only | …]")
    Not moved, because they are in root's home directory: Ollama and its
    models, and Hugging Face downloads. The worker's models in the data directory,
    its enrollment and all recordings stay where they are.
 
-3. Start the services as $NAME:
-     $SUDO $PROJECT_DIR/scripts/restart.sh
-   and look at them with
-     $SUDO tmux attach -t mm-web        (or mm-worker; detach with Ctrl-b d)
-   Without sudo:  su - $NAME -c '$PROJECT_DIR/scripts/restart.sh'
+3. On the standard ports 443 and 80, allow users other than root to open them, once:
+     echo 'net.ipv4.ip_unprivileged_port_start=80' > /etc/sysctl.d/60-meetingminutes-ports.conf && sysctl --system
+   (A site on a port above 1024, such as 8443, needs nothing.)
 
-4. Start them at boot, one of:
-   a) cron, as $NAME:   crontab -u $NAME -e   and add the line
-        @reboot $PROJECT_DIR/scripts/restart.sh
-   b) systemd for the web server, as a system service that runs as $NAME:
-        $PROJECT_DIR/scripts/install-service.sh
-      (it stops the tmux copy, mm-web, and lets $NAME restart the service with
-      scripts/restart.sh web); and the cron line above with "restart.sh worker"
-      for the worker.
+4. Run the web server as a systemd service, as $NAME (it starts at boot):
+     $PROJECT_DIR/scripts/install-service.sh
+   and start the worker, which stays in tmux, with
+     $PROJECT_DIR/scripts/restart.sh worker
+   As root, scripts/restart.sh restarts the service and starts what runs in
+   tmux as $NAME, never as root. Watch the worker with
+     $(as_user_cmd "tmux attach -t mm-worker")        (detach with Ctrl-b d)
+   Start it at boot: crontab -u $NAME -e, with the line
+     @reboot $PROJECT_DIR/scripts/restart.sh worker
 
-5. Certificates. If acme.sh renews the certificate (scripts/install-cert.sh),
-   it is root's acme.sh that does so now: it would write data/tls as root, in
-   files $NAME cannot read, and restart the web server as root. Move it:
-     as $NAME, install acme.sh, issue the certificate again and run
-       $SUDO $PROJECT_DIR/scripts/install-cert.sh <domain>
-     (it installs the reload command, scripts/restart.sh web, for $NAME's
-     daily renewal); then as root:  ~/.acme.sh/acme.sh --remove -d <domain>
-   Whichever account runs acme.sh must be able to write $DATA_DIR/tls.
+5. Certificates. If root's acme.sh renews the certificate (scripts/install-cert.sh),
+   keep it there (the DNS token stays out of $NAME's reach) and run, as root, once:
+     $PROJECT_DIR/scripts/install-cert.sh <domain>
+   Each renewal then gives the files to $NAME and restarts the web server. Run it
+   again whenever the project moves: acme.sh remembers the old paths.
 
-With the site on a port above 1024 (8443, and the worker API on 8788 on
-loopback), $NAME needs no extra privileges. For the standard port 443 (and 80
-for plain http), allow unprivileged users to open them, once:
-  echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/60-meetingminutes-ports.conf && sudo sysctl --system
+6. Update as $NAME from now on, so new files belong to it:
+     $(as_user_cmd "git -C $PROJECT_DIR pull") && $PROJECT_DIR/scripts/restart.sh
+   An update done as root leaves files $NAME cannot change: run this script again.
 EOF

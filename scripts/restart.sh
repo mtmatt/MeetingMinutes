@@ -12,11 +12,22 @@
 # Otherwise (and always for the worker) it runs in tmux sessions that survive
 # logout. Watch them with `tmux attach -t mm-web` / `tmux attach -t mm-worker`
 # (detach again with Ctrl-b d).
+#
+# Run by root on a project that belongs to another user (scripts/setup-user.sh),
+# it restarts the systemd service itself and starts what runs in tmux as that
+# user, never as root: root's crontab (acme.sh renewals) and root's shell can
+# use it as they are, without sudo.
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 UNIT=meetingminutes-web.service
+
+# The project's owner, when root runs this for another user's installation.
+OWNER=$(stat -c %U "$PROJECT_DIR" 2>/dev/null || echo root)
+for_owner() {
+  [ "$(id -u)" = 0 ] && [ "$OWNER" != root ] && [ "$OWNER" != UNKNOWN ] && id -u "$OWNER" >/dev/null 2>&1
+}
 
 root_warning() {
   if [ "$(id -u)" = 0 ]; then
@@ -24,7 +35,12 @@ root_warning() {
   fi
 }
 
-restart_tmux() { # <session> <script>
+restart_tmux() { # <session> <script> <what: web|worker>
+  if for_owner; then
+    # As the owner, with their own home directory (Bun, uv) and their own tmux.
+    runuser -l "$OWNER" -c "$(printf '%q ' "$PROJECT_DIR/scripts/restart.sh" "$3")"
+    return
+  fi
   root_warning
   command -v tmux >/dev/null || { echo "tmux is required" >&2; return 1; }
   tmux kill-session -t "$1" 2>/dev/null || true
@@ -83,6 +99,9 @@ restart_web_systemd() {
   if command -v tmux >/dev/null && tmux has-session -t mm-web 2>/dev/null; then
     tmux kill-session -t mm-web && echo "Stopped the web server that ran in tmux (mm-web); systemd runs it now."
   fi
+  if for_owner && runuser -u "$OWNER" -- tmux has-session -t mm-web 2>/dev/null; then
+    runuser -u "$OWNER" -- tmux kill-session -t mm-web && echo "Stopped $OWNER's web server in tmux (mm-web); systemd runs it now."
+  fi
   local restarts state url
   restarts=$(systemctl show -p NRestarts --value "$UNIT" 2>/dev/null || echo 0)
   if ! as_root systemctl restart "$UNIT"; then
@@ -126,18 +145,18 @@ restart_web_systemd() {
 }
 
 restart_web() {
-  if web_under_systemd; then restart_web_systemd; else restart_tmux mm-web scripts/start.sh; fi
+  if web_under_systemd; then restart_web_systemd; else restart_tmux mm-web scripts/start.sh web; fi
 }
 
 what="${1:-all}"
 case "$what" in
   web) restart_web ;;
-  worker) restart_tmux mm-worker scripts/worker.sh ;;
+  worker) restart_tmux mm-worker scripts/worker.sh worker ;;
   all)
     rc=0
     restart_web || rc=1
     # The worker does not use the TLS certificate; it is restarted here so code updates reach it too.
-    restart_tmux mm-worker scripts/worker.sh || rc=1
+    restart_tmux mm-worker scripts/worker.sh worker || rc=1
     exit $rc
     ;;
   *) echo "usage: scripts/restart.sh [all|web|worker]" >&2; exit 2 ;;

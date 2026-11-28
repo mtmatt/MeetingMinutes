@@ -12,6 +12,12 @@
 #
 # Then run this script once. acme.sh remembers the paths and the restart
 # command, and its daily cron job renews the certificate before it expires.
+#
+# Run as root for a project that belongs to another user (scripts/setup-user.sh),
+# root's acme.sh keeps the certificate (and the DNS token stays out of that
+# user's reach): each renewal gives the two files to the project's owner, then
+# restarts the web server (scripts/restart.sh does that correctly as root).
+# Run it again after moving the project: acme.sh keeps the old paths otherwise.
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -30,10 +36,19 @@ mkdir -p "$dir"
 chmod 700 "$dir"
 umask 077
 
+reload="$PROJECT_DIR/scripts/restart.sh web"
+owner=$(stat -c %U "$PROJECT_DIR")
+if [ "$(id -u)" = 0 ] && [ "$owner" != root ] && id -u "$owner" >/dev/null 2>&1; then
+  group=$(id -gn "$owner")
+  # acme.sh writes the files as root (the key readable by root only): hand them over first.
+  reload="chown $owner:$group '$dir/server.key' '$dir/server.crt' && $reload"
+  chown "$owner:$group" "$dir"
+fi
+
 "$acme" --install-cert -d "$domain" \
   --key-file "$dir/server.key" \
   --fullchain-file "$dir/server.crt" \
-  --reloadcmd "$PROJECT_DIR/scripts/restart.sh web"
+  --reloadcmd "$reload"
 
 cat <<EON
 

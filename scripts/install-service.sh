@@ -66,7 +66,23 @@ fi
 
 # The service runs as whoever owns the project, like the scripts do when that
 # user runs them.
-NAME=$(stat -c %U "$PROJECT_DIR")
+# By number: files copied from another computer with their owner kept (rsync -a,
+# scp -p, a tar) can belong to a user ID with no account here, which stat names
+# "UNKNOWN".
+OWNER_UID=$(stat -c %u "$PROJECT_DIR")
+NAME=$(getent passwd "$OWNER_UID" | cut -d: -f1 || true)
+if [ -z "$NAME" ]; then
+  cat >&2 <<EOF
+$PROJECT_DIR belongs to user ID $OWNER_UID, which has no account on this machine
+(the files were probably copied here from another computer with their owner kept).
+The service must run as an account that exists. Give the project to one, then run
+this script again:
+  the account you run it as now:   chown -R root:root $PROJECT_DIR
+  or a dedicated user (safer):     scripts/setup-user.sh
+Only ownership changes; no file is altered.
+EOF
+  exit 1
+fi
 GROUP=$(id -gn "$NAME")
 HOME_DIR=$(getent passwd "$NAME" | cut -d: -f6)
 if [ "$NAME" = root ]; then
@@ -122,7 +138,9 @@ $NAME ALL=(root) NOPASSWD: $SYSTEMCTL restart $UNIT, $SYSTEMCTL start $UNIT, $SY
       rm -f "$tmp"
     fi
   else
-    echo "warning: sudo is not installed; only root can restart the service (systemctl restart ${UNIT%.service})." >&2
+    echo "note: sudo is not installed, so only root can restart the service. As root, scripts/restart.sh web" >&2
+    echo "      does it (and acme.sh's renewals, run by root, too). For $NAME to do it as well: apt install sudo," >&2
+    echo "      then run this script again." >&2
   fi
 fi
 
@@ -137,21 +155,14 @@ say "Enabling it at boot and starting it"
 run "$SYSTEMCTL" daemon-reload
 run "$SYSTEMCTL" enable "$UNIT"
 if [ "$DRY" = 1 ]; then
-  echo "    $PROJECT_DIR/scripts/restart.sh web   (as $NAME: stops the tmux copy, mm-web, and starts the service)"
+  echo "    $PROJECT_DIR/scripts/restart.sh web   (stops the tmux copies, mm-web, and starts the service)"
   echo
   echo "Dry run: nothing was changed."
   exit 0
 fi
-# A copy root started in tmux (before scripts/setup-user.sh, say) would hold the port.
-if [ "$NAME" != root ] && command -v tmux >/dev/null && tmux has-session -t mm-web 2>/dev/null; then
-  tmux kill-session -t mm-web && say "Stopped root's tmux copy of the web server (mm-web)"
-fi
-# restart.sh stops the copy in tmux (as its owner) and waits until the site answers.
-if [ "$NAME" = root ]; then
-  "$PROJECT_DIR/scripts/restart.sh" web
-else
-  runuser -u "$NAME" -- "$PROJECT_DIR/scripts/restart.sh" web
-fi
+# As root: restart.sh stops the copies in tmux (root's and the owner's), restarts
+# the service with systemctl (no sudo needed) and waits until the site answers.
+"$PROJECT_DIR/scripts/restart.sh" web
 
 cat <<EOF
 
