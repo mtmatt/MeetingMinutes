@@ -92,7 +92,7 @@ async function captureTab(slides = false): Promise<MediaStream> {
     tab = await navigator.mediaDevices.getDisplayMedia({
       // Slides need a picture sharp enough to read; otherwise a token one.
       video: slides
-        ? { displaySurface: "browser", frameRate: { ideal: 1, max: 2 }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        ? { displaySurface: "browser", frameRate: { ideal: 1, max: 2 }, width: { ideal: 1280 }, height: { ideal: 720 } }
         : { displaySurface: "browser", frameRate: 1, width: 320 },
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, suppressLocalAudioPlayback: false } as MediaTrackConstraints,
       preferCurrentTab: false,
