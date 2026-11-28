@@ -21,6 +21,7 @@ import { meetingRoutes } from "./routes/meetings";
 import { presetRoutes } from "./routes/presets";
 import { templateRoutes } from "./routes/templates";
 import { glossaryRoutes } from "./routes/glossaries";
+import { perfTimer } from "./services/perf";
 import { voiceRoutes } from "./routes/voices";
 import type { AppEnv } from "./types";
 
@@ -76,6 +77,8 @@ export function securityHeaders({ google }: { google: boolean }) {
 export function createApp() {
   const app = new Hono<AppEnv>();
 
+  // How long each API request takes, for Admin → Performance (outermost, so it times everything).
+  app.use(perfTimer);
   // Before anything: blocked addresses are refused, and every answer is watched for signs of an attack.
   app.use(securityWatch);
   // Then, so a request for another host learns nothing about the site.

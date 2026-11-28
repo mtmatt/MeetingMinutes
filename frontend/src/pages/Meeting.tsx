@@ -378,7 +378,6 @@ function MeetingBody({ meeting }: { meeting: MeetingDetail }) {
                             close();
                             summaryInfo.exportPdf(exportable);
                           }}
-                          slideCount={meeting.slides?.length ?? 0}
                         />
                         <div className="menu-sep" />
                       </>

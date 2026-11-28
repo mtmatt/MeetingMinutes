@@ -846,9 +846,14 @@ export function Transcript({ meeting }: { meeting: MeetingDetail }) {
   };
 
   if (!meeting.segments.length) {
+    // No speech: the slides are still what happened, in order.
     return (
-      <div className="empty">
-        <p>{t("meeting.emptyTranscript")}</p>
+      <div className="transcript">
+        <div className="empty">
+          <p>{t("meeting.emptyTranscript")}</p>
+        </div>
+        {slides.length > 0 && <div className="transcript-body">{slideCards(slides)}</div>}
+        {viewing != null && slides[viewing] && <SlideViewer meeting={meeting} index={viewing} onIndex={setViewing} onClose={() => setViewing(null)} />}
       </div>
     );
   }

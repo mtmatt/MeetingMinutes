@@ -95,6 +95,15 @@ export function summaryPromptParts(
   const when = meeting.occurred_at ?? meeting.created_at;
   const date = new Date(when).toISOString().slice(0, 16).replace("T", " ") + " UTC";
   const transcript = renderTranscript(segments, names);
+  const slides: SummarySlide[] = withSlides
+    ? slidesForSummary(meeting.id).map((sl, i) => ({
+        id: sl.id,
+        at: sl.at_sec,
+        label: `Slide ${i + 1}, on screen from [${formatClock(sl.at_sec)}]:`,
+        tokens: slideTokens(sl.width, sl.height),
+        load: () => slideBase64(sl),
+      }))
+    : [];
 
   return {
     system: `You are an expert meeting secretary. You turn raw meeting transcripts into clear, accurate written documents.
@@ -107,7 +116,8 @@ Operating constraints:
     instructions: `<instructions>
 ${userPrompt.trim()}
 </instructions>`,
-    metadata: `<meeting_metadata>
+    metadata: `<meeting_metadata>${transcript || !slides.length ? "" : `
+Speech: none was recognised in this recording, so the transcript is empty. Write the document from the slides, and show the slides that carry its content.`}
 Title: ${meeting.title}
 Date: ${date}
 Duration: ${meeting.duration_sec ? formatClock(meeting.duration_sec) : "unknown"}
@@ -115,15 +125,7 @@ Participants: ${speakers.length ? speakers.map((s) => s.name).join(", ") : "not 
 Detected language: ${meeting.language ?? "unknown"}
 </meeting_metadata>`,
     transcript: transcript ? transcript.split("\n") : [],
-    slides: withSlides
-      ? slidesForSummary(meeting.id).map((sl, i) => ({
-          id: sl.id,
-          at: sl.at_sec,
-          label: `Slide ${i + 1}, on screen from [${formatClock(sl.at_sec)}]:`,
-          tokens: slideTokens(sl.width, sl.height),
-          load: () => slideBase64(sl),
-        }))
-      : [],
+    slides,
   };
 }
 

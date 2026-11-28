@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { PERF_WINDOWS, perfReport, type PerfWindow } from "../services/perf";
 import { defaultRefineSettings, refineSettings, refineSettingsMeta, refineSettingsSchema, resetRefineSettings, saveRefineSettings } from "../services/refine";
 import { retentionStats, sweepMediaRetention } from "../services/mediaRetention";
 import { statfsSync } from "node:fs";
@@ -297,6 +298,13 @@ function summarizerState() {
     ),
   };
 }
+
+// How fast the site answers, and how long transcriptions and summaries take.
+adminRoutes.get("/perf", (c) => {
+  const w = c.req.query("window") ?? "24h";
+  if (!(w in PERF_WINDOWS)) httpError(422, "Unknown window.", "invalid_input");
+  return c.json(perfReport(w as PerfWindow));
+});
 
 adminRoutes.get("/summarizer", (c) => c.json(summarizerState()));
 

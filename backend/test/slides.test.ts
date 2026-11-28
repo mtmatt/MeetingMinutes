@@ -39,7 +39,7 @@ function sendSlide(c: Client, id: string, at: number, key: string, data: Uint8Ar
   return c.req("POST", `/api/meetings/${id}/slides?at=${at}&key=${key}`, { body: data, headers: { "content-type": "image/jpeg" } });
 }
 
-async function transcribe(id: string) {
+async function transcribe(id: string, speech = true) {
   const job = await claim(id);
   expect(job).not.toBeNull();
   const done = await worker.call(`/jobs/${job.jobId}/complete`, {
@@ -51,10 +51,12 @@ async function transcribe(id: string) {
       hasPlayback: false,
       hasPeaks: false,
       speakers: ["SPEAKER_00"],
-      segments: [
-        { start: 1, end: 5, speaker: "SPEAKER_00", text: "今天介紹新產品。" },
-        { start: 300, end: 310, speaker: "SPEAKER_00", text: "這是價格。" },
-      ],
+      segments: speech
+        ? [
+            { start: 1, end: 5, speaker: "SPEAKER_00", text: "今天介紹新產品。" },
+            { start: 300, end: 310, speaker: "SPEAKER_00", text: "這是價格。" },
+          ]
+        : [],
     },
   });
   expect(done.status).toBe(200);
@@ -185,6 +187,26 @@ describe("slides", () => {
     expect(s.content).not.toContain("evil.example");
     // The prompt asked for it.
     expect(readFileSync(process.env.FAKE_ANTHROPIC_PROMPT_FILE!, "utf8")).toContain("![short description](slide:N)");
+  });
+
+  test("no speech: the summary is written from the slides, and is told so", async () => {
+    const admin = await adminClient();
+    await admin.del("/api/admin/summarizer");
+    const c = await memberClient("slides-silent");
+    const id = await uploading(c);
+    await sendSlide(c, id, 3, "slide-key-4001", jpeg(1280, 720));
+    await sendSlide(c, id, 40, "slide-key-4002", jpeg(1280, 720));
+    expect((await c.post(`/api/meetings/${id}/upload/complete`)).status).toBe(200);
+    await transcribe(id, false);
+    const res = await c.post(`/api/meetings/${id}/summaries`, { templateId: null, prompt: "SHOW_SLIDES_PLEASE minutes", outputLanguage: "zh-TW" });
+    expect(res.status).toBe(201);
+    const s = await waitSummary(c, id);
+    expect(s.status).toBe("done");
+    expect(s.slidesSent).toBe(2);
+    const prompt = readFileSync(process.env.FAKE_ANTHROPIC_PROMPT_FILE!, "utf8");
+    expect(prompt).toContain("Speech: none was recognised");
+    expect(prompt.match(/<<image /g)).toHaveLength(2);
+    expect(s.content).toMatch(/!\[The cost table\]\(slide:[\w-]+\)/);
   });
 
   test("a model that refuses pictures writes the summary from the transcript alone", async () => {
